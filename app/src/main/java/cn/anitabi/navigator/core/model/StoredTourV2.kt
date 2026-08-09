@@ -31,6 +31,9 @@ data class StoredTourV2(
     val offRouteSinceEpochMillis: Long? = null,
     val lastRerouteEpochMillis: Long? = null,
     val executionStrategy: TransitExecutionStrategy? = null,
+    val mapProvider: MapProvider? = null,
+    val regionDataVersion: String? = null,
+    val externalRouteFallback: Boolean = false,
     val isPaused: Boolean = false,
     val pausedAtEpochMillis: Long? = null,
 ) {
@@ -38,7 +41,11 @@ data class StoredTourV2(
         require(schemaVersion == SCHEMA_VERSION) { "Unsupported stored tour schema" }
     }
 
-    fun toUnresolvedPlan(resolvedExecutionStrategy: TransitExecutionStrategy): TourPlan {
+    fun toUnresolvedPlan(
+        resolvedExecutionStrategy: TransitExecutionStrategy,
+        resolvedMapProvider: MapProvider = mapProvider ?: MapProvider.GOOGLE,
+        resolvedRegionDataVersion: String? = regionDataVersion,
+    ): TourPlan {
         val pointsById = selectedPoints.associateBy(PilgrimagePoint::id)
         val ordered = manualOrderPointIds.mapNotNull(pointsById::get) +
             selectedPoints.filterNot { it.id in manualOrderPointIds.toSet() }
@@ -74,6 +81,10 @@ data class StoredTourV2(
             initialStart = start,
             state = navigationState,
             executionStrategy = resolvedExecutionStrategy,
+            mapProvider = resolvedMapProvider,
+            coordinateSystem = CoordinateSystem.WGS84,
+            regionDataVersion = resolvedRegionDataVersion,
+            externalRouteFallback = externalRouteFallback,
         )
     }
 
@@ -90,7 +101,7 @@ data class StoredTourV2(
         val ordered = manualOrderPointIds.mapNotNull(pointsById::get) +
             selectedPoints.filterNot { it.id in manualOrderPointIds.toSet() }
         val restoredLegIndex = activeLegIndex ?: if (
-            resolvedExecutionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+            resolvedExecutionStrategy.isExternalMapNavigation()
         ) {
             activePointId?.let { activeId ->
                 ordered.indexOfFirst { it.id == activeId }.takeIf { it >= 0 }
@@ -172,6 +183,9 @@ data class StoredTourV2(
             offRouteSinceEpochMillis = progress?.offRouteSinceEpochMillis,
             lastRerouteEpochMillis = progress?.lastRerouteEpochMillis,
             executionStrategy = plan.executionStrategy,
+            mapProvider = plan.mapProvider,
+            regionDataVersion = plan.regionDataVersion,
+            externalRouteFallback = plan.externalRouteFallback,
             isPaused = progress?.isPaused ?: false,
             pausedAtEpochMillis = progress?.pausedAtEpochMillis,
         )

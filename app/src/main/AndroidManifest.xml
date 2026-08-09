@@ -2,9 +2,14 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
     <queries>
         <package android:name="com.google.android.apps.maps" />
+        <package android:name="com.autonavi.minimap" />
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="https" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.VIEW" />
+            <data android:scheme="amapuri" />
         </intent>
     </queries>
 
@@ -32,6 +37,9 @@
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${NAVIGATION_API_KEY}" />
+        <meta-data
+            android:name="com.amap.api.v2.apikey"
+            android:value="${AMAP_API_KEY}" />
         <meta-data
             android:name="firebase_analytics_collection_enabled"
             android:value="false" />

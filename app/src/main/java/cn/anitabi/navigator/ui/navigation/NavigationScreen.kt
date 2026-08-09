@@ -66,6 +66,7 @@ import cn.anitabi.navigator.core.model.TourLeg
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.model.isExternalMapNavigation
 import cn.anitabi.navigator.navigation.NavigationRuntimeState
 import cn.anitabi.navigator.navigation.NavigationViewModel
 import cn.anitabi.navigator.navigation.ActiveTourEditUiState
@@ -107,10 +108,9 @@ fun NavigationRoute(
             )
             BoxWithConstraints(modifier = Modifier.fillMaxSize()) {
                 val useSidePanel = maxWidth >= WideNavigationBreakpoint || maxWidth > maxHeight
-                val externalJapan =
-                    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+                val externalMap = plan.executionStrategy.isExternalMapNavigation()
                 val hasTransitJourney =
-                    plan.mode == TravelMode.TRANSIT && plan.legs.isNotEmpty() && !externalJapan
+                    plan.mode == TravelMode.TRANSIT && plan.legs.isNotEmpty() && !externalMap
                 val compactPanelHeight = minOf(maxHeight * 0.5f, 360.dp)
 
                 if (useSidePanel) {
@@ -125,7 +125,7 @@ fun NavigationRoute(
                             state = state,
                             onStop = {
                                 viewModel.stop()
-                                if (!externalJapan) onBack(plan.id)
+                                if (!externalMap) onBack(plan.id)
                             },
                             onArrived = viewModel::markArrived,
                             onRefreshTransit = viewModel::refreshTransit,
@@ -153,7 +153,7 @@ fun NavigationRoute(
                             state = state,
                             onStop = {
                                 viewModel.stop()
-                                if (!externalJapan) onBack(plan.id)
+                                if (!externalMap) onBack(plan.id)
                             },
                             onArrived = viewModel::markArrived,
                             onRefreshTransit = viewModel::refreshTransit,
@@ -286,7 +286,7 @@ private fun NavigationCanvas(
             )
         }
 
-        plan.mode == TravelMode.TRANSIT -> {
+        plan.executionStrategy.isExternalMapNavigation() || plan.mode == TravelMode.TRANSIT -> {
             RoutePreviewMap(
                 plan = plan,
                 currentLocation = state.currentLocation,
@@ -443,7 +443,7 @@ private fun NavigationSummary(
                 )
                 Text(
                     text = (if (
-                        plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+                        plan.executionStrategy.isExternalMapNavigation()
                     ) {
                         "直线距离 ${state.currentTargetDistanceMeters?.let(::formatDistance) ?: "等待定位"}"
                     } else {
@@ -472,7 +472,7 @@ private fun NavigationSummary(
         )
         if (
             state.isRerouting &&
-            plan.executionStrategy != TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+            !plan.executionStrategy.isExternalMapNavigation()
         ) {
             Text(
                 "检测到持续偏航，正在重算剩余路线…",
@@ -498,6 +498,8 @@ private fun NavigationSummary(
             text = (when {
                 plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
                     "Google Maps 外部分段公交"
+                plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+                    "高德地图外部分段${plan.mode.externalModeLabel()}"
                 plan.mode == TravelMode.TRANSIT -> "Google Routes"
                 else -> "Google Navigation"
             }) +
@@ -631,7 +633,7 @@ private fun NavigationActions(
     onPauseExternal: () -> Unit,
     onResumeExternal: () -> Unit,
 ) {
-    val externalJapan = plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+    val externalMap = plan.executionStrategy.isExternalMapNavigation()
     val progress = state.progress
     val context = LocalContext.current
     Column(
@@ -641,7 +643,7 @@ private fun NavigationActions(
             .navigationBarsPadding(),
     ) {
         HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
-        if (externalJapan && progress != null) {
+        if (externalMap && progress != null) {
             val terminal = progress.state in setOf(NavigationState.COMPLETED, NavigationState.ENDED)
             if (progress.isPaused && state.errorMessage?.contains("悬浮窗或可见的导航通知") == true) {
                 Row(
@@ -927,3 +929,10 @@ private fun NavigationState.displayName(): String = when (this) {
 
 private fun formatDistance(meters: Double): String =
     if (meters >= 1000.0) "%.1f km".format(meters / 1000.0) else "${meters.toInt()} m"
+
+private fun TravelMode.externalModeLabel(): String = when (this) {
+    TravelMode.DRIVE -> "驾车导航"
+    TravelMode.BIKE -> "骑行导航"
+    TravelMode.WALK -> "步行导航"
+    TravelMode.TRANSIT -> "公交路线"
+}

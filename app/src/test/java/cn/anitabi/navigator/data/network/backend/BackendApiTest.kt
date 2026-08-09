@@ -35,6 +35,7 @@ class BackendApiTest {
             httpClient = ApiHttpClient(UserAgentInterceptor("AnitabiNavigator", "0.2.1", "https://example.org")),
             tokenProvider = IdTokenProvider { "firebase-test-token" },
             baseUrl = server.url("/").toString(),
+            contractVersion = BackendContractVersion.V1_COMPAT,
         )
     }
 
@@ -51,7 +52,7 @@ class BackendApiTest {
             ),
         )
 
-        val response = api.matrix(
+        val response = api.matrixV1(
             mode = TravelMode.BIKE,
             coordinates = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
             objective = RouteObjective.SHORTEST,
@@ -77,7 +78,7 @@ class BackendApiTest {
             ),
         )
 
-        api.route(
+        api.routeV1(
             mode = TravelMode.TRANSIT,
             locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
             departureTime = "2026-07-29T09:00:00+09:00",
@@ -98,7 +99,7 @@ class BackendApiTest {
             ),
         )
 
-        api.route(
+        api.routeV1(
             mode = TravelMode.TRANSIT,
             locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
             arrivalTime = "2026-07-29T18:00:00+09:00",
@@ -119,7 +120,7 @@ class BackendApiTest {
 
         val exception = runCatching {
             runBlocking {
-                api.route(
+                api.routeV1(
                     mode = TravelMode.TRANSIT,
                     locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
                     departureTime = "2026-07-29T09:00:00+09:00",
@@ -140,7 +141,7 @@ class BackendApiTest {
 
         val exception = runCatching {
             runBlocking {
-                api.route(
+                api.routeV1(
                     mode = TravelMode.TRANSIT,
                     locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
                     departureTime = "2026-07-29T09:00:00+09:00",
@@ -161,7 +162,7 @@ class BackendApiTest {
 
         val exception = runCatching {
             runBlocking {
-                api.reserveNavigation(25)
+                api.reserveNavigationV1(25)
             }
         }.exceptionOrNull()!!
 
@@ -177,6 +178,7 @@ class BackendApiTest {
             httpClient = ApiHttpClient(UserAgentInterceptor("AnitabiNavigator", "0.2.1", "https://example.org")),
             tokenProvider = IdTokenProvider { "firebase-test-token" },
             baseUrl = server.url("/").toString(),
+            contractVersion = BackendContractVersion.V1_COMPAT,
             monotonicMillis = { now },
             sleeper = { millis ->
                 waits += millis
@@ -197,13 +199,13 @@ class BackendApiTest {
         server.enqueue(MockResponse().setBody("""{"reservedDestinations":1}"""))
         server.enqueue(MockResponse().setBody("""{"reservedDestinations":1}"""))
 
-        api.route(
+        api.routeV1(
             mode = TravelMode.WALK,
             locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
         )
-        api.reserveNavigation(1)
+        api.reserveNavigationV1(1)
         now += 10_000L
-        api.reserveNavigation(1)
+        api.reserveNavigationV1(1)
 
         assertEquals(listOf(1_000L, 1_000L), waits)
         assertEquals(4, server.requestCount)
@@ -221,7 +223,7 @@ class BackendApiTest {
             server.enqueue(response)
             runCatching {
                 runBlocking {
-                    api.route(
+                    api.routeV1(
                         mode = TravelMode.WALK,
                         locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
                     )
@@ -245,7 +247,7 @@ class BackendApiTest {
 
         val exception = runCatching {
             runBlocking {
-                api.route(
+                api.routeV1(
                     mode = TravelMode.WALK,
                     locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
                 )
@@ -263,6 +265,7 @@ class BackendApiTest {
             httpClient = ApiHttpClient(UserAgentInterceptor("AnitabiNavigator", "0.2.1", "https://example.org")),
             tokenProvider = IdTokenProvider { "firebase-test-token" },
             baseUrl = server.url("/").toString(),
+            contractVersion = BackendContractVersion.V1_COMPAT,
             sleeper = {
                 waiting.complete(Unit)
                 CompletableDeferred<Unit>().await()
@@ -274,7 +277,7 @@ class BackendApiTest {
         )
 
         val requestJob = launch {
-            api.route(
+            api.routeV1(
                 mode = TravelMode.WALK,
                 locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
             )
@@ -294,7 +297,7 @@ class BackendApiTest {
         )
 
         val requestJob = launch {
-            api.route(
+            api.routeV1(
                 mode = TravelMode.WALK,
                 locations = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1)),
             )
@@ -311,7 +314,7 @@ class BackendApiTest {
             MockResponse().setBody("""{"reservedDestinations":25}"""),
         )
 
-        val reservation = api.reserveNavigation(25)
+        val reservation = api.reserveNavigationV1(25)
 
         assertEquals(25, reservation.reservedDestinations)
         assertTrue(server.takeRequest().body.readUtf8().contains("\"destinationCount\":25"))
@@ -324,7 +327,7 @@ class BackendApiTest {
             MockResponse().setBody("""{"reservedDestinations":1,"remainingToday":19}"""),
         )
 
-        val reservation = api.reserveNavigation(1)
+        val reservation = api.reserveNavigationV1(1)
 
         assertEquals(1, reservation.reservedDestinations)
     }

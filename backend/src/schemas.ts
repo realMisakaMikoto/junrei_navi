@@ -83,3 +83,18 @@ export const navigationReservationBodySchema = {
     destinationCount: { type: "integer", minimum: 1, maximum: 25 },
   },
 } as const;
+
+export const v2NavigationReservationBodySchema = {
+  type: "object",
+  additionalProperties: false,
+  required: ["origin", "destinations"],
+  properties: {
+    origin: coordinateSchema,
+    destinations: {
+      type: "array",
+      minItems: 1,
+      maxItems: 25,
+      items: coordinateSchema,
+    },
+  },
+} as const;

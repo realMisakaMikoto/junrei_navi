@@ -176,9 +176,27 @@ if ! grep -Fqx "$registry_name -> $registry_name:" "$mapping_file"; then
   exit 1
 fi
 
-if grep -R -n --include='*.kt' 'MapsInitializer' app/src/main; then
-  echo "Application source must not call MapsInitializer with Navigation SDK" >&2
+if grep -R -n -E --include='*.kt' 'com\.google\.android\.gms\.maps\.MapsInitializer' app/src/main; then
+  echo "Application source must not call the Google MapsInitializer with Navigation SDK" >&2
   exit 1
+fi
+
+if grep -q 'com\.amap\.api:3dmap' app/build.gradle.kts; then
+  expected_amap_artifact='com.amap.api:3dmap-location-search:11.2.000_loc11.2.000_sea9.8.0'
+  if ! grep -Fq "$expected_amap_artifact" app/build.gradle.kts; then
+    echo "AMap SDK must remain pinned to the reviewed combined artifact" >&2
+    exit 1
+  fi
+  if ! grep -R -q -E --include='*.kt' 'import com\.amap\.api\.maps\.MapsInitializer|com\.amap\.api\.maps\.MapsInitializer' app/src/main; then
+    echo "AMap SDK integration is missing its privacy initializer" >&2
+    exit 1
+  fi
+  for privacy_call in updatePrivacyShow updatePrivacyAgree; do
+    if ! grep -R -q --include='*.kt' "$privacy_call" app/src/main; then
+      echo "AMap SDK integration is missing $privacy_call before initialization" >&2
+      exit 1
+    fi
+  done
 fi
 
 echo "Navigation R8 reflection audit passed"

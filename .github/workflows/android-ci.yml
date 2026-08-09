@@ -33,11 +33,14 @@ jobs:
           cache-dependency-path: backend/package-lock.json
       - name: Install backend dependencies
         run: npm ci
-      - name: Type-check, test and audit backend
+      - name: Type-check, test, build and audit backend
         run: |
           npm run typecheck
           npm test
+          npm run build
           npm audit --omit=dev
+      - name: Build backend container image
+        run: docker build --tag anitabi-api:ci .
 
   verify:
     runs-on: ubuntu-latest

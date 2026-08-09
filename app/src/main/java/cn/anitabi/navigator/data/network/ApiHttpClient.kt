@@ -128,6 +128,11 @@ sealed class ApiException(message: String, cause: Throwable? = null) : Exception
     class QuotaExhausted : ApiException("The shared monthly routing quota is exhausted")
     class UpstreamUnavailable : ApiException("The routing provider is unavailable")
     class BackendUnavailable : ApiException("The routing backend is unavailable")
+    class MixedMapProviders : ApiException("All journey locations must use the same map provider")
+    class MixedTransitRegions : ApiException("Japanese and non-Japanese transit locations cannot be mixed")
+    class RegionUnresolved : ApiException("The map region could not be resolved safely")
+    class RegionDataOutdated : ApiException("The approved region data must be updated")
+    class ClientUpgradeRequired : ApiException("A newer app version is required")
 
     companion object {
         @Suppress("UNUSED_PARAMETER")

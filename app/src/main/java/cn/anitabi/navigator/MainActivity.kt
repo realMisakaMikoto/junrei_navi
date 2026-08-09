@@ -71,10 +71,20 @@ class MainActivity : ComponentActivity() {
                             plannerViewModel = plannerViewModel,
                             navigationViewModel = navigationViewModel,
                             telemetryConsentController = container.telemetryConsentController,
+                            appSettingsStore = container.appSettingsStore,
+                            amapPrivacyGate = container.amapPrivacyGate,
+                            classifyTerritory = container.territoryClassifier::classify,
                         )
                     } else {
                         OnboardingRoute(
                             settingsStore = container.appSettingsStore,
+                            onAmapPrivacyConsentChanged = { accepted ->
+                                if (accepted) {
+                                    container.amapPrivacyGate.prepareIfAllowed(true)
+                                } else {
+                                    container.amapPrivacyGate.revoke()
+                                }
+                            },
                             onComplete = { onboardingComplete = true },
                         )
                     }

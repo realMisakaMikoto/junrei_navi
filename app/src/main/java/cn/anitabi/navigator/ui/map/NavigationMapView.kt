@@ -28,6 +28,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
+import cn.anitabi.navigator.core.model.MapProvider
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.libraries.navigation.NavigationView
 
@@ -53,10 +54,18 @@ fun NavigationMapView(
     var attempt by remember(navigationUiEnabled) { mutableIntStateOf(0) }
     var runtimeFailure by remember(navigationUiEnabled, attempt) { mutableStateOf(false) }
     val creation = remember(navigationUiEnabled, attempt) {
-        runCatching { NavigationView(context) }
+        runCatching {
+            processMapCoordinator.acquire(MapProvider.GOOGLE) { NavigationView(context) }.also { lease ->
+                lease.installDestroyAction {
+                    runCatching(lease.value::onDestroy)
+                        .onFailure { error -> logMapFailure("ON_DESTROY_BEFORE_ATTACH", error) }
+                }
+            }
+        }
             .onFailure { error -> logMapFailure("CONSTRUCTOR", error) }
     }
-    val navigationView = creation.getOrNull()
+    val lease = creation.getOrNull()
+    val navigationView = lease?.value
     val unavailable = navigationView == null || runtimeFailure
 
     LaunchedEffect(unavailable) {
@@ -73,6 +82,8 @@ fun NavigationMapView(
         )
         return
     }
+    requireNotNull(lease)
+    requireNotNull(navigationView)
 
     AndroidView(
         factory = { navigationView },
@@ -81,7 +92,10 @@ fun NavigationMapView(
         },
     )
 
-    DisposableEffect(lifecycleOwner, navigationView) {
+    DisposableEffect(lifecycleOwner, navigationView, lease) {
+        if (lease.isDestroyed) {
+            return@DisposableEffect onDispose {}
+        }
         var created = false
         var configured = false
         var started = false
@@ -193,7 +207,7 @@ fun NavigationMapView(
         navigationView.addOnAttachStateChangeListener(attachListener)
         activateAttachedView()
 
-        onDispose {
+        lease.installDestroyAction {
             disposed = true
             lifecycleOwner.lifecycle.removeObserver(observer)
             navigationView.removeOnAttachStateChangeListener(attachListener)
@@ -203,6 +217,7 @@ fun NavigationMapView(
                     .onFailure { error -> logMapFailure("ON_DESTROY", error) }
             }
         }
+        onDispose { lease.close() }
     }
 }
 

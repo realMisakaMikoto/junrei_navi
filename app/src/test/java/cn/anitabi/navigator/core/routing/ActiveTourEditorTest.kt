@@ -71,7 +71,7 @@ class ActiveTourEditorTest {
             orderedFuturePoints = listOf(points[3], inserted, points[2]),
             planner = planner(
                 road = road,
-                classifyRegion = { error("Road edits must not classify transit regions") },
+                classifyRegion = { JapanRegion.NON_JAPAN },
             ),
         )
 
@@ -244,7 +244,7 @@ class ActiveTourEditorTest {
             orderedFuturePoints = listOf(points[1], inserted, points[2], points[3]),
             planner = planner(
                 road = road,
-                classifyRegion = { error("Road edits must not classify transit regions") },
+                classifyRegion = { JapanRegion.NON_JAPAN },
             ),
         )
 
@@ -280,7 +280,7 @@ class ActiveTourEditorTest {
             orderedFuturePoints = listOf(points[1], inserted, points[2]),
             planner = planner(
                 road = road,
-                classifyRegion = { error("Road edits must not classify transit regions") },
+                classifyRegion = { JapanRegion.NON_JAPAN },
             ),
         )
 

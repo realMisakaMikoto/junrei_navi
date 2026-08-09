@@ -1,6 +1,8 @@
 package cn.anitabi.navigator.core.routing
 
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.CoordinateSystem
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.RouteStep
 import cn.anitabi.navigator.core.model.TourLeg
@@ -25,6 +27,38 @@ interface RoadRoutingProvider {
     suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute
 }
 
+data class RoutingProviderContext(
+    val provider: MapProvider,
+    val responseCoordinateSystem: CoordinateSystem,
+) {
+    init {
+        require(
+            (provider == MapProvider.GOOGLE && responseCoordinateSystem == CoordinateSystem.WGS84) ||
+                (provider == MapProvider.AMAP && responseCoordinateSystem == CoordinateSystem.GCJ02),
+        ) { "Route provider and response coordinate system do not match" }
+    }
+
+    companion object {
+        val GOOGLE = RoutingProviderContext(MapProvider.GOOGLE, CoordinateSystem.WGS84)
+        val AMAP = RoutingProviderContext(MapProvider.AMAP, CoordinateSystem.GCJ02)
+    }
+}
+
+interface ProviderAwareRoadRoutingProvider : RoadRoutingProvider {
+    suspend fun matrix(
+        mode: TravelMode,
+        points: List<GeoPoint>,
+        objective: RouteObjective,
+        context: RoutingProviderContext,
+    ): TravelMatrix
+
+    suspend fun directions(
+        mode: TravelMode,
+        points: List<GeoPoint>,
+        context: RoutingProviderContext,
+    ): RoadRoute
+}
+
 data class TravelMatrix(
     val durations: List<List<Double?>>,
     val distances: List<List<Double?>>,
@@ -37,15 +71,30 @@ data class RoadRouteSegment(
     val steps: List<RouteStep>,
     val distanceMeters: Double,
     val durationSeconds: Double,
+    val provider: MapProvider = MapProvider.GOOGLE,
+    val coordinateSystem: CoordinateSystem = CoordinateSystem.WGS84,
 )
 
-class BackendRoadRoutingProvider(private val api: BackendApi) : RoadRoutingProvider {
+class BackendRoadRoutingProvider(private val api: BackendApi) : ProviderAwareRoadRoutingProvider {
     override suspend fun matrix(
         mode: TravelMode,
         points: List<GeoPoint>,
         objective: RouteObjective,
+    ): TravelMatrix = matrix(mode, points, objective, RoutingProviderContext.GOOGLE)
+
+    override suspend fun matrix(
+        mode: TravelMode,
+        points: List<GeoPoint>,
+        objective: RouteObjective,
+        context: RoutingProviderContext,
     ): TravelMatrix {
-        val response = api.matrix(mode, points, objective)
+        val response = api.matrix(
+            mode = mode,
+            coordinates = points,
+            objective = objective,
+            expectedProvider = context.provider,
+            expectedCoordinateSystem = context.responseCoordinateSystem,
+        )
         val durations = List(points.size) { MutableList<Double?>(points.size) { null } }
         val distances = List(points.size) { MutableList<Double?>(points.size) { null } }
         response.elements.forEach { element ->
@@ -66,23 +115,56 @@ class BackendRoadRoutingProvider(private val api: BackendApi) : RoadRoutingProvi
         return TravelMatrix(durations, distances)
     }
 
-    override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute {
-        val response = api.route(mode, points)
+    override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute =
+        directions(mode, points, RoutingProviderContext.GOOGLE)
+
+    override suspend fun directions(
+        mode: TravelMode,
+        points: List<GeoPoint>,
+        context: RoutingProviderContext,
+    ): RoadRoute {
+        val response = api.route(
+            mode = mode,
+            locations = points,
+            expectedProvider = context.provider,
+            expectedCoordinateSystem = context.responseCoordinateSystem,
+        )
         if (response.legs.size != points.size - 1) {
             throw ApiException.InvalidResponse(IllegalStateException("Route leg count does not match locations"))
         }
         return RoadRoute(
             response.legs.mapIndexed { index, leg ->
-                leg.toRoadSegment(points[index], points[index + 1])
+                leg.toRoadSegment(
+                    from = points[index],
+                    to = points[index + 1],
+                    provider = response.provider,
+                    coordinateSystem = response.coordinateSystem,
+                )
             },
         )
     }
 }
 
-private fun BackendRouteLeg.toRoadSegment(from: GeoPoint, to: GeoPoint): RoadRouteSegment {
-    val geometry = decodeGooglePolyline(encodedPolyline)
+private fun BackendRouteLeg.toRoadSegment(
+    from: GeoPoint,
+    to: GeoPoint,
+    provider: MapProvider,
+    coordinateSystem: CoordinateSystem,
+): RoadRouteSegment {
+    val decodedGeometry = decodeGooglePolyline(encodedPolyline)
         .ifEmpty { steps.flatMap { decodeGooglePolyline(it.encodedPolyline) }.withoutConsecutiveDuplicates() }
-        .ifEmpty { listOf(from, to) }
+    if (
+        coordinateSystem == CoordinateSystem.GCJ02 &&
+        decodedGeometry.isEmpty() &&
+        (from != to || distanceMeters > 0.0 || durationSeconds > 0.0)
+    ) {
+        throw ApiException.InvalidResponse(
+            IllegalStateException("AMap route geometry is required for a nontrivial route"),
+        )
+    }
+    val geometry = decodedGeometry.ifEmpty {
+        if (coordinateSystem == CoordinateSystem.WGS84) listOf(from, to) else emptyList()
+    }
     return RoadRouteSegment(
         geometry = geometry,
         steps = steps.map { step ->
@@ -96,17 +178,29 @@ private fun BackendRouteLeg.toRoadSegment(from: GeoPoint, to: GeoPoint): RoadRou
         },
         distanceMeters = distanceMeters,
         durationSeconds = durationSeconds,
+        provider = provider,
+        coordinateSystem = coordinateSystem,
     )
 }
 
 private fun roadInstruction(travelMode: String): String = when (travelMode) {
     "DRIVE" -> "沿路线继续行驶"
     "BICYCLE" -> "沿路线继续骑行"
+    "TRANSIT" -> "乘坐公共交通"
     else -> "沿路线继续步行"
 }
 
 interface TransitJourneyProvider {
     suspend fun journey(from: GeoPoint, to: GeoPoint, query: TransitJourneyQuery): TransitJourney
+}
+
+interface ProviderAwareTransitJourneyProvider : TransitJourneyProvider {
+    suspend fun journey(
+        from: GeoPoint,
+        to: GeoPoint,
+        query: TransitJourneyQuery,
+        context: RoutingProviderContext,
+    ): TransitJourney
 }
 
 data class TransitJourneyQuery(
@@ -128,11 +222,18 @@ data class TransitJourney(
     val arrivalTime: String,
 )
 
-class BackendTransitJourneyProvider(private val api: BackendApi) : TransitJourneyProvider {
+class BackendTransitJourneyProvider(private val api: BackendApi) : ProviderAwareTransitJourneyProvider {
     override suspend fun journey(
         from: GeoPoint,
         to: GeoPoint,
         query: TransitJourneyQuery,
+    ): TransitJourney = journey(from, to, query, RoutingProviderContext.GOOGLE)
+
+    override suspend fun journey(
+        from: GeoPoint,
+        to: GeoPoint,
+        query: TransitJourneyQuery,
+        context: RoutingProviderContext,
     ): TransitJourney {
         val response = api.route(
             mode = TravelMode.TRANSIT,
@@ -141,9 +242,21 @@ class BackendTransitJourneyProvider(private val api: BackendApi) : TransitJourne
             arrivalTime = query.arrivalTime,
             transitRoutingPreference = query.routingPreference,
             transitTravelModes = query.transitTravelModes,
+            expectedProvider = context.provider,
+            expectedCoordinateSystem = context.responseCoordinateSystem,
         )
         val routeSteps = response.legs.flatMap(BackendRouteLeg::steps)
-        val legs = if (routeSteps.isEmpty()) {
+        val provider = response.provider
+        val coordinateSystem = response.coordinateSystem
+        val legs = if (provider == MapProvider.AMAP) {
+            listOf(
+                response.toAmapTransitLeg(
+                    from = from,
+                    to = to,
+                    coordinateSystem = coordinateSystem,
+                ),
+            )
+        } else if (routeSteps.isEmpty()) {
             if (
                 from != to ||
                 response.distanceMeters > 0.0 ||
@@ -164,10 +277,17 @@ class BackendTransitJourneyProvider(private val api: BackendApi) : TransitJourne
                     distanceMeters = response.distanceMeters,
                     durationSeconds = response.durationSeconds,
                     source = GOOGLE_ROUTES_SOURCE,
+                    provider = provider,
+                    coordinateSystem = coordinateSystem,
                 ),
             )
         } else {
-            routeSteps.toTransitLegs(from, to)
+            routeSteps.toTransitLegs(
+                journeyStart = from,
+                journeyEnd = to,
+                provider = provider,
+                coordinateSystem = coordinateSystem,
+            )
         }
         val (departureTime, arrivalTime) = resolveJourneyTimes(
             steps = routeSteps,
@@ -180,6 +300,63 @@ class BackendTransitJourneyProvider(private val api: BackendApi) : TransitJourne
             arrivalTime = formatTransitDepartureTime(arrivalTime),
         )
     }
+}
+
+private fun cn.anitabi.navigator.data.network.backend.BackendRouteResponse.toAmapTransitLeg(
+    from: GeoPoint,
+    to: GeoPoint,
+    coordinateSystem: CoordinateSystem,
+): TourLeg {
+    val routeSteps = legs.flatMap(BackendRouteLeg::steps)
+    val geometry = decodeGooglePolyline(encodedPolyline)
+        .ifEmpty { legs.flatMap { decodeGooglePolyline(it.encodedPolyline) }.withoutConsecutiveDuplicates() }
+        .ifEmpty { routeSteps.flatMap { decodeGooglePolyline(it.encodedPolyline) }.withoutConsecutiveDuplicates() }
+    if (
+        geometry.isEmpty() &&
+        (from != to || distanceMeters > 0.0 || durationSeconds > 0.0)
+    ) {
+        throw ApiException.InvalidResponse(
+            IllegalStateException("AMap transit geometry is required for a nontrivial route"),
+        )
+    }
+    val primaryTransit = routeSteps.firstNotNullOfOrNull(BackendRouteStep::transit)
+    val line = primaryTransit?.lineShortName?.takeIf(String::isNotBlank)
+        ?: primaryTransit?.lineName?.takeIf(String::isNotBlank)
+    return TourLeg(
+        from = from,
+        to = to,
+        mode = TravelMode.TRANSIT,
+        geometry = geometry,
+        steps = routeSteps.map { step ->
+            val stepGeometry = decodeGooglePolyline(step.encodedPolyline)
+            RouteStep(
+                instruction = step.instruction?.takeIf(String::isNotBlank)
+                    ?: roadInstruction(step.travelMode),
+                distanceMeters = step.distanceMeters,
+                durationSeconds = step.durationSeconds,
+                coordinate = stepGeometry.firstOrNull(),
+            )
+        },
+        distanceMeters = distanceMeters,
+        durationSeconds = durationSeconds,
+        source = AMAP_WEB_SERVICE_SOURCE,
+        provider = MapProvider.AMAP,
+        coordinateSystem = coordinateSystem,
+        transit = primaryTransit?.let {
+            TransitLegDetails(
+                vehicleMode = it.vehicleType ?: "TRANSIT",
+                line = line,
+                direction = it.headsign,
+                departureStop = it.departureStop,
+                arrivalStop = it.arrivalStop,
+                stopCount = it.stopCount,
+                departureTime = it.departureTime,
+                arrivalTime = it.arrivalTime,
+                departureTimeZone = it.departureTimeZone,
+                arrivalTimeZone = it.arrivalTimeZone,
+            )
+        },
+    )
 }
 
 private fun resolveJourneyTimes(
@@ -218,6 +395,8 @@ private fun parseOffsetDateTime(value: String?): OffsetDateTime? = value?.let { 
 private fun List<BackendRouteStep>.toTransitLegs(
     journeyStart: GeoPoint,
     journeyEnd: GeoPoint,
+    provider: MapProvider,
+    coordinateSystem: CoordinateSystem,
 ): List<TourLeg> {
     var cursor = journeyStart
     return mapIndexed { index, step ->
@@ -243,6 +422,8 @@ private fun List<BackendRouteStep>.toTransitLegs(
             distanceMeters = step.distanceMeters,
             durationSeconds = step.durationSeconds,
             source = GOOGLE_ROUTES_SOURCE,
+            provider = provider,
+            coordinateSystem = coordinateSystem,
             transit = transit?.let {
                 TransitLegDetails(
                     vehicleMode = it.vehicleType ?: step.travelMode,
@@ -284,3 +465,4 @@ private fun List<GeoPoint>.withoutConsecutiveDuplicates(): List<GeoPoint> = buil
 }
 
 const val GOOGLE_ROUTES_SOURCE = "Google Routes API"
+const val AMAP_WEB_SERVICE_SOURCE = "AMap Web Service"

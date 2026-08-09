@@ -1,0 +1,7 @@
+services:
+  api:
+    environment:
+      ANITABI_AMAP_ENABLED: "1"
+    volumes:
+      - /etc/anitabi-api/secrets/amap-web-key:/run/anitabi-secrets/amap-web-key:ro
+      - /etc/anitabi-api/secrets/amap-signature-secret:/run/anitabi-secrets/amap-signature-secret:ro

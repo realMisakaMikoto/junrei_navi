@@ -1,6 +1,8 @@
 package cn.anitabi.navigator.data.network.backend
 
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.CoordinateSystem
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TransitRoutingPreference
 import cn.anitabi.navigator.core.model.TransitTravelMode
@@ -9,6 +11,7 @@ import cn.anitabi.navigator.data.auth.IdTokenProvider
 import cn.anitabi.navigator.data.network.ApiException
 import cn.anitabi.navigator.data.network.ApiHttpClient
 import kotlinx.serialization.DeserializationStrategy
+import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.SerializationStrategy
 import kotlinx.serialization.json.Json
@@ -24,6 +27,9 @@ class BackendApi(
     private val tokenProvider: IdTokenProvider,
     private val json: Json = ApiHttpClient.defaultJson,
     private val baseUrl: String = BASE_URL,
+    val contractVersion: BackendContractVersion = BackendContractVersion.V2,
+    private val regionDataVersion: () -> String? = { null },
+    private val appVersion: String = "0.2.5",
     private val monotonicMillis: () -> Long = { System.nanoTime() / 1_000_000L },
     private val sleeper: suspend (Long) -> Unit = { delay(it) },
 ) {
@@ -36,11 +42,13 @@ class BackendApi(
         coordinates: List<GeoPoint>,
         objective: RouteObjective,
         departureTime: String? = null,
+        expectedProvider: MapProvider,
+        expectedCoordinateSystem: CoordinateSystem,
     ): BackendMatrixResponse {
         require(mode != TravelMode.TRANSIT) { "Transit has no matrix request" }
         require(coordinates.size in 2..10) { "Matrix requires 2 to 10 coordinates" }
-        return post(
-            path = "v1/matrix",
+        val response = post(
+            path = contractPath("matrix"),
             body = BackendMatrixRequest(
                 mode = mode.backendName(),
                 coordinates = coordinates.map(GeoPoint::toBackendCoordinate),
@@ -48,7 +56,39 @@ class BackendApi(
                 objective = objective.name,
             ),
             serializer = BackendMatrixRequest.serializer(),
-            deserializer = BackendMatrixResponse.serializer(),
+            deserializer = BackendMatrixWireResponse.serializer(),
+        )
+        val metadata = resolveMetadata(
+            provider = response.provider,
+            coordinateSystem = response.coordinateSystem,
+            responseRegionDataVersion = response.regionDataVersion,
+            expectedProvider = expectedProvider,
+            expectedCoordinateSystem = expectedCoordinateSystem,
+        )
+        return BackendMatrixResponse(
+            elements = response.elements,
+            provider = metadata.provider,
+            coordinateSystem = metadata.coordinateSystem,
+            regionDataVersion = metadata.regionDataVersion,
+        )
+    }
+
+    suspend fun matrixV1(
+        mode: TravelMode,
+        coordinates: List<GeoPoint>,
+        objective: RouteObjective,
+        departureTime: String? = null,
+    ): BackendMatrixResponse {
+        require(contractVersion == BackendContractVersion.V1_COMPAT) {
+            "v1 matrix requires explicit V1_COMPAT mode"
+        }
+        return matrix(
+            mode = mode,
+            coordinates = coordinates,
+            objective = objective,
+            departureTime = departureTime,
+            expectedProvider = MapProvider.GOOGLE,
+            expectedCoordinateSystem = CoordinateSystem.WGS84,
         )
     }
 
@@ -59,6 +99,8 @@ class BackendApi(
         arrivalTime: String? = null,
         transitRoutingPreference: TransitRoutingPreference = TransitRoutingPreference.RECOMMENDED,
         transitTravelModes: Set<TransitTravelMode> = emptySet(),
+        expectedProvider: MapProvider,
+        expectedCoordinateSystem: CoordinateSystem,
     ): BackendRouteResponse {
         require(locations.size in 2..12) { "Route requires 2 to 12 locations" }
         require(mode != TravelMode.TRANSIT || locations.size == 2) {
@@ -75,8 +117,8 @@ class BackendApi(
         ) {
             "Transit time and routing preferences require transit mode"
         }
-        return post(
-            path = "v1/route",
+        val response = post(
+            path = contractPath("route"),
             body = BackendRouteRequest(
                 mode = mode.backendName(),
                 locations = locations.map(GeoPoint::toBackendCoordinate),
@@ -91,19 +133,142 @@ class BackendApi(
                     .takeIf(List<String>::isNotEmpty),
             ),
             serializer = BackendRouteRequest.serializer(),
-            deserializer = BackendRouteResponse.serializer(),
+            deserializer = BackendRouteWireResponse.serializer(),
+        )
+        val metadata = resolveMetadata(
+            provider = response.provider,
+            coordinateSystem = response.coordinateSystem,
+            responseRegionDataVersion = response.regionDataVersion,
+            expectedProvider = expectedProvider,
+            expectedCoordinateSystem = expectedCoordinateSystem,
+        )
+        return BackendRouteResponse(
+            distanceMeters = response.distanceMeters,
+            durationSeconds = response.durationSeconds,
+            encodedPolyline = response.encodedPolyline,
+            legs = response.legs,
+            provider = metadata.provider,
+            coordinateSystem = metadata.coordinateSystem,
+            regionDataVersion = metadata.regionDataVersion,
         )
     }
 
-    suspend fun reserveNavigation(destinationCount: Int): BackendNavigationReservation {
+    suspend fun routeV1(
+        mode: TravelMode,
+        locations: List<GeoPoint>,
+        departureTime: String? = null,
+        arrivalTime: String? = null,
+        transitRoutingPreference: TransitRoutingPreference = TransitRoutingPreference.RECOMMENDED,
+        transitTravelModes: Set<TransitTravelMode> = emptySet(),
+    ): BackendRouteResponse {
+        require(contractVersion == BackendContractVersion.V1_COMPAT) {
+            "v1 route requires explicit V1_COMPAT mode"
+        }
+        return route(
+            mode = mode,
+            locations = locations,
+            departureTime = departureTime,
+            arrivalTime = arrivalTime,
+            transitRoutingPreference = transitRoutingPreference,
+            transitTravelModes = transitTravelModes,
+            expectedProvider = MapProvider.GOOGLE,
+            expectedCoordinateSystem = CoordinateSystem.WGS84,
+        )
+    }
+
+    suspend fun policy(): BackendPolicyResponse {
+        val request = Request.Builder()
+            .url("${baseUrl.trimEnd('/')}/v2/policy")
+            .get()
+            .build()
+        return httpClient.execute(
+            request = request,
+            deserializer = BackendPolicyResponse.serializer(),
+            errorMapper = ::mapBackendError,
+        ).also { policy ->
+            if (
+                policy.apiVersion != "2" ||
+                policy.regionDataVersion.isBlank() ||
+                policy.minimumAppVersion.isBlank() ||
+                policy.v1SunsetAt.isBlank()
+            ) {
+                throw ApiException.InvalidResponse(IllegalStateException("v2 routing policy is invalid"))
+            }
+        }
+    }
+
+    suspend fun reserveNavigation(
+        origin: GeoPoint,
+        destinations: List<GeoPoint>,
+        expectedProvider: MapProvider,
+    ): BackendNavigationReservation {
+        require(destinations.size in 1..25) { "Navigation reservation requires 1 to 25 destinations" }
+        if (contractVersion == BackendContractVersion.V1_COMPAT) {
+            return reserveNavigationV1(destinations.size)
+        }
+        val response = post(
+            path = "v2/navigation/reserve",
+            body = BackendV2NavigationReservationRequest(
+                origin = origin.toBackendCoordinate(),
+                destinations = destinations.map(GeoPoint::toBackendCoordinate),
+            ),
+            serializer = BackendV2NavigationReservationRequest.serializer(),
+            deserializer = BackendNavigationReservationWire.serializer(),
+        )
+        val metadata = resolveMetadata(
+            provider = response.provider,
+            coordinateSystem = response.coordinateSystem,
+            responseRegionDataVersion = response.regionDataVersion,
+            expectedProvider = expectedProvider,
+            expectedCoordinateSystem = CoordinateSystem.WGS84,
+        )
+        val executionStrategy = response.executionStrategy
+            ?: throw ApiException.InvalidResponse(
+                IllegalStateException("v2 navigation execution strategy is missing"),
+            )
+        val expectedStrategy = when (expectedProvider) {
+            MapProvider.GOOGLE -> BackendNavigationExecutionStrategy.GOOGLE_NAVIGATION_SDK
+            MapProvider.AMAP -> BackendNavigationExecutionStrategy.EXTERNAL_AMAP_MAINLAND
+        }
+        if (executionStrategy != expectedStrategy) {
+            throw ApiException.InvalidResponse(
+                IllegalStateException("Navigation execution strategy does not match the provider"),
+            )
+        }
+        return BackendNavigationReservation(
+            reservedDestinations = response.reservedDestinations,
+            executionStrategy = executionStrategy,
+            provider = metadata.provider,
+            coordinateSystem = metadata.coordinateSystem,
+            regionDataVersion = metadata.regionDataVersion,
+        )
+    }
+
+    /** Explicit compatibility entry point. Production code must not silently downgrade to v1. */
+    suspend fun reserveNavigationV1(destinationCount: Int): BackendNavigationReservation {
+        require(contractVersion == BackendContractVersion.V1_COMPAT) {
+            "v1 navigation reservation requires explicit V1_COMPAT mode"
+        }
         require(destinationCount in 1..25) { "Navigation reservation requires 1 to 25 destinations" }
-        return post(
+        val response = post(
             path = "v1/navigation/reserve",
             body = BackendNavigationReservationRequest(destinationCount),
             serializer = BackendNavigationReservationRequest.serializer(),
-            deserializer = BackendNavigationReservation.serializer(),
+            deserializer = BackendNavigationReservationWire.serializer(),
+        )
+        return BackendNavigationReservation(
+            reservedDestinations = response.reservedDestinations,
+            executionStrategy = response.executionStrategy
+                ?: BackendNavigationExecutionStrategy.GOOGLE_NAVIGATION_SDK,
+            provider = response.provider ?: MapProvider.GOOGLE,
+            coordinateSystem = response.coordinateSystem ?: CoordinateSystem.WGS84,
+            regionDataVersion = response.regionDataVersion ?: V1_COMPAT_REGION_DATA_VERSION,
         )
     }
+
+    @Deprecated("Use the coordinate-bearing v2 reservation or reserveNavigationV1 in explicit compatibility mode")
+    suspend fun reserveNavigation(destinationCount: Int): BackendNavigationReservation =
+        reserveNavigationV1(destinationCount)
 
     private suspend fun <RequestBody, ResponseBody> post(
         path: String,
@@ -112,9 +277,17 @@ class BackendApi(
         deserializer: DeserializationStrategy<ResponseBody>,
     ): ResponseBody {
         val token = tokenProvider.idToken()
-        val request = Request.Builder()
+        val requestBuilder = Request.Builder()
             .url("${baseUrl.trimEnd('/')}/$path")
             .header("Authorization", "Bearer $token")
+        if (contractVersion == BackendContractVersion.V2) {
+            val version = regionDataVersion()?.takeIf(String::isNotBlank)
+                ?: throw ApiException.RegionDataOutdated()
+            requestBuilder
+                .header(REGION_DATA_VERSION_HEADER, version)
+                .header(APP_VERSION_HEADER, appVersion)
+        }
+        val request = requestBuilder
             .post(json.encodeToString(serializer, body).toRequestBody(JSON_MEDIA_TYPE))
             .build()
         return postMutex.withLock {
@@ -187,11 +360,17 @@ class BackendApi(
             }
             "UPSTREAM_UNAVAILABLE" -> ApiException.UpstreamUnavailable()
             "BACKEND_UNAVAILABLE" -> ApiException.BackendUnavailable()
+            "MIXED_MAP_PROVIDERS" -> ApiException.MixedMapProviders()
+            "MIXED_TRANSIT_REGIONS" -> ApiException.MixedTransitRegions()
+            "REGION_UNRESOLVED" -> ApiException.RegionUnresolved()
+            "REGION_DATA_OUTDATED" -> ApiException.RegionDataOutdated()
+            "CLIENT_UPGRADE_REQUIRED" -> ApiException.ClientUpgradeRequired()
             else -> when (status) {
                 400 -> ApiException.InvalidArgument()
                 401 -> ApiException.Unauthenticated()
                 404 -> ApiException.UpstreamUnavailable()
                 429 -> ApiException.RateLimited()
+                426 -> ApiException.ClientUpgradeRequired()
                 503 -> ApiException.BackendUnavailable()
                 else -> ApiException.Http(status)
             }
@@ -203,7 +382,59 @@ class BackendApi(
         private const val POST_PACE_MILLIS = 1_000L
         private const val PACE_RESET_MILLIS = 10_000L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
+        internal const val REGION_DATA_VERSION_HEADER = "X-Anitabi-Region-Data-Version"
+        internal const val APP_VERSION_HEADER = "X-Anitabi-App-Version"
     }
+
+    private fun contractPath(resource: String): String = when (contractVersion) {
+        BackendContractVersion.V2 -> "v2/$resource"
+        BackendContractVersion.V1_COMPAT -> "v1/$resource"
+    }
+
+    private fun resolveMetadata(
+        provider: MapProvider?,
+        coordinateSystem: CoordinateSystem?,
+        responseRegionDataVersion: String?,
+        expectedProvider: MapProvider,
+        expectedCoordinateSystem: CoordinateSystem,
+    ): ResolvedBackendMetadata {
+        if (contractVersion == BackendContractVersion.V1_COMPAT) {
+            return ResolvedBackendMetadata(
+                provider = provider ?: expectedProvider,
+                coordinateSystem = coordinateSystem ?: expectedCoordinateSystem,
+                regionDataVersion = responseRegionDataVersion ?: V1_COMPAT_REGION_DATA_VERSION,
+            )
+        }
+        val expectedVersion = regionDataVersion()?.takeIf(String::isNotBlank)
+            ?: throw ApiException.RegionDataOutdated()
+        if (
+            provider != expectedProvider ||
+            coordinateSystem != expectedCoordinateSystem ||
+            responseRegionDataVersion != expectedVersion
+        ) {
+            throw ApiException.InvalidResponse(
+                IllegalStateException("Routing provider metadata does not match the request policy"),
+            )
+        }
+        return ResolvedBackendMetadata(
+            provider = requireNotNull(provider),
+            coordinateSystem = requireNotNull(coordinateSystem),
+            regionDataVersion = requireNotNull(responseRegionDataVersion),
+        )
+    }
+}
+
+private const val V1_COMPAT_REGION_DATA_VERSION = "V1_COMPAT"
+
+private data class ResolvedBackendMetadata(
+    val provider: MapProvider,
+    val coordinateSystem: CoordinateSystem,
+    val regionDataVersion: String,
+)
+
+enum class BackendContractVersion {
+    V2,
+    V1_COMPAT,
 }
 
 private fun String?.retryAfterMillis(): Long? = this
@@ -248,8 +479,30 @@ data class BackendRouteRequest(
 data class BackendNavigationReservationRequest(val destinationCount: Int)
 
 @Serializable
+data class BackendV2NavigationReservationRequest(
+    val origin: BackendCoordinate,
+    val destinations: List<BackendCoordinate>,
+)
+
+interface BackendProviderMetadata {
+    val provider: MapProvider
+    val coordinateSystem: CoordinateSystem
+    val regionDataVersion: String
+}
+
 data class BackendMatrixResponse(
+    val elements: List<BackendMatrixElement>,
+    override val provider: MapProvider,
+    override val coordinateSystem: CoordinateSystem,
+    override val regionDataVersion: String,
+) : BackendProviderMetadata
+
+@Serializable
+private data class BackendMatrixWireResponse(
     val elements: List<BackendMatrixElement> = emptyList(),
+    val provider: MapProvider? = null,
+    val coordinateSystem: CoordinateSystem? = null,
+    val regionDataVersion: String? = null,
 )
 
 @Serializable
@@ -261,12 +514,25 @@ data class BackendMatrixElement(
     val durationSeconds: Double? = null,
 )
 
-@Serializable
 data class BackendRouteResponse(
     val distanceMeters: Double,
     val durationSeconds: Double,
     val encodedPolyline: String? = null,
     val legs: List<BackendRouteLeg> = emptyList(),
+    override val provider: MapProvider,
+    override val coordinateSystem: CoordinateSystem,
+    override val regionDataVersion: String,
+) : BackendProviderMetadata
+
+@Serializable
+private data class BackendRouteWireResponse(
+    val distanceMeters: Double,
+    val durationSeconds: Double,
+    val encodedPolyline: String? = null,
+    val legs: List<BackendRouteLeg> = emptyList(),
+    val provider: MapProvider? = null,
+    val coordinateSystem: CoordinateSystem? = null,
+    val regionDataVersion: String? = null,
 )
 
 @Serializable
@@ -304,10 +570,52 @@ data class BackendTransitDetails(
     val stopCount: Int? = null,
 )
 
-@Serializable
 data class BackendNavigationReservation(
     val reservedDestinations: Int,
+    val executionStrategy: BackendNavigationExecutionStrategy,
+    override val provider: MapProvider,
+    override val coordinateSystem: CoordinateSystem,
+    override val regionDataVersion: String,
+) : BackendProviderMetadata
+
+@Serializable
+private data class BackendNavigationReservationWire(
+    val reservedDestinations: Int,
+    val executionStrategy: BackendNavigationExecutionStrategy? = null,
+    val provider: MapProvider? = null,
+    val coordinateSystem: CoordinateSystem? = null,
+    val regionDataVersion: String? = null,
 )
+
+@Serializable
+enum class BackendNavigationExecutionStrategy {
+    GOOGLE_NAVIGATION_SDK,
+    EXTERNAL_AMAP_MAINLAND,
+}
+
+@Serializable
+data class BackendPolicyResponse(
+    val apiVersion: String,
+    val regionDataVersion: String,
+    val minimumAppVersion: String,
+    val v1SunsetAt: String,
+    val providers: BackendPolicyProviders,
+)
+
+@Serializable
+data class BackendPolicyProviders(
+    val google: BackendProviderStatus,
+    val amap: BackendProviderStatus,
+)
+
+@Serializable
+enum class BackendProviderStatus {
+    @SerialName("enabled")
+    ENABLED,
+
+    @SerialName("disabled")
+    DISABLED,
+}
 
 @Serializable
 private data class BackendErrorEnvelope(val error: BackendError)

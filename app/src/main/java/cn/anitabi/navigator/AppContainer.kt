@@ -13,11 +13,12 @@ import cn.anitabi.navigator.data.repository.TourRepository
 import cn.anitabi.navigator.core.routing.BackendRoadRoutingProvider
 import cn.anitabi.navigator.core.routing.BackendTransitJourneyProvider
 import cn.anitabi.navigator.core.routing.TourPlanner
-import cn.anitabi.navigator.core.region.JapanRegionClassifier
+import cn.anitabi.navigator.core.region.FailClosedTerritoryClassifier
 import cn.anitabi.navigator.security.AppSettingsStore
 import cn.anitabi.navigator.telemetry.FirebaseTelemetryRuntime
 import cn.anitabi.navigator.telemetry.TelemetryConsentController
 import cn.anitabi.navigator.navigation.AndroidLocationProvider
+import cn.anitabi.navigator.ui.map.AmapPrivacyGate
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -29,12 +30,17 @@ class AppContainer(context: Context) {
         runtime = FirebaseTelemetryRuntime(context),
     )
     val locationProvider = AndroidLocationProvider(context)
-    private val japanRegionClassifier by lazy {
-        JapanRegionClassifier.load { assetPath -> appContext.assets.open(assetPath) }
+    val amapPrivacyGate = AmapPrivacyGate(
+        context = context,
+        apiKeyConfigured = BuildConfig.AMAP_API_KEY_CONFIGURED,
+    )
+    val territoryClassifier = FailClosedTerritoryClassifier.load { assetPath ->
+        appContext.assets.open(assetPath)
     }
-    private val classifyRegion = { point: cn.anitabi.navigator.core.model.GeoPoint ->
-        japanRegionClassifier.classify(point)
+    private val classifyTerritory = { point: cn.anitabi.navigator.core.model.GeoPoint ->
+        territoryClassifier.classify(point)
     }
+    private val regionDataVersion = { territoryClassifier.metadata?.version }
     private val httpClient = ApiHttpClient(
         userAgentInterceptor = createAppUserAgentInterceptor(),
         json = json,
@@ -49,17 +55,24 @@ class AppContainer(context: Context) {
     val tourRepository = TourRepository(
         dao = database.tourPlanDao(),
         json = json,
-        classifyRegion = classifyRegion,
+        classifyTerritory = classifyTerritory,
+        regionDataVersion = regionDataVersion,
     )
     val backendApi = BackendApi(
         httpClient = httpClient,
         tokenProvider = FirebaseAnonymousTokenProvider(),
         json = json,
+        regionDataVersion = regionDataVersion,
+        appVersion = BuildConfig.VERSION_NAME,
     )
     val tourPlanner = TourPlanner(
         roadProvider = BackendRoadRoutingProvider(backendApi),
         transitProvider = BackendTransitJourneyProvider(backendApi),
-        classifyRegion = classifyRegion,
+        classifyTerritory = classifyTerritory,
+        regionDataVersion = regionDataVersion,
+        isProviderAvailable = { provider ->
+            provider != cn.anitabi.navigator.core.model.MapProvider.AMAP || amapPrivacyGate.isReady
+        },
     )
 
     companion object {

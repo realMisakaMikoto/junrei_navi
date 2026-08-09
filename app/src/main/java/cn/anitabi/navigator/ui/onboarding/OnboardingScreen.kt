@@ -41,6 +41,7 @@ import androidx.compose.material.icons.rounded.RadioButtonUnchecked
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -90,6 +91,7 @@ private val StepLabels = listOf("了解", "权限", "服务")
 @Composable
 fun OnboardingRoute(
     settingsStore: AppSettingsStore,
+    onAmapPrivacyConsentChanged: (Boolean) -> Unit,
     onComplete: () -> Unit,
 ) {
     val context = androidx.compose.ui.platform.LocalContext.current
@@ -110,6 +112,9 @@ fun OnboardingRoute(
     var permissionAttempted by rememberSaveable { mutableStateOf(false) }
     var permissionSettingsError by rememberSaveable { mutableStateOf<String?>(null) }
     var setupError by rememberSaveable { mutableStateOf<String?>(null) }
+    var amapPrivacyAccepted by rememberSaveable {
+        mutableStateOf(settingsStore.hasCurrentAmapPrivacyConsent())
+    }
 
     fun refreshPermissions() {
         hasLocationPermission = AndroidLocationProvider.hasLocationPermission(context)
@@ -186,7 +191,11 @@ fun OnboardingRoute(
             currentStep = PERMISSION_STEP
             permissionAttempted = true
         } else {
-            runCatching { settingsStore.markOnboardingComplete() }
+            runCatching {
+                settingsStore.setAmapPrivacyConsent(amapPrivacyAccepted)
+                settingsStore.markOnboardingComplete()
+                onAmapPrivacyConsentChanged(amapPrivacyAccepted)
+            }
                 .onSuccess { onComplete() }
                 .onFailure { setupError = "设置无法保存，请释放设备空间后重试" }
         }
@@ -226,7 +235,14 @@ fun OnboardingRoute(
                                 openSystemSettings(overlaySettingsIntent(context))
                             },
                         )
-                        else -> ServiceStep(error = setupError)
+                        else -> ServiceStep(
+                            error = setupError,
+                            amapPrivacyAccepted = amapPrivacyAccepted,
+                            onAmapPrivacyAcceptedChange = { accepted ->
+                                amapPrivacyAccepted = accepted
+                                setupError = null
+                            },
+                        )
                     }
                 }
             }
@@ -570,7 +586,11 @@ private fun PermissionStatus(
 }
 
 @Composable
-private fun ServiceStep(error: String?) {
+private fun ServiceStep(
+    error: String?,
+    amapPrivacyAccepted: Boolean,
+    onAmapPrivacyAcceptedChange: (Boolean) -> Unit,
+) {
     Text(
         "路线服务已准备好",
         style = MaterialTheme.typography.headlineMedium,
@@ -588,6 +608,33 @@ private fun ServiceStep(error: String?) {
         body = "坐标、出行方式和必要的出发时间。不会发送动漫名、搜索词或路线正文日志；新路线需要联网。",
         modifier = Modifier.padding(top = 24.dp),
     )
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 12.dp)
+            .testTag("onboarding-amap-privacy"),
+        color = MaterialTheme.colorScheme.surface,
+        shape = RoundedCornerShape(16.dp),
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(
+                checked = amapPrivacyAccepted,
+                onCheckedChange = onAmapPrivacyAcceptedChange,
+            )
+            Text(
+                "可选同意：大陆及仅允许官方地图的地区会使用高德地图 SDK；地图显示前会向高德提交隐私授权状态，定位和路线坐标仅在选择高德提供方时处理。不同意仍可使用不依赖高德的功能。",
+                color = Ink,
+                style = MaterialTheme.typography.bodyMedium,
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+    }
     InformationBlock(
         title = "匿名标识与遥测",
         body = "匿名标识不需要邮箱、姓名或密码。Analytics 与 Crashlytics 默认关闭，只有你明确同意才会启用，并可随时撤回。",

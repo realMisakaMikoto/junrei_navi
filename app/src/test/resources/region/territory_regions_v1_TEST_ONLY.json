@@ -1,0 +1,63 @@
+{
+  "schemaVersion": 1,
+  "regionDataVersion": "TEST_ONLY-v1",
+  "source": {
+    "name": "TEST_ONLY synthetic rectangles",
+    "url": "https://example.test/territory-source"
+  },
+  "license": {
+    "name": "TEST_ONLY",
+    "url": "https://example.test/territory-license"
+  },
+  "review": {
+    "authority": "TEST_ONLY reviewer",
+    "approvalId": "TEST_ONLY-approval",
+    "reviewedAt": "2026-01-01T00:00:00Z",
+    "approved": true
+  },
+  "checksumSha256": "6064f6807cf334739553285108ae4b7247b8079253aa27a75b0ca816cfbf8873",
+  "features": [
+    {
+      "region": "MAINLAND_CHINA",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[100, 20], [101, 20], [101, 21], [100, 21], [100, 20]]]
+      }
+    },
+    {
+      "region": "CHINA_OFFICIAL_MAP_ONLY",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[102, 20], [103, 20], [103, 21], [102, 21], [102, 20]]]
+      }
+    },
+    {
+      "region": "HONG_KONG_SAR",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[104, 20], [105, 20], [105, 21], [104, 21], [104, 20]]]
+      }
+    },
+    {
+      "region": "MACAO_SAR",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[106, 20], [107, 20], [107, 21], [106, 21], [106, 20]]]
+      }
+    },
+    {
+      "region": "CHINA_TAIWAN",
+      "geometry": {
+        "type": "Polygon",
+        "coordinates": [[[108, 20], [109, 20], [109, 21], [108, 21], [108, 20]]]
+      }
+    },
+    {
+      "region": "JAPAN",
+      "geometry": {
+        "type": "MultiPolygon",
+        "coordinates": [[[[110, 20], [111, 20], [111, 21], [110, 21], [110, 20]]]]
+      }
+    }
+  ]
+}

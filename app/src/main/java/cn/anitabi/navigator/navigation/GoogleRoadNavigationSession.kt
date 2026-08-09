@@ -1,6 +1,7 @@
 package cn.anitabi.navigator.navigation
 
 import android.app.Application
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TravelMode
@@ -118,7 +119,11 @@ internal class GoogleRoadNavigationSession(
 
     private suspend fun loadBatch(activeNavigator: Navigator, legIndexes: IntRange) {
         val destinationCount = legIndexes.count()
-        val reservation = backendApi.reserveNavigation(destinationCount)
+        val reservation = backendApi.reserveNavigation(
+            origin = plan.legs[legIndexes.first].from,
+            destinations = legIndexes.map { plan.legs[it].to },
+            expectedProvider = MapProvider.GOOGLE,
+        )
         check(reservation.reservedDestinations == destinationCount) {
             "Navigation reservation did not cover the requested batch"
         }

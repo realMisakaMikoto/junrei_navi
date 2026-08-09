@@ -34,7 +34,7 @@ class JapanTransitPlanningIntegrationTest {
         val plan = planner.planTransit(
             transitRequest(
                 points = selectedPoints,
-                start = GeoPoint(37.5665, 126.9780),
+                start = GeoPoint(35.6895, 139.6917),
                 anchorTime = null,
             ),
         )

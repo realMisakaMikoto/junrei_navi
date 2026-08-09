@@ -49,6 +49,7 @@ enum class TransitTravelMode {
 enum class TransitExecutionStrategy {
     IN_APP_GOOGLE_ROUTES,
     EXTERNAL_GOOGLE_MAPS_JAPAN,
+    EXTERNAL_AMAP_MAINLAND,
 }
 
 @Serializable
@@ -113,6 +114,8 @@ data class TourLeg(
     val distanceMeters: Double,
     val durationSeconds: Double,
     val source: String,
+    val provider: MapProvider = MapProvider.GOOGLE,
+    val coordinateSystem: CoordinateSystem = CoordinateSystem.WGS84,
     val transit: TransitLegDetails? = null,
     val destinationPointId: String? = null,
 )
@@ -158,6 +161,10 @@ data class TourPlan(
     val initialStart: GeoPoint? = null,
     val state: NavigationState = NavigationState.PLANNED,
     val executionStrategy: TransitExecutionStrategy = TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES,
+    val mapProvider: MapProvider = MapProvider.GOOGLE,
+    val coordinateSystem: CoordinateSystem = CoordinateSystem.WGS84,
+    val regionDataVersion: String? = null,
+    val externalRouteFallback: Boolean = false,
 )
 
 @Serializable

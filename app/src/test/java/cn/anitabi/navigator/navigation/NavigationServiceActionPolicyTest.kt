@@ -74,10 +74,36 @@ class NavigationServiceActionPolicyTest {
                 TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN,
             ),
         )
+        listOf(TravelMode.DRIVE, TravelMode.BIKE, TravelMode.WALK, TravelMode.TRANSIT).forEach { mode ->
+            assertTrue(
+                navigationPlanRequiresFineLocationForeground(
+                    mode,
+                    TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND,
+                ),
+            )
+        }
         assertFalse(
             navigationPlanRequiresFineLocationForeground(
                 TravelMode.WALK,
                 TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES,
+            ),
+        )
+    }
+
+    @Test
+    fun `location permission copy preserves Google Japan and identifies AMap`() {
+        assertEquals(
+            "需要精确定位权限才能继续日本公交行程",
+            externalLocationPermissionMessage(
+                TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN,
+                resume = false,
+            ),
+        )
+        assertEquals(
+            "需要精确定位权限才能恢复高德地图外部分段导航",
+            externalLocationPermissionMessage(
+                TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND,
+                resume = true,
             ),
         )
     }

@@ -45,6 +45,7 @@ class AppSettingsStoreMigrationTest {
 
         assertTrue(first.hasCompletedOnboarding())
         assertTrue(second.hasCompletedOnboarding())
+        assertFalse(first.hasCurrentAmapPrivacyConsent())
         assertNull(legacy.getString(AppSettingsStore.LEGACY_ORS_KEY, null))
         assertFalse(legacy.contains(AppSettingsStore.LEGACY_ONBOARDING_COMPLETE))
     }
@@ -66,5 +67,20 @@ class AppSettingsStoreMigrationTest {
         val third = AppSettingsStore(context)
         assertFalse(third.telemetryConsent().analyticsEnabled)
         assertTrue(third.telemetryConsent().crashlyticsEnabled)
+    }
+
+    @Test
+    fun amapConsentIsVersionedAndCanBeRevokedWithoutResettingOnboarding() {
+        val store = AppSettingsStore(context)
+        store.markOnboardingComplete()
+
+        assertFalse(store.hasCurrentAmapPrivacyConsent())
+        store.setAmapPrivacyConsent(true)
+        assertTrue(store.hasCurrentAmapPrivacyConsent())
+        assertTrue(store.hasCompletedOnboarding())
+
+        store.setAmapPrivacyConsent(false)
+        assertFalse(store.hasCurrentAmapPrivacyConsent())
+        assertTrue(store.hasCompletedOnboarding())
     }
 }

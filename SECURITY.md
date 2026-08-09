@@ -8,9 +8,10 @@
 
 ## 客户端与服务端密钥边界
 
-- APK 只包含受应用包名、签名证书和 Navigation SDK API 限制的 Android 客户端 Key。
+- APK 只包含分别受包名、签名证书和最小 Android SDK 权限限制的 Google Navigation Android Key 与高德 Android Key；两者不得复用。
 - Firebase Android 配置不作为服务端凭据使用，并由源码审计阻止误提交。
 - Google 服务账号私钥只保存在受限的服务端或部署密钥位置，不进入 APK、源码、Git、应用日志或发布附件。
+- 高德 Web 服务 Key 与数字签名私钥只从后端只读 secret 文件注入，不进入 APK、源码、Git、日志、备份或发布附件；高德 Android Key 不得用于 Web 服务。
 - Release keystore 必须位于项目工作区外。GitHub Actions 只从加密 Secrets 恢复到临时目录。
 - 丢失固定签名私钥后无法为现有安装提供可覆盖升级的 APK，因此必须保存受保护的离线备份。
 
@@ -18,14 +19,19 @@
 
 - 应用使用 Firebase 匿名鉴权，不要求邮箱、姓名或密码。
 - Firebase Analytics 和 Crashlytics 默认关闭，分别取得用户同意后才启用，并支持撤回。
-- 路线请求所需的坐标、模式、优化目标和时间经项目自建 HTTPS API 发送到固定的 Google Routes 上游。
+- v0.2.5 路线请求只把 WGS84 坐标、模式、优化目标和时间发送到项目自建 HTTPS API。Android 不能选择提供方；Android 与后端使用同版本、经批准的地区数据独立判定完整行程。
+- 中国大陆/官方地图专用区只允许高德，其他地区只允许 Google。地区缺失、损坏、版本不符、边界不确定、重叠或跨提供方行程均在计费和上游调用前失败；任何提供方或坐标系不一致的响应都会被丢弃。
 - Google Navigation SDK 会在设备上直接处理当前位置与道路导航交互；具体数据处理方式见隐私政策。
-- Google 路线矩阵、折线、步骤、预计时间和公交详情仅保存在进程内存中，不持久化到 Room、SharedPreferences、文件或备份。
+- 高德 Android SDK 只有在用户完成当前隐私版本的单独同意后才能初始化；撤回后不得创建新的高德 MapView。
+- Google/高德路线矩阵、折线、步骤、预计时间和公交详情仅保存在进程内存中，不持久化到 Room、SharedPreferences、文件或备份。持久化与外部地图交接坐标保持 WGS84；高德 GCJ-02 内容只允许在高德地图内存会话中使用。
 - 应用的行程持久化只保存用户选择的作品、巡礼点、顺序、设置、完成状态和导航状态。本机还会保存导览与遥测同意设置、公共数据缓存和 Firebase 匿名鉴权状态；应用关闭 Android 系统备份与设备迁移。
-- 服务端日志不得记录 Token、原始 IP、坐标、动画名称、搜索词、请求正文或 Google 响应正文。
+- 服务端日志不得记录 Token、原始 IP、坐标、动画名称、搜索词、请求正文、上游 URL、Key、签名或任何提供方响应正文。HMAC-IP 限速状态必须有空闲淘汰和硬容量上限。
+- Google 月度及高德日/月计费额度在 SQLite 中按提供方与类别原子预留；配置缺失、账本损坏、恢复回退或全局计费关闭时对应上游必须 fail closed。
 
 详细数据处理方式见 [隐私政策](PRIVACY.md)。
 
 ## 发布要求
 
-每个公开 APK 必须通过测试、Android Lint、R8 Release 构建、反射兼容审计、源码与 APK 密钥审计、固定签名验证、SHA-256 校验以及 [发布检查清单](docs/RELEASE_CHECKLIST.md)。
+每个公开 APK 必须通过测试、Android Lint、R8 Release 构建、反射兼容审计、源码与 APK 密钥审计、固定签名验证、SHA-256 校验以及 [发布检查清单](docs/RELEASE_CHECKLIST.md)。v0.2.5 在 [双地图发布门禁](docs/V0.2.5_RELEASE_GATE.md) 状态不是精确的 `READY`、受保护 Release Environment 未批准或未钉住标签提交，或生产地区资产缺失/校验不符时，标签工作流必须拒绝发布。
+
+当前 GPL 链接例外没有覆盖高德 SDK。只有版权所有者能够明确扩展该例外；在其完成决定及第三方许可复核前，不得分发包含高德 SDK 的 APK。

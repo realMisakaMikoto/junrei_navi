@@ -34,6 +34,8 @@ import cn.anitabi.navigator.R
 import cn.anitabi.navigator.core.model.NavigationProgress
 import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.TourPlan
+import cn.anitabi.navigator.core.model.TransitExecutionStrategy
+import cn.anitabi.navigator.core.model.TravelMode
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -179,7 +181,7 @@ internal class TransitOverlayController(
             radiusDp = 16,
             strokeColor = Color.rgb(210, 207, 199),
         )
-        container.contentDescription = "日本公交悬浮控制面板"
+        container.contentDescription = "外部分段导航悬浮控制面板"
 
         val panel = LinearLayout(context).apply {
             orientation = LinearLayout.VERTICAL
@@ -408,12 +410,13 @@ internal class TransitOverlayController(
             data.plan.selectedPoints.firstOrNull { it.id == id }?.name
         } ?: "返回起点"
         val distance = data.targetDistanceMeters?.let(::formatDistance) ?: "等待定位"
-        val status = stateLabel(data.progress)
+        val status = stateLabel(data.plan, data.progress)
+        val controlLabel = externalControlLabel(data.plan)
 
         if (state.form == TransitOverlayForm.BUBBLE) {
             bubbleProgressView?.text = "$legNumber/$legCount"
             root?.contentDescription =
-                "日本公交第 $legNumber/$legCount 段，目标 $targetName，$status。轻触展开控制，拖动可移动"
+                "$controlLabel 第 $legNumber/$legCount 段，目标 $targetName，$status。轻触展开控制，拖动可移动"
             return
         }
 
@@ -421,7 +424,7 @@ internal class TransitOverlayController(
         summaryView?.text = "第 $legNumber/$legCount 段 · $distance"
         statusView?.text = status
         root?.contentDescription =
-            "日本公交控制面板。目标 $targetName，第 $legNumber/$legCount 段，直线距离 $distance，$status"
+            "$controlLabel 控制面板。目标 $targetName，第 $legNumber/$legCount 段，直线距离 $distance，$status"
         primaryButton?.apply {
             visibility = View.VISIBLE
             isEnabled = true
@@ -930,12 +933,28 @@ internal class TransitOverlayController(
         if (strokeColor != null) setStroke(dp(1).coerceAtLeast(1), strokeColor)
     }
 
-    private fun stateLabel(progress: NavigationProgress): String = when {
+    private fun stateLabel(plan: TourPlan, progress: NavigationProgress): String = when {
         progress.isPaused -> "已暂停"
         progress.state == NavigationState.ARRIVING -> "已接近目标，请确认到达"
         progress.state == NavigationState.DWELLING -> "停留中"
         progress.state == NavigationState.NEXT_STOP -> "停留结束，等待手动开始下一段"
-        else -> "路线、班次和换乘由 Google 地图提供"
+        plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+            "路线、班次和换乘由 Google 地图提供"
+        else -> "本段${plan.mode.overlayModeLabel()}由高德地图提供"
+    }
+
+    private fun externalControlLabel(plan: TourPlan): String =
+        if (plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
+            "日本公交"
+        } else {
+            "高德${plan.mode.overlayModeLabel()}"
+        }
+
+    private fun TravelMode.overlayModeLabel(): String = when (this) {
+        TravelMode.DRIVE -> "驾车导航"
+        TravelMode.BIKE -> "骑行导航"
+        TravelMode.WALK -> "步行导航"
+        TravelMode.TRANSIT -> "公交路线"
     }
 
     private fun formatDistance(meters: Double): String =

@@ -6,8 +6,13 @@ import cn.anitabi.navigator.core.model.StoredTourV2
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.CoordinateSystem
+import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.core.model.TerritoryRegion
 import cn.anitabi.navigator.core.model.TravelMode
 import cn.anitabi.navigator.core.region.JapanRegion
+import cn.anitabi.navigator.core.region.JourneyProviderResolutionException
+import cn.anitabi.navigator.core.region.resolveJourneyProvider
 import cn.anitabi.navigator.core.routing.classifyTransitExecutionStrategy
 import cn.anitabi.navigator.data.local.TourPlanDao
 import cn.anitabi.navigator.data.local.TourPlanEntity
@@ -25,6 +30,8 @@ class TourRepository(
     private val json: Json,
     private val now: () -> Long = System::currentTimeMillis,
     private val classifyRegion: (GeoPoint) -> JapanRegion = { JapanRegion.NON_JAPAN },
+    private val classifyTerritory: ((GeoPoint) -> TerritoryRegion?)? = null,
+    private val regionDataVersion: () -> String? = { null },
 ) {
     private val resolvedRoutes = ConcurrentHashMap<String, TourPlan>()
     private val resolvedProgress = ConcurrentHashMap<String, NavigationProgress>()
@@ -268,21 +275,52 @@ class TourRepository(
         toStoredTour()?.let { toSavedTour(it) }
 
     private fun TourPlanEntity.toSavedTour(stored: StoredTourV2): SavedTour {
-        val strategy = stored.executionStrategy ?: if (stored.mode == TravelMode.TRANSIT) {
-            classifyTransitExecutionStrategy(stored.selectedPoints, classifyRegion)
-        } else {
-            TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
+        val routing = try {
+            resolveStoredRouting(stored)
+        } catch (exception: JourneyProviderResolutionException) {
+            return unresolvedSavedTour(stored, StoredRoutingError.fromCode(exception.code))
+        } catch (exception: StoredRoutingResolutionException) {
+            return unresolvedSavedTour(stored, exception.error)
         }
-        val resolved = resolvedRoutes[id]?.copy(executionStrategy = strategy)
+        val resolved = resolvedRoutes[id]
+            ?.takeIf { plan ->
+                plan.executionStrategy == routing.strategy &&
+                    plan.mapProvider == routing.provider &&
+                    plan.regionDataVersion == routing.regionDataVersion &&
+                    plan.hasValidResolvedCoordinates(routing.provider)
+            }
+            ?.copy(executionStrategy = routing.strategy)
         return SavedTour(
             storedTour = stored,
-            plan = resolved ?: stored.toUnresolvedPlan(strategy),
+            plan = resolved ?: stored.toUnresolvedPlan(
+                resolvedExecutionStrategy = routing.strategy,
+                resolvedMapProvider = routing.provider,
+                resolvedRegionDataVersion = routing.regionDataVersion,
+            ),
             progress = if (resolved == null) {
-                stored.toNavigationProgress(strategy)
+                stored.toNavigationProgress(routing.strategy)
             } else {
-                resolvedProgress[id] ?: stored.toNavigationProgress(strategy)
+                resolvedProgress[id] ?: stored.toNavigationProgress(routing.strategy)
             },
             routeNeedsRefresh = resolved == null,
+        )
+    }
+
+    private fun unresolvedSavedTour(
+        stored: StoredTourV2,
+        error: StoredRoutingError,
+    ): SavedTour {
+        val hint = stored.storedRoutingHint()
+        return SavedTour(
+            storedTour = stored,
+            plan = stored.toUnresolvedPlan(
+                resolvedExecutionStrategy = hint.strategy,
+                resolvedMapProvider = hint.provider,
+                resolvedRegionDataVersion = hint.regionDataVersion,
+            ),
+            progress = stored.toNavigationProgress(hint.strategy),
+            routeNeedsRefresh = true,
+            routingError = error,
         )
     }
 
@@ -294,15 +332,18 @@ class TourRepository(
         expectedPlan: TourPlan,
         expectedProgress: NavigationProgress,
     ): Boolean {
-        val strategy = executionStrategy ?: if (mode == TravelMode.TRANSIT) {
-            classifyTransitExecutionStrategy(selectedPoints, classifyRegion)
-        } else {
-            TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
-        }
-        if (strategy != expectedPlan.executionStrategy) return false
+        val routing = runCatching { resolveStoredRouting(this) }.getOrElse { return false }
+        if (
+            routing.strategy != expectedPlan.executionStrategy ||
+            routing.provider != expectedPlan.mapProvider
+        ) return false
         val expected = StoredTourV2.from(expectedPlan, expectedProgress)
-        val restoredPlan = toUnresolvedPlan(strategy)
-        val restoredProgress = toNavigationProgress(strategy)
+        val restoredPlan = toUnresolvedPlan(
+            resolvedExecutionStrategy = routing.strategy,
+            resolvedMapProvider = routing.provider,
+            resolvedRegionDataVersion = routing.regionDataVersion,
+        )
+        val restoredProgress = toNavigationProgress(routing.strategy)
         val normalizedCompletedPointIds = startPointId
             ?.takeIf { it in expected.completedPointIds }
             ?.let { completedPointIds + it }
@@ -314,7 +355,9 @@ class TourRepository(
             completedPointIds = normalizedCompletedPointIds,
             activePointId = activePointId ?: expected.activePointId,
             activeLegIndex = restoredProgress.legIndex,
-            executionStrategy = strategy,
+            executionStrategy = routing.strategy,
+            mapProvider = routing.provider,
+            regionDataVersion = routing.regionDataVersion,
         )
         return normalized == expected
     }
@@ -349,10 +392,117 @@ class TourRepository(
         }.getOrNull()
     }
 
+    private fun resolveStoredRouting(stored: StoredTourV2): StoredRoutingResolution {
+        val territoryClassifier = classifyTerritory
+        if (territoryClassifier == null) {
+            val strategy = stored.executionStrategy ?: if (stored.mode == TravelMode.TRANSIT) {
+                classifyTransitExecutionStrategy(stored.selectedPoints, classifyRegion)
+            } else {
+                TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
+            }
+            return StoredRoutingResolution(
+                strategy = strategy,
+                provider = stored.mapProvider ?: if (
+                    strategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND
+                ) {
+                    MapProvider.AMAP
+                } else {
+                    MapProvider.GOOGLE
+                },
+                regionDataVersion = stored.regionDataVersion,
+            )
+        }
+        val resolved = resolveJourneyProvider(
+            start = stored.start,
+            destinations = stored.selectedPoints.map { it.coordinate },
+            mode = stored.mode,
+            classify = territoryClassifier,
+        )
+        val strategy = when {
+            resolved.provider == MapProvider.AMAP -> TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND
+            stored.mode == TravelMode.TRANSIT && resolved.regions == setOf(TerritoryRegion.JAPAN) ->
+                TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+            else -> TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
+        }
+        val currentRegionDataVersion = regionDataVersion()?.takeIf(String::isNotBlank)
+            ?: throw StoredRoutingResolutionException(StoredRoutingError.REGION_DATA_OUTDATED)
+        return StoredRoutingResolution(
+            strategy = strategy,
+            provider = resolved.provider,
+            regionDataVersion = currentRegionDataVersion,
+        )
+    }
+
     companion object {
         const val RECOVERY_ERROR_MESSAGE = "无法恢复 v0.2.0 行程；原记录已保留，请勿清除应用数据"
     }
 }
+
+private fun TourPlan.hasValidResolvedCoordinates(provider: MapProvider): Boolean = when (provider) {
+    MapProvider.GOOGLE ->
+        !externalRouteFallback &&
+            coordinateSystem == CoordinateSystem.WGS84 &&
+            legs.all { leg ->
+                leg.provider == MapProvider.GOOGLE && leg.coordinateSystem == CoordinateSystem.WGS84
+            }
+    MapProvider.AMAP -> if (externalRouteFallback) {
+        executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND &&
+            coordinateSystem == CoordinateSystem.WGS84 &&
+            estimatedDurationSeconds == 0.0 &&
+            departureTime == null &&
+            arrivalTime == null &&
+            transitAnchorTime == null &&
+            legs.all { leg ->
+                leg.provider == MapProvider.AMAP &&
+                    leg.coordinateSystem == CoordinateSystem.WGS84 &&
+                    leg.geometry.isEmpty() &&
+                    leg.steps.isEmpty() &&
+                    leg.transit == null &&
+                    leg.distanceMeters == 0.0 &&
+                    leg.durationSeconds == 0.0
+            }
+    } else {
+        coordinateSystem == CoordinateSystem.GCJ02 &&
+            legs.all { leg ->
+                leg.provider == MapProvider.AMAP && leg.coordinateSystem == CoordinateSystem.GCJ02
+            }
+    }
+}
+
+private data class StoredRoutingResolution(
+    val strategy: TransitExecutionStrategy,
+    val provider: MapProvider,
+    val regionDataVersion: String?,
+)
+
+private fun StoredTourV2.storedRoutingHint(): StoredRoutingResolution {
+    val strategy = executionStrategy ?: TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
+    return StoredRoutingResolution(
+        strategy = strategy,
+        provider = mapProvider ?: if (strategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND) {
+            MapProvider.AMAP
+        } else {
+            MapProvider.GOOGLE
+        },
+        regionDataVersion = regionDataVersion,
+    )
+}
+
+enum class StoredRoutingError {
+    REGION_UNRESOLVED,
+    MIXED_MAP_PROVIDERS,
+    MIXED_TRANSIT_REGIONS,
+    REGION_DATA_OUTDATED;
+
+    companion object {
+        fun fromCode(code: String): StoredRoutingError =
+            entries.firstOrNull { it.name == code } ?: REGION_UNRESOLVED
+    }
+}
+
+private class StoredRoutingResolutionException(
+    val error: StoredRoutingError,
+) : IllegalStateException(error.name)
 
 private data class RuntimeProgressStamp(
     val tourId: String,
@@ -372,4 +522,5 @@ data class SavedTour(
     val plan: TourPlan,
     val progress: NavigationProgress?,
     val routeNeedsRefresh: Boolean,
+    val routingError: StoredRoutingError? = null,
 )

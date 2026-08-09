@@ -1,0 +1,13 @@
+{
+  "payload": {
+    "zero": 0,
+    "negativeZero": -0,
+    "oneMicro": 0.000001,
+    "belowOneMicro": 1e-7,
+    "largePlain": 100000000000000000000,
+    "scientific": 1e21,
+    "fraction": 12.3405,
+    "negativeExponent": -2.5e-7
+  },
+  "sha256": "a4c7e0b7a83aa3375ba2dc817448ab3c4c81ca4b6cf161a7c8a64e9d53af2729"
+}

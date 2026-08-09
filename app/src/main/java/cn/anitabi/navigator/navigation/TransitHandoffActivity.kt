@@ -22,6 +22,8 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModel
 import cn.anitabi.navigator.MainActivity
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.TransitExecutionStrategy
+import cn.anitabi.navigator.core.model.TravelMode
 
 class TransitHandoffActivity : ComponentActivity() {
     private lateinit var statusText: TextView
@@ -68,7 +70,7 @@ class TransitHandoffActivity : ComponentActivity() {
             setBackgroundColor(Color.rgb(247, 246, 242))
         }
         statusText = TextView(this).apply {
-            text = "正在准备日本公交分段导航…"
+            text = "正在准备外部分段导航…"
             textSize = 18f
             setTextColor(Color.rgb(35, 34, 31))
             gravity = Gravity.CENTER
@@ -170,7 +172,13 @@ class TransitHandoffActivity : ComponentActivity() {
             externalLocationForegroundActionRequiresFinePermission(request.action) &&
             !AndroidLocationProvider.hasFineLocationPermission(this)
         ) {
-            completeServiceStartFailure(request, "需要精确定位权限才能继续日本公交行程")
+            completeServiceStartFailure(
+                request,
+                externalLocationPermissionMessage(
+                    strategy = NavigationRuntime.state.value.plan?.executionStrategy,
+                    resume = request.action == NavigationService.ACTION_RESUME_EXTERNAL,
+                ),
+            )
             return
         }
         val receiver = TransitHandoffResultReceiver(
@@ -193,7 +201,7 @@ class TransitHandoffActivity : ComponentActivity() {
         } catch (_: RuntimeException) {
             completeServiceStartFailure(
                 request,
-                "无法启动日本公交控制服务，请返回应用确认权限后重试",
+                "无法启动外部分段导航控制服务，请返回应用确认权限后重试",
             )
         }
     }
@@ -209,6 +217,10 @@ class TransitHandoffActivity : ComponentActivity() {
                 originLongitude = null,
                 destinationLatitude = null,
                 destinationLongitude = null,
+                executionStrategy = null,
+                travelMode = null,
+                originName = null,
+                destinationName = null,
             ),
         )
     }
@@ -259,10 +271,9 @@ class TransitHandoffActivity : ComponentActivity() {
             result.response.expectedLegIndex ?: intent.getIntExtra(EXTRA_LEG_INDEX, 0),
         )
         intent.putExtra(EXTRA_MODE, MODE_OPEN)
-        val origin = result.response.origin()
-        val destination = result.response.destination()
-        if (origin == null || destination == null) {
-            showRetry("暂时无法读取本段坐标，进度已保留，请重试。") {
+        val handoff = result.response.readyHandoff()
+        if (handoff == null) {
+            showRetry("暂时无法验证本段提供方、坐标或出行方式，进度已保留，请重试。") {
                 requestHandoff(advance = false, explicitRetry = true)
             }
             return
@@ -273,32 +284,61 @@ class TransitHandoffActivity : ComponentActivity() {
             !isDestroyed &&
             lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)
         ) {
-            launchReadyHandoff(origin, destination)
+            launchReadyHandoff(handoff)
         } else {
-            showReadyForUser(origin, destination)
+            showReadyForUser(handoff)
         }
     }
 
     @SuppressLint("SetTextI18n")
-    private fun showReadyForUser(origin: GeoPoint, destination: GeoPoint) {
-        statusText.text = "本段路线已准备完成。请点击下方按钮打开 Google 地图。"
+    private fun showReadyForUser(handoff: ReadyExternalHandoff) {
+        statusText.text = when (handoff.executionStrategy) {
+            TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+                "本段路线已准备完成。请点击下方按钮打开 Google 地图。"
+            TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+                "本段路线已准备完成。请点击下方按钮打开高德地图。"
+            TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES -> return
+        }
         progressBar.visibility = View.GONE
         retryButton.text = "打开本段"
         retryButton.visibility = View.VISIBLE
-        retryButton.setOnClickListener { launchReadyHandoff(origin, destination) }
+        retryButton.setOnClickListener { launchReadyHandoff(handoff) }
     }
 
-    private fun launchReadyHandoff(origin: GeoPoint, destination: GeoPoint) {
+    private fun launchReadyHandoff(handoff: ReadyExternalHandoff) {
         if (isFinishing || isDestroyed) return
         if (!lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
-            showReadyForUser(origin, destination)
+            showReadyForUser(handoff)
             return
         }
-        if (GoogleMapsTransitLauncher(this).launch(origin, destination)) {
+        val launched = when (handoff.executionStrategy) {
+            TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+                GoogleMapsTransitLauncher(this).launch(handoff.originWgs84, handoff.destinationWgs84)
+            TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+                runCatching {
+                    AmapExternalNavigationLauncher(this).launch(
+                        originWgs84 = handoff.originWgs84,
+                        destinationWgs84 = handoff.destinationWgs84,
+                        originName = handoff.originName,
+                        destinationName = handoff.destinationName,
+                        mode = handoff.travelMode,
+                    )
+                }.getOrDefault(false)
+            TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES -> false
+        }
+        if (launched) {
             finish()
         } else {
-            showRetry("无法打开 Google 地图或浏览器。当前段和进度已保留，请重试。") {
-                launchReadyHandoff(origin, destination)
+            val message = when (handoff.executionStrategy) {
+                TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+                    "无法打开 Google 地图或浏览器。当前段和进度已保留，请重试。"
+                TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+                    "无法打开高德地图。不会改用其他地图或浏览器；当前段和进度已保留，请重试。"
+                TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES ->
+                    "当前分段提供方无效。当前段和进度已保留，请重试。"
+            }
+            showRetry(message) {
+                launchReadyHandoff(handoff)
             }
         }
     }
@@ -374,6 +414,10 @@ class TransitHandoffActivity : ComponentActivity() {
         const val EXTRA_ORIGIN_LONGITUDE = "handoff_origin_longitude"
         const val EXTRA_DESTINATION_LATITUDE = "handoff_destination_latitude"
         const val EXTRA_DESTINATION_LONGITUDE = "handoff_destination_longitude"
+        const val EXTRA_EXECUTION_STRATEGY = "handoff_execution_strategy"
+        const val EXTRA_TRAVEL_MODE = "handoff_travel_mode"
+        const val EXTRA_ORIGIN_NAME = "handoff_origin_name"
+        const val EXTRA_DESTINATION_NAME = "handoff_destination_name"
 
         fun createIntent(
             context: android.content.Context,
@@ -401,6 +445,10 @@ internal data class TransitHandoffServiceResponse(
     val originLongitude: Double?,
     val destinationLatitude: Double?,
     val destinationLongitude: Double?,
+    val executionStrategy: String? = null,
+    val travelMode: String? = null,
+    val originName: String? = null,
+    val destinationName: String? = null,
 ) {
     fun origin(): GeoPoint? = coordinate(originLatitude, originLongitude)
 
@@ -410,7 +458,38 @@ internal data class TransitHandoffServiceResponse(
         if (latitude == null || longitude == null) return null
         return runCatching { GeoPoint(latitude, longitude) }.getOrNull()
     }
+
+    fun readyHandoff(): ReadyExternalHandoff? {
+        val strategy = executionStrategy?.toEnumOrNull<TransitExecutionStrategy>() ?: return null
+        val mode = travelMode?.toEnumOrNull<TravelMode>() ?: return null
+        if (
+            strategy == TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES ||
+            strategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN && mode != TravelMode.TRANSIT
+        ) {
+            return null
+        }
+        return ReadyExternalHandoff(
+            executionStrategy = strategy,
+            travelMode = mode,
+            originWgs84 = origin() ?: return null,
+            destinationWgs84 = destination() ?: return null,
+            originName = originName?.takeIf(String::isNotBlank) ?: return null,
+            destinationName = destinationName?.takeIf(String::isNotBlank) ?: return null,
+        )
+    }
 }
+
+internal data class ReadyExternalHandoff(
+    val executionStrategy: TransitExecutionStrategy,
+    val travelMode: TravelMode,
+    val originWgs84: GeoPoint,
+    val destinationWgs84: GeoPoint,
+    val originName: String,
+    val destinationName: String,
+)
+
+private inline fun <reified T : Enum<T>> String.toEnumOrNull(): T? =
+    enumValues<T>().firstOrNull { it.name == this }
 
 internal data class TransitHandoffRequestResult(
     val sequence: Long,
@@ -492,6 +571,10 @@ private class TransitHandoffResultReceiver(
                 originLongitude = data.optionalDouble(TransitHandoffActivity.EXTRA_ORIGIN_LONGITUDE),
                 destinationLatitude = data.optionalDouble(TransitHandoffActivity.EXTRA_DESTINATION_LATITUDE),
                 destinationLongitude = data.optionalDouble(TransitHandoffActivity.EXTRA_DESTINATION_LONGITUDE),
+                executionStrategy = data.getString(TransitHandoffActivity.EXTRA_EXECUTION_STRATEGY),
+                travelMode = data.getString(TransitHandoffActivity.EXTRA_TRAVEL_MODE),
+                originName = data.getString(TransitHandoffActivity.EXTRA_ORIGIN_NAME),
+                destinationName = data.getString(TransitHandoffActivity.EXTRA_DESTINATION_NAME),
             ),
         )
     }

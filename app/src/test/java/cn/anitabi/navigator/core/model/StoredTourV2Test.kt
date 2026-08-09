@@ -46,6 +46,22 @@ class StoredTourV2Test {
     }
 
     @Test
+    fun `v0_2_4 records without fallback marker remain normal routes`() {
+        val planJson = json.encodeToString(TourPlan.serializer(), legacyPlan())
+        val storedJson = json.encodeToString(
+            StoredTourV2.serializer(),
+            StoredTourV2.from(legacyPlan(), null),
+        )
+
+        assertFalse(planJson.contains("externalRouteFallback"))
+        assertFalse(storedJson.contains("externalRouteFallback"))
+        assertFalse(json.decodeFromString(TourPlan.serializer(), planJson).externalRouteFallback)
+        val restored = json.decodeFromString(StoredTourV2.serializer(), storedJson)
+        assertFalse(restored.externalRouteFallback)
+        assertFalse(restored.toUnresolvedPlan().externalRouteFallback)
+    }
+
+    @Test
     fun `stored tour keeps user owned transit time and preference without route content`() {
         val plan = legacyPlan().copy(
             mode = TravelMode.TRANSIT,

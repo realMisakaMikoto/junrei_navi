@@ -30,6 +30,12 @@ val navigationApiKey = (
     signingValue("ANITABI_NAVIGATION_API_KEY")
         ?: localProperties.getProperty("ANITABI_NAVIGATION_API_KEY")
     ).orEmpty()
+val amapApiKey = (
+    signingValue("ANITABI_AMAP_API_KEY")
+        ?: localProperties.getProperty("ANITABI_AMAP_API_KEY")
+    ).orEmpty()
+val amapApiKeyConfigured = amapApiKey.isNotBlank()
+val amapSdkArtifact = "com.amap.api:3dmap-location-search:11.2.000_loc11.2.000_sea9.8.0"
 val releaseSigningValues = listOf(
     releaseStorePath,
     releaseStorePassword,
@@ -55,11 +61,13 @@ android {
         applicationId = "cn.anitabi.navigator"
         minSdk = 26
         targetSdk = 37
-        versionCode = 10
-        versionName = "0.2.4"
+        versionCode = 11
+        versionName = "0.2.5"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         manifestPlaceholders["NAVIGATION_API_KEY"] = navigationApiKey
+        manifestPlaceholders["AMAP_API_KEY"] = amapApiKey.ifBlank { "ANITABI_AMAP_KEY_MISSING" }
+        buildConfigField("boolean", "AMAP_API_KEY_CONFIGURED", amapApiKeyConfigured.toString())
     }
 
     signingConfigs {
@@ -117,6 +125,17 @@ gradle.taskGraph.whenReady {
             "Release builds require ANITABI_NAVIGATION_API_KEY from an ignored local property or environment variable.",
         )
     }
+    if (requestsReleaseArtifact && !amapApiKeyConfigured) {
+        throw GradleException(
+            "Release builds require ANITABI_AMAP_API_KEY from an ignored local property or environment variable.",
+        )
+    }
+    if (
+        requestsReleaseArtifact &&
+        !rootProject.file("app/src/main/assets/approved_regions/territory_regions_v1.json").isFile
+    ) {
+        throw GradleException("Release builds require the approved territory region asset and review evidence.")
+    }
 }
 
 dependencies {
@@ -140,6 +159,7 @@ dependencies {
     implementation("io.coil-kt.coil3:coil-network-okhttp:3.5.0")
     implementation("com.squareup.okhttp3:okhttp:5.4.0")
     implementation("com.google.android.libraries.navigation:navigation:7.8.0")
+    implementation(amapSdkArtifact)
     implementation("com.google.firebase:firebase-analytics")
     implementation("com.google.firebase:firebase-auth")
     implementation("com.google.firebase:firebase-crashlytics")

@@ -1,16 +1,22 @@
 package cn.anitabi.navigator.data.repository
 
 import cn.anitabi.navigator.core.model.Anime
+import cn.anitabi.navigator.core.model.CoordinateSystem
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.NavigationProgress
 import cn.anitabi.navigator.core.model.NavigationState
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.StoredTourV2
 import cn.anitabi.navigator.core.model.TourLeg
 import cn.anitabi.navigator.core.model.TourPlan
+import cn.anitabi.navigator.core.model.TransitExecutionStrategy
+import cn.anitabi.navigator.core.model.TerritoryRegion
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.routing.EXTERNAL_AMAP_SOURCE
+import cn.anitabi.navigator.core.routing.isAmapExternalFallback
 import cn.anitabi.navigator.data.local.TourPlanDao
 import cn.anitabi.navigator.data.local.TourPlanEntity
 import cn.anitabi.navigator.data.network.ApiHttpClient
@@ -42,6 +48,76 @@ class TourRepositoryTest {
         val restored = requireNotNull(repository.get(resolved.id))
         assertFalse(restored.routeNeedsRefresh)
         assertEquals(exactProgress, restored.progress)
+    }
+
+    @Test
+    fun `explicit AMap fallback remains resolved only with empty WGS84 detail-free legs`() = runBlocking {
+        val repository = mainlandRepository(FakeTourPlanDao())
+        val fallback = amapFallbackPlan()
+
+        repository.save(fallback)
+
+        val restored = requireNotNull(repository.get(fallback.id))
+        assertFalse(restored.routeNeedsRefresh)
+        assertEquals(fallback, restored.plan)
+        assertTrue(restored.plan.isAmapExternalFallback())
+    }
+
+    @Test
+    fun `AMap WGS84 fallback marker never permits synthesized route detail`() = runBlocking {
+        val repository = mainlandRepository(FakeTourPlanDao())
+        val invalid = amapFallbackPlan().let { fallback ->
+            fallback.copy(
+                legs = fallback.legs.map { leg -> leg.copy(distanceMeters = 1.0) },
+            )
+        }
+
+        repository.save(invalid)
+
+        val restored = requireNotNull(repository.get(invalid.id))
+        assertTrue(restored.routeNeedsRefresh)
+        assertTrue(restored.plan.legs.isEmpty())
+    }
+
+    @Test
+    fun `normal AMap route remains resolved only as GCJ02`() = runBlocking {
+        val acceptedRepository = mainlandRepository(FakeTourPlanDao())
+        val routed = amapRoutedPlan()
+        acceptedRepository.save(routed)
+        assertFalse(requireNotNull(acceptedRepository.get(routed.id)).routeNeedsRefresh)
+
+        val invalidRepository = mainlandRepository(FakeTourPlanDao())
+        val mislabeled = routed.copy(
+            coordinateSystem = CoordinateSystem.WGS84,
+            legs = routed.legs.map { it.copy(coordinateSystem = CoordinateSystem.WGS84) },
+        )
+        invalidRepository.save(mislabeled)
+
+        val restored = requireNotNull(invalidRepository.get(mislabeled.id))
+        assertTrue(restored.routeNeedsRefresh)
+        assertTrue(restored.plan.legs.isEmpty())
+    }
+
+    @Test
+    fun `cold reload keeps normal AMap route distinct from explicit fallback`() = runBlocking {
+        val routedDao = FakeTourPlanDao()
+        val routed = amapRoutedPlan()
+        mainlandRepository(routedDao).save(routed)
+        val coldRouted = requireNotNull(mainlandRepository(routedDao).get(routed.id))
+
+        val fallbackDao = FakeTourPlanDao()
+        val fallback = amapFallbackPlan()
+        mainlandRepository(fallbackDao).save(fallback)
+        val coldFallback = requireNotNull(mainlandRepository(fallbackDao).get(fallback.id))
+
+        assertEquals(CoordinateSystem.GCJ02, routed.coordinateSystem)
+        assertFalse(routed.externalRouteFallback)
+        assertFalse(coldRouted.plan.isAmapExternalFallback())
+        assertTrue(coldRouted.routeNeedsRefresh)
+        assertTrue(fallback.externalRouteFallback)
+        assertTrue(coldFallback.plan.isAmapExternalFallback())
+        assertTrue(coldFallback.routeNeedsRefresh)
+        assertEquals(CoordinateSystem.WGS84, coldFallback.plan.coordinateSystem)
     }
 
     @Test
@@ -459,6 +535,81 @@ class TourRepositoryTest {
         assertTrue(saved)
     }
 
+    @Test
+    fun `missing approved region asset preserves and lists old stored tour fail closed`() = runBlocking {
+        val dao = FakeTourPlanDao()
+        val old = StoredTourV2.from(
+            fixturePlan(),
+            NavigationProgress(tourId = "tour", state = NavigationState.NAVIGATING),
+        ).copy(
+            executionStrategy = TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES,
+            mapProvider = null,
+            regionDataVersion = null,
+        )
+        dao.seed(storedEntity(old))
+        val repository = TourRepository(
+            dao = dao,
+            json = ApiHttpClient.defaultJson,
+            classifyTerritory = { null },
+            regionDataVersion = { null },
+        )
+
+        val restored = requireNotNull(repository.get(old.id))
+
+        assertEquals(old, restored.storedTour)
+        assertTrue(restored.routeNeedsRefresh)
+        assertEquals(StoredRoutingError.REGION_UNRESOLVED, restored.routingError)
+        assertTrue(restored.plan.legs.isEmpty())
+        assertEquals(NavigationState.NAVIGATING, restored.progress?.state)
+    }
+
+    @Test
+    fun `old Google China tour is reclassified to AMap without rewriting stored record`() = runBlocking {
+        val dao = FakeTourPlanDao()
+        val old = StoredTourV2.from(fixturePlan(), null).copy(
+            executionStrategy = TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES,
+            mapProvider = null,
+            regionDataVersion = null,
+        )
+        dao.seed(storedEntity(old))
+        val repository = TourRepository(
+            dao = dao,
+            json = ApiHttpClient.defaultJson,
+            classifyTerritory = { TerritoryRegion.MAINLAND_CHINA },
+            regionDataVersion = { "TEST_ONLY-v1" },
+        )
+
+        val restored = requireNotNull(repository.get(old.id))
+
+        assertEquals(old, restored.storedTour)
+        assertEquals(TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND, restored.plan.executionStrategy)
+        assertEquals(MapProvider.AMAP, restored.plan.mapProvider)
+        assertEquals("TEST_ONLY-v1", restored.plan.regionDataVersion)
+        assertNull(restored.routingError)
+        assertTrue(restored.routeNeedsRefresh)
+    }
+
+    @Test
+    fun `old mixed provider tour remains visible with safe routing error`() = runBlocking {
+        val dao = FakeTourPlanDao()
+        val old = StoredTourV2.from(fixturePlan(), null).copy(mapProvider = null, regionDataVersion = null)
+        dao.seed(storedEntity(old))
+        val repository = TourRepository(
+            dao = dao,
+            json = ApiHttpClient.defaultJson,
+            classifyTerritory = { point ->
+                if (point.latitude < 1.5) TerritoryRegion.MAINLAND_CHINA else TerritoryRegion.OTHER
+            },
+            regionDataVersion = { "TEST_ONLY-v1" },
+        )
+
+        val restored = requireNotNull(repository.get(old.id))
+
+        assertEquals(old, restored.storedTour)
+        assertEquals(StoredRoutingError.MIXED_MAP_PROVIDERS, restored.routingError)
+        assertTrue(restored.routeNeedsRefresh)
+    }
+
     private fun unresolvedEntity(plan: TourPlan): TourPlanEntity {
         val progress = NavigationProgress(tourId = plan.id, state = NavigationState.PLANNED)
         return storedEntity(plan, progress)
@@ -477,6 +628,50 @@ class TourRepositoryTest {
             migrationError = null,
             routeNeedsRefresh = true,
             updatedAtEpochMillis = 123L,
+        )
+    }
+
+    private fun mainlandRepository(dao: TourPlanDao): TourRepository = TourRepository(
+        dao = dao,
+        json = ApiHttpClient.defaultJson,
+        now = { 123L },
+        classifyTerritory = { TerritoryRegion.MAINLAND_CHINA },
+        regionDataVersion = { TEST_REGION_DATA_VERSION },
+    )
+
+    private fun amapRoutedPlan(): TourPlan = fixturePlan().let { plan ->
+        plan.copy(
+            legs = plan.legs.map { leg ->
+                leg.copy(
+                    provider = MapProvider.AMAP,
+                    coordinateSystem = CoordinateSystem.GCJ02,
+                )
+            },
+            attribution = listOf("AMap Web Service"),
+            executionStrategy = TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND,
+            mapProvider = MapProvider.AMAP,
+            coordinateSystem = CoordinateSystem.GCJ02,
+            regionDataVersion = TEST_REGION_DATA_VERSION,
+            externalRouteFallback = false,
+        )
+    }
+
+    private fun amapFallbackPlan(): TourPlan = amapRoutedPlan().let { plan ->
+        plan.copy(
+            legs = plan.legs.map { leg ->
+                leg.copy(
+                    geometry = emptyList(),
+                    steps = emptyList(),
+                    distanceMeters = 0.0,
+                    durationSeconds = 0.0,
+                    source = EXTERNAL_AMAP_SOURCE,
+                    coordinateSystem = CoordinateSystem.WGS84,
+                )
+            },
+            estimatedDurationSeconds = 0.0,
+            attribution = listOf(EXTERNAL_AMAP_SOURCE),
+            coordinateSystem = CoordinateSystem.WGS84,
+            externalRouteFallback = true,
         )
     }
 
@@ -508,6 +703,10 @@ class TourRepositoryTest {
             attribution = listOf("test"),
             initialStart = first.coordinate,
         )
+    }
+
+    private companion object {
+        const val TEST_REGION_DATA_VERSION = "TEST_ONLY-region-v1"
     }
 }
 

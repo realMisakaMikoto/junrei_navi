@@ -7,6 +7,7 @@
 .android-sdk/
 local.properties
 app/google-services.json
+app/src/main/assets/approved_regions/
 build/
 **/build/
 captures/
