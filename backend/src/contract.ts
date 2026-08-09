@@ -3,6 +3,18 @@ export type Coordinate = Readonly<{
   longitude: number;
 }>;
 
+export type TerritoryRegion =
+  | "MAINLAND_CHINA"
+  | "CHINA_OFFICIAL_MAP_ONLY"
+  | "HONG_KONG_SAR"
+  | "MACAO_SAR"
+  | "CHINA_TAIWAN"
+  | "JAPAN"
+  | "OTHER";
+
+export type MapProvider = "GOOGLE" | "AMAP";
+export type CoordinateSystem = "WGS84" | "GCJ02";
+
 export type RoadMode = "DRIVE" | "BICYCLE" | "WALK";
 export type TravelMode = RoadMode | "TRANSIT";
 export type RouteObjective = "FASTEST" | "SHORTEST";
@@ -35,6 +47,37 @@ export type RouteRequest =
 
 export type NavigationReservationRequest = Readonly<{
   destinationCount: number;
+}>;
+
+export type V2NavigationReservationRequest = Readonly<{
+  origin: Coordinate;
+  destinations: Coordinate[];
+}>;
+
+export type ProviderMetadata = Readonly<{
+  provider: MapProvider;
+  coordinateSystem: CoordinateSystem;
+  regionDataVersion: string;
+}>;
+
+export type V2MatrixResponse = NormalizedMatrix & ProviderMetadata;
+export type V2RouteResponse = NormalizedRoute & ProviderMetadata;
+
+export type V2NavigationReservation = ProviderMetadata &
+  Readonly<{
+    reservedDestinations: number;
+    executionStrategy: "GOOGLE_NAVIGATION_SDK" | "EXTERNAL_AMAP_MAINLAND";
+  }>;
+
+export type V2Policy = Readonly<{
+  apiVersion: "2";
+  regionDataVersion: string;
+  minimumAppVersion: string;
+  v1SunsetAt: string;
+  providers: Readonly<{
+    google: "enabled" | "disabled";
+    amap: "enabled" | "disabled";
+  }>;
 }>;
 
 export type NormalizedMatrixElement = Readonly<{

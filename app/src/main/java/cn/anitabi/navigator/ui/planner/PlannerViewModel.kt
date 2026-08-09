@@ -6,6 +6,7 @@ import androidx.lifecycle.viewModelScope
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TourPlan
@@ -14,8 +15,10 @@ import cn.anitabi.navigator.core.model.TransitRoutingPreference
 import cn.anitabi.navigator.core.model.TransitTimeMode
 import cn.anitabi.navigator.core.model.TransitTravelMode
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.routing.AmapExternalFallbackRequest
 import cn.anitabi.navigator.core.routing.NoRouteException
 import cn.anitabi.navigator.core.routing.MixedTransitRegionException
+import cn.anitabi.navigator.core.routing.MapProviderUnavailableException
 import cn.anitabi.navigator.core.routing.REGION_DATA_ERROR_MESSAGE
 import cn.anitabi.navigator.core.routing.RoadPlanRequest
 import cn.anitabi.navigator.core.routing.TourPlanner
@@ -24,6 +27,8 @@ import cn.anitabi.navigator.core.routing.TransitRideUnavailableException
 import cn.anitabi.navigator.core.routing.TransitSegmentUnavailableException
 import cn.anitabi.navigator.core.routing.formatTransitDepartureTime
 import cn.anitabi.navigator.core.region.JapanRegionDataException
+import cn.anitabi.navigator.core.region.JourneyProviderResolutionException
+import cn.anitabi.navigator.core.region.TerritoryRegionDataException
 import cn.anitabi.navigator.data.network.ApiException
 import cn.anitabi.navigator.data.repository.TourRepository
 import cn.anitabi.navigator.navigation.CurrentLocationProvider
@@ -53,10 +58,12 @@ class PlannerViewModel(
     val state: StateFlow<PlannerUiState> = mutableState.asStateFlow()
     private var planningJob: Job? = null
     private var planningGeneration = 0L
+    private var pendingAmapExternalFallback: AmapExternalFallbackRequest? = null
 
     fun configure(anime: Anime, points: List<PilgrimagePoint>) {
         require(points.size >= 2)
         cancelPlanning()
+        pendingAmapExternalFallback = null
         val now = ZonedDateTime.now(clock).withSecond(0).withNano(0)
         mutableState.value = PlannerUiState(
             anime = anime,
@@ -70,6 +77,7 @@ class PlannerViewModel(
     }
 
     fun setMode(mode: TravelMode) {
+        pendingAmapExternalFallback = null
         mutableState.update { current ->
             if (current.isLoading) current
             else {
@@ -90,6 +98,7 @@ class PlannerViewModel(
                     transitRegionError = transitRegionError,
                     errorMessage = if (mode == TravelMode.TRANSIT) transitRegionError else null,
                     unavailableRouteSegment = null,
+                    amapExternalFallbackAvailable = false,
                     plan = null,
                 )
             }
@@ -97,14 +106,23 @@ class PlannerViewModel(
     }
 
     fun setObjective(objective: RouteObjective) {
-        mutableState.update { if (it.isLoading) it else it.copy(objective = objective, plan = null) }
+        pendingAmapExternalFallback = null
+        mutableState.update {
+            if (it.isLoading) it
+            else it.copy(objective = objective, plan = null, amapExternalFallbackAvailable = false)
+        }
     }
 
     fun setEndPolicy(policy: EndPolicy) {
-        mutableState.update { if (it.isLoading) it else it.copy(endPolicy = policy, plan = null) }
+        pendingAmapExternalFallback = null
+        mutableState.update {
+            if (it.isLoading) it
+            else it.copy(endPolicy = policy, plan = null, amapExternalFallbackAvailable = false)
+        }
     }
 
     fun setStartPoint(pointId: String) {
+        pendingAmapExternalFallback = null
         mutableState.update { current ->
             if (current.isLoading) return@update current
             val fixedEnd = if (current.fixedEndPointId == pointId) {
@@ -117,11 +135,13 @@ class PlannerViewModel(
                 fixedEndPointId = fixedEnd,
                 useCurrentLocation = false,
                 plan = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
 
     fun setUseCurrentLocation() {
+        pendingAmapExternalFallback = null
         mutableState.update {
             if (it.isLoading) it
             else it.copy(
@@ -130,15 +150,18 @@ class PlannerViewModel(
                 plan = null,
                 errorMessage = null,
                 unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
 
     fun locationPermissionDenied() {
+        pendingAmapExternalFallback = null
         mutableState.update {
             it.copy(
                 errorMessage = "需要定位权限才能从当前位置出发",
                 unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
@@ -148,10 +171,15 @@ class PlannerViewModel(
     }
 
     fun setFixedEndPoint(pointId: String) {
-        mutableState.update { if (it.isLoading) it else it.copy(fixedEndPointId = pointId, plan = null) }
+        pendingAmapExternalFallback = null
+        mutableState.update {
+            if (it.isLoading) it
+            else it.copy(fixedEndPointId = pointId, plan = null, amapExternalFallbackAvailable = false)
+        }
     }
 
     fun setTransitSchedule(mode: TransitTimeMode, date: LocalDate, time: LocalTime) {
+        pendingAmapExternalFallback = null
         mutableState.update {
             if (it.isLoading) it else it.copy(
                 transitTimeMode = mode,
@@ -160,11 +188,13 @@ class PlannerViewModel(
                 plan = null,
                 errorMessage = null,
                 unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
 
     fun setTransitRoutingPreference(preference: TransitRoutingPreference) {
+        pendingAmapExternalFallback = null
         mutableState.update {
             if (it.isLoading) it
             else it.copy(
@@ -172,11 +202,13 @@ class PlannerViewModel(
                 plan = null,
                 errorMessage = null,
                 unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
 
     fun toggleTransitTravelMode(mode: TransitTravelMode) {
+        pendingAmapExternalFallback = null
         mutableState.update {
             if (it.isLoading) it
             else it.copy(
@@ -184,14 +216,20 @@ class PlannerViewModel(
                 plan = null,
                 errorMessage = null,
                 unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
 
     fun setDwellMinutes(value: String) {
+        pendingAmapExternalFallback = null
         mutableState.update {
             if (it.isLoading) it
-            else it.copy(dwellMinutesInput = value.filter(Char::isDigit).take(3), plan = null)
+            else it.copy(
+                dwellMinutesInput = value.filter(Char::isDigit).take(3),
+                plan = null,
+                amapExternalFallbackAvailable = false,
+            )
         }
     }
 
@@ -203,6 +241,7 @@ class PlannerViewModel(
             mutableState.update { it.copy(errorMessage = current.transitRegionError) }
             return
         }
+        pendingAmapExternalFallback = null
         mutableState.update {
             it.copy(
                 isLoading = true,
@@ -210,25 +249,39 @@ class PlannerViewModel(
                 unavailableRouteSegment = null,
                 plannedTransitSegments = 0,
                 totalTransitSegments = if (current.mode == TravelMode.TRANSIT) current.transitSegmentCount() else 0,
+                amapExternalFallbackAvailable = false,
             )
         }
         val generation = ++planningGeneration
         planningJob?.cancel()
         planningJob = viewModelScope.launch {
+            var fallbackRequest: AmapExternalFallbackRequest? = null
             try {
-                val transitStrategy = if (current.mode == TravelMode.TRANSIT) {
-                    planner.transitExecutionStrategy(current.selectedPoints)
-                } else {
-                    null
-                }
                 val startPoint = current.startPointId?.let { id -> current.selectedPoints.single { it.id == id } }
                 val startCoordinate = if (current.useCurrentLocation) {
                     locationProvider.currentLocation()
                 } else {
                     requireNotNull(startPoint).coordinate
                 }
+                val executionStrategy = planner.executionStrategy(
+                    mode = current.mode,
+                    start = startCoordinate,
+                    points = current.selectedPoints,
+                )
+                if (generation == planningGeneration && current.mode == TravelMode.TRANSIT) {
+                    mutableState.update { it.copy(transitExecutionStrategy = executionStrategy) }
+                }
+                if (executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND) {
+                    fallbackRequest = current.toAmapExternalFallbackRequest(
+                        anime = anime,
+                        start = startCoordinate,
+                        startPointId = startPoint?.id,
+                    )
+                }
                 val plan = if (current.mode == TravelMode.TRANSIT) {
-                    val anchorTime = if (transitStrategy == TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES) {
+                    val anchorTime = if (
+                        executionStrategy != TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+                    ) {
                         val now = currentTransitPlanningTime(clock)
                         formatTransitDepartureTime(
                             resolveTransitAnchor(
@@ -249,7 +302,9 @@ class PlannerViewModel(
                             startPointId = startPoint?.id,
                             endPolicy = current.endPolicy,
                             fixedEndPointId = current.fixedEndPointId,
-                            timeMode = if (transitStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
+                            timeMode = if (
+                                executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+                            ) {
                                 TransitTimeMode.NOW
                             } else {
                                 current.transitTimeMode
@@ -283,6 +338,7 @@ class PlannerViewModel(
                 if (generation != planningGeneration) return@launch
                 repository.save(plan)
                 if (generation != planningGeneration) return@launch
+                pendingAmapExternalFallback = null
                 mutableState.update {
                     it.copy(
                         plan = plan,
@@ -290,10 +346,11 @@ class PlannerViewModel(
                         isLoading = false,
                         plannedTransitSegments = 0,
                         totalTransitSegments = 0,
+                        amapExternalFallbackAvailable = false,
                     )
                 }
             } catch (exception: Exception) {
-                if (generation == planningGeneration) handleFailure(exception)
+                if (generation == planningGeneration) handleFailure(exception, fallbackRequest)
                 else if (exception is CancellationException) throw exception
             } finally {
                 if (generation == planningGeneration) planningJob = null
@@ -305,12 +362,18 @@ class PlannerViewModel(
         planningGeneration += 1
         planningJob?.cancel()
         planningJob = null
+        pendingAmapExternalFallback = null
         mutableState.update {
-            if (!it.isLoading) it else it.copy(
-                isLoading = false,
-                plannedTransitSegments = 0,
-                totalTransitSegments = 0,
-            )
+            if (!it.isLoading) {
+                it.copy(amapExternalFallbackAvailable = false)
+            } else {
+                it.copy(
+                    isLoading = false,
+                    plannedTransitSegments = 0,
+                    totalTransitSegments = 0,
+                    amapExternalFallbackAvailable = false,
+                )
+            }
         }
     }
 
@@ -320,7 +383,12 @@ class PlannerViewModel(
             val order = current.draftOrder.toMutableList()
             if (!current.canMove(fromIndex, toIndex)) return@update current
             order.add(toIndex, order.removeAt(fromIndex))
-            current.copy(draftOrder = order, orderChanged = true)
+            pendingAmapExternalFallback = null
+            current.copy(
+                draftOrder = order,
+                orderChanged = true,
+                amapExternalFallbackAvailable = false,
+            )
         }
     }
 
@@ -328,12 +396,35 @@ class PlannerViewModel(
         val current = state.value
         if (current.isLoading) return
         val plan = current.plan ?: return
+        pendingAmapExternalFallback = null
         mutableState.update {
-            it.copy(isLoading = true, errorMessage = null, unavailableRouteSegment = null)
+            it.copy(
+                isLoading = true,
+                errorMessage = null,
+                unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
+            )
         }
         val generation = ++planningGeneration
         planningJob?.cancel()
         planningJob = viewModelScope.launch {
+            val fallbackRequest = if (plan.mapProvider == MapProvider.AMAP) {
+                AmapExternalFallbackRequest(
+                    anime = plan.anime,
+                    selectedPoints = plan.selectedPoints,
+                    orderedPoints = current.draftOrder,
+                    start = plan.initialStart ?: plan.legs.firstOrNull()?.from
+                        ?: current.draftOrder.first().coordinate,
+                    startPointId = current.startPointId.takeUnless { current.useCurrentLocation },
+                    mode = plan.mode,
+                    objective = plan.objective,
+                    endPolicy = plan.endPolicy,
+                    fixedEndPointId = current.fixedEndPointId,
+                    dwellMinutes = plan.dwellMinutes,
+                )
+            } else {
+                null
+            }
             try {
                 val planForRebuild = if (
                     plan.mode == TravelMode.TRANSIT && plan.transitTimeMode == TransitTimeMode.NOW
@@ -350,9 +441,55 @@ class PlannerViewModel(
                 if (generation != planningGeneration) return@launch
                 repository.save(updated)
                 if (generation == planningGeneration) {
+                    pendingAmapExternalFallback = null
                     mutableState.update {
-                        it.copy(plan = updated, draftOrder = updated.orderedPoints, orderChanged = false, isLoading = false)
+                        it.copy(
+                            plan = updated,
+                            draftOrder = updated.orderedPoints,
+                            orderChanged = false,
+                            isLoading = false,
+                            amapExternalFallbackAvailable = false,
+                        )
                     }
+                }
+            } catch (exception: Exception) {
+                if (generation == planningGeneration) handleFailure(exception, fallbackRequest)
+                else if (exception is CancellationException) throw exception
+            } finally {
+                if (generation == planningGeneration) planningJob = null
+            }
+        }
+    }
+
+    fun useAmapExternalFallback() {
+        val request = pendingAmapExternalFallback ?: return
+        if (state.value.isLoading || !state.value.amapExternalFallbackAvailable) return
+        pendingAmapExternalFallback = null
+        mutableState.update {
+            it.copy(
+                isLoading = true,
+                errorMessage = null,
+                unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
+            )
+        }
+        val generation = ++planningGeneration
+        planningJob?.cancel()
+        planningJob = viewModelScope.launch {
+            try {
+                val fallback = planner.planAmapExternalFallback(request)
+                if (generation != planningGeneration) return@launch
+                repository.save(fallback)
+                if (generation != planningGeneration) return@launch
+                mutableState.update {
+                    it.copy(
+                        plan = fallback,
+                        draftOrder = fallback.orderedPoints,
+                        orderChanged = false,
+                        isLoading = false,
+                        plannedTransitSegments = 0,
+                        totalTransitSegments = 0,
+                    )
                 }
             } catch (exception: Exception) {
                 if (generation == planningGeneration) handleFailure(exception)
@@ -364,6 +501,7 @@ class PlannerViewModel(
     }
 
     fun clearPlan() {
+        pendingAmapExternalFallback = null
         mutableState.update {
             if (it.isLoading) it
             else it.copy(
@@ -372,6 +510,7 @@ class PlannerViewModel(
                 orderChanged = false,
                 errorMessage = null,
                 unavailableRouteSegment = null,
+                amapExternalFallbackAvailable = false,
             )
         }
     }
@@ -386,8 +525,13 @@ class PlannerViewModel(
         return true
     }
 
-    private fun handleFailure(throwable: Throwable) {
+    private fun handleFailure(
+        throwable: Throwable,
+        fallbackRequest: AmapExternalFallbackRequest? = null,
+    ) {
         if (throwable is CancellationException) throw throwable
+        val offer = fallbackRequest?.takeIf { isAmapExternalFallbackFailure(throwable) }
+        pendingAmapExternalFallback = offer
         mutableState.update {
             it.copy(
                 isLoading = false,
@@ -395,6 +539,7 @@ class PlannerViewModel(
                 unavailableRouteSegment = unavailableRouteSegmentDetails(throwable, it),
                 plannedTransitSegments = 0,
                 totalTransitSegments = 0,
+                amapExternalFallbackAvailable = offer != null,
             )
         }
     }
@@ -410,13 +555,68 @@ class PlannerViewModel(
     }
 }
 
+private fun PlannerUiState.toAmapExternalFallbackRequest(
+    anime: Anime,
+    start: GeoPoint,
+    startPointId: String?,
+): AmapExternalFallbackRequest {
+    val selectedStart = startPointId?.let { id -> selectedPoints.singleOrNull { it.id == id } }
+    val destinations = selectedPoints.filterNot { it.id == selectedStart?.id }
+    val fixedEnd = if (endPolicy == EndPolicy.FIXED) {
+        destinations.singleOrNull { it.id == fixedEndPointId }
+    } else {
+        null
+    }
+    val orderedPoints = listOfNotNull(selectedStart) +
+        destinations.filterNot { it.id == fixedEnd?.id } +
+        listOfNotNull(fixedEnd)
+    return AmapExternalFallbackRequest(
+        anime = anime,
+        selectedPoints = selectedPoints,
+        orderedPoints = orderedPoints,
+        start = start,
+        startPointId = startPointId,
+        mode = mode,
+        objective = objective,
+        endPolicy = endPolicy,
+        fixedEndPointId = fixedEndPointId,
+        dwellMinutes = dwellMinutesInput.toIntOrNull() ?: 15,
+    )
+}
+
+internal fun isAmapExternalFallbackFailure(throwable: Throwable): Boolean = when (throwable) {
+    is ApiException.BackendUnavailable,
+    is ApiException.Network,
+    is ApiException.Server,
+    is ApiException.UpstreamUnavailable,
+    is ApiException.QuotaExhausted,
+    is ApiException.RateLimited,
+    is ApiException.NoRoute,
+    is NoRouteException,
+    is TransitSegmentUnavailableException,
+    is TransitRideUnavailableException -> true
+    else -> false
+}
+
 internal fun plannerFailureMessage(throwable: Throwable): String = when (throwable) {
     is ApiException.Unauthenticated -> "匿名连接失败，请检查网络后重试"
     is ApiException.InvalidArgument -> "路线请求参数无效，请检查时间和地点"
     is ApiException.NoRoute, is ApiException.NotFound -> "所选地点之间暂无可用路线"
     is ApiException.QuotaExhausted -> "本月共享路线额度已用尽，暂时无法查询；不会继续产生费用"
     is ApiException.RateLimited -> "请求过于频繁，请稍后再试"
-    is ApiException.UpstreamUnavailable -> "Google 路线服务暂时不可用，请稍后再试"
+    is ApiException.UpstreamUnavailable -> "路线提供方暂时不可用，请稍后再试"
+    is ApiException.MixedMapProviders,
+    is JourneyProviderResolutionException.MixedMapProviders -> "一次行程的起点和所有目的地必须使用同一地图提供方"
+    is ApiException.MixedTransitRegions,
+    is JourneyProviderResolutionException.MixedTransitRegions -> MIXED_TRANSIT_REGION_FALLBACK
+    is ApiException.RegionUnresolved,
+    is JourneyProviderResolutionException.RegionUnresolved -> "无法安全判定地图地区，未发送路线请求"
+    is ApiException.RegionDataOutdated -> "地区数据版本与服务端不一致，请更新后重试"
+    is MapProviderUnavailableException -> when (throwable.provider) {
+        cn.anitabi.navigator.core.model.MapProvider.AMAP -> "请先在“关于”中允许高德地图 SDK，再规划该地区的路线"
+        cn.anitabi.navigator.core.model.MapProvider.GOOGLE -> "Google 地图提供方当前不可用"
+    }
+    is ApiException.ClientUpgradeRequired -> "当前版本已不再受路线服务支持，请更新应用"
     is ApiException.BackendUnavailable, is ApiException.Server ->
         "路线服务暂时不可用；行程和导航进度仍保留在本机"
     is ApiException.InvalidResponse -> "路线服务返回了无法识别的数据"
@@ -426,9 +626,9 @@ internal fun plannerFailureMessage(throwable: Throwable): String = when (throwab
     is TransitSegmentUnavailableException ->
         "第 ${throwable.segmentNumber}/${throwable.segmentCount} 段在所选时间未找到公交或步行路线，请调整时间、顺序或出行方式"
     is TransitRideUnavailableException ->
-        "Google 公交没有返回任何乘车线路，未将全步行路线作为公交方案；若地点在日本，这是 Routes API 的官方覆盖限制"
+        "公交路线没有返回任何乘车线路，未将全步行路线作为公交方案；日本路线还可能受 Google Routes API 官方覆盖限制"
     is MixedTransitRegionException -> throwable.message ?: MIXED_TRANSIT_REGION_FALLBACK
-    is JapanRegionDataException -> REGION_DATA_ERROR_MESSAGE
+    is JapanRegionDataException, is TerritoryRegionDataException -> REGION_DATA_ERROR_MESSAGE
     is InvalidTransitScheduleException -> throwable.message ?: "请选择当前或未来 100 天内的时间"
     is NoRouteException -> "所选地点之间存在不可达路段"
     is MissingLocationPermissionException -> "需要定位权限才能从当前位置出发"
@@ -445,10 +645,10 @@ internal fun resolveTransitAnchor(
     if (mode == TransitTimeMode.NOW) return now
     val selected = LocalDateTime.of(date, time).atZone(now.zone)
     if (selected.toInstant().isBefore(now.toInstant().minus(7, ChronoUnit.DAYS))) {
-        throw InvalidTransitScheduleException("Google 公交路线最多可查询过去 7 天")
+        throw InvalidTransitScheduleException("公交路线最多可查询过去 7 天")
     }
     if (selected.toInstant().isAfter(now.toInstant().plus(100, ChronoUnit.DAYS))) {
-        throw InvalidTransitScheduleException("Google 公交路线最多可查询未来 100 天")
+        throw InvalidTransitScheduleException("公交路线最多可查询未来 100 天")
     }
     return selected
 }
@@ -511,6 +711,7 @@ data class PlannerUiState(
     val totalTransitSegments: Int = 0,
     val errorMessage: String? = null,
     val unavailableRouteSegment: UnavailableRouteSegment? = null,
+    val amapExternalFallbackAvailable: Boolean = false,
 ) {
     fun transitSegmentCount(): Int =
         selectedPoints.size -

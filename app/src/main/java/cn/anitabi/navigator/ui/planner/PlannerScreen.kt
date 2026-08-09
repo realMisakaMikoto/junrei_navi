@@ -123,6 +123,7 @@ import cn.anitabi.navigator.navigation.GoogleMapsTransitLauncher
 import cn.anitabi.navigator.navigation.NavigationControlAvailability
 import cn.anitabi.navigator.navigation.requestGoogleNavigationTerms
 import cn.anitabi.navigator.core.model.EndPolicy
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TourPlan
@@ -132,6 +133,8 @@ import cn.anitabi.navigator.core.model.TransitRoutingPreference
 import cn.anitabi.navigator.core.model.TransitTimeMode
 import cn.anitabi.navigator.core.model.TransitTravelMode
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.model.isExternalMapNavigation
+import cn.anitabi.navigator.core.routing.isAmapExternalFallback
 import cn.anitabi.navigator.ui.theme.Ink
 import cn.anitabi.navigator.ui.theme.MutedInk
 import cn.anitabi.navigator.ui.theme.NumericTextStyle
@@ -163,7 +166,7 @@ fun PlannerRoute(
     var pendingNavigationPlan by remember { mutableStateOf<TourPlan?>(null) }
     var navigationTermsRequestInFlight by remember { mutableStateOf(false) }
     val startAfterPermissions: (TourPlan) -> Unit = { pending ->
-        if (pending.mode == TravelMode.TRANSIT) {
+        if (!requiresGoogleNavigationTerms(pending)) {
             onStartNavigation(pending)
         } else {
             val activity = context.findActivity()
@@ -202,8 +205,8 @@ fun PlannerRoute(
             startAfterPermissions(pending)
         } else {
             viewModel.navigationPermissionDenied(
-                externalTransitPermissionError(hasFineLocation, hasControl)
-                    ?: "无法开始日本公交分段导航",
+                externalTransitPermissionError(hasFineLocation, hasControl, pending.executionStrategy)
+                    ?: externalMapStartFailureMessage(pending.executionStrategy),
             )
         }
     }
@@ -212,7 +215,7 @@ fun PlannerRoute(
     ) {
         val pending = pendingNavigationPlan
         if (pending == null) return@rememberLauncherForActivityResult
-        if (pending.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
+        if (pending.executionStrategy.isExternalMapNavigation()) {
             val hasFineLocation = AndroidLocationProvider.hasFineLocationPermission(context)
             val hasControl = NavigationControlAvailability.hasExternalTransitControl(context)
             when {
@@ -221,12 +224,12 @@ fun PlannerRoute(
                     startAfterPermissions(pending)
                 }
                 hasFineLocation -> {
-                    viewModel.navigationPermissionDenied("通知当前不可见，请授权悬浮窗作为日本公交控制入口")
+                    viewModel.navigationPermissionDenied(externalMapControlMessage(pending.executionStrategy))
                     overlayPermissionLauncher.launch(overlaySettingsIntent(context))
                 }
                 else -> viewModel.navigationPermissionDenied(
-                    externalTransitPermissionError(hasFineLocation, hasControl)
-                        ?: "无法开始日本公交分段导航",
+                    externalTransitPermissionError(hasFineLocation, hasControl, pending.executionStrategy)
+                        ?: externalMapStartFailureMessage(pending.executionStrategy),
                 )
             }
         } else {
@@ -267,6 +270,7 @@ fun PlannerRoute(
             onTransitTravelModeToggle = viewModel::toggleTransitTravelMode,
             onDwellChange = viewModel::setDwellMinutes,
             onGenerate = viewModel::generate,
+            onUseAmapExternalFallback = viewModel::useAmapExternalFallback,
         )
     } else {
         RoutePreviewScreen(
@@ -275,8 +279,9 @@ fun PlannerRoute(
             onBack = viewModel::clearPlan,
             onMove = viewModel::moveDraft,
             onApplyOrder = viewModel::applyManualOrder,
+            onUseAmapExternalFallback = viewModel::useAmapExternalFallback,
             onStartNavigation = {
-                if (plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
+                if (plan.executionStrategy.isExternalMapNavigation()) {
                     NavigationControlAvailability.ensureChannel(context)
                     val hasFineLocation = AndroidLocationProvider.hasFineLocationPermission(context)
                     val hasControl = NavigationControlAvailability.hasExternalTransitControl(context)
@@ -298,7 +303,7 @@ fun PlannerRoute(
                             navigationPermissionLauncher.launch(permissions.toTypedArray())
                         } else {
                             viewModel.navigationPermissionDenied(
-                                "通知当前不可见，请授权悬浮窗作为日本公交控制入口",
+                                externalMapControlMessage(plan.executionStrategy),
                             )
                             overlayPermissionLauncher.launch(overlaySettingsIntent(context))
                         }
@@ -360,12 +365,37 @@ internal fun navigationPermissionError(
 internal fun externalTransitPermissionError(
     hasFineLocation: Boolean,
     hasVisibleControl: Boolean,
+    strategy: TransitExecutionStrategy = TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN,
 ): String? = when {
     !hasFineLocation && !hasVisibleControl ->
         "需要精确定位，并至少启用悬浮窗或可见的导航通知"
-    !hasFineLocation -> "需要精确定位权限才能开始日本公交分段导航"
+    !hasFineLocation -> when (strategy) {
+        TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND -> "需要精确定位权限才能开始高德地图分段导航"
+        TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN -> "需要精确定位权限才能开始日本公交分段导航"
+        TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES -> "需要精确定位权限才能开始外部分段导航"
+    }
     !hasVisibleControl -> "请至少启用悬浮窗或可见的导航通知"
     else -> null
+}
+
+internal fun requiresGoogleNavigationTerms(plan: TourPlan): Boolean =
+    plan.mapProvider == MapProvider.GOOGLE &&
+        plan.executionStrategy == TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES &&
+        plan.mode != TravelMode.TRANSIT
+
+private fun externalMapControlMessage(strategy: TransitExecutionStrategy): String = when (strategy) {
+    TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+        "通知当前不可见，请授权悬浮窗作为高德地图分段导航控制入口"
+    TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+        "通知当前不可见，请授权悬浮窗作为日本公交控制入口"
+    TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES ->
+        "通知当前不可见，请授权悬浮窗作为外部分段导航控制入口"
+}
+
+private fun externalMapStartFailureMessage(strategy: TransitExecutionStrategy): String = when (strategy) {
+    TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND -> "无法开始高德地图分段导航"
+    TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN -> "无法开始日本公交分段导航"
+    TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES -> "无法开始外部分段导航"
 }
 
 private fun overlaySettingsIntent(context: Context): Intent =
@@ -402,6 +432,7 @@ internal fun PlannerSettingsScreen(
     onTransitTravelModeToggle: (TransitTravelMode) -> Unit,
     onDwellChange: (String) -> Unit,
     onGenerate: () -> Unit,
+    onUseAmapExternalFallback: () -> Unit = {},
     onOpenGoogleMaps: ((UnavailableRouteSegment) -> Boolean)? = null,
 ) {
     val context = LocalContext.current
@@ -531,6 +562,8 @@ internal fun PlannerSettingsScreen(
                     message = it,
                     unavailableRouteSegment = state.unavailableRouteSegment,
                     onShowDetails = { showUnavailableRouteDetails = true },
+                    showAmapExternalFallback = state.amapExternalFallbackAvailable,
+                    onUseAmapExternalFallback = onUseAmapExternalFallback,
                     modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
                 )
             }
@@ -571,6 +604,7 @@ internal fun PlannerSettingsScreen(
     }
 
     if (showScheduleSheet) {
+        val amapTransit = state.transitExecutionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND
         ModalBottomSheet(onDismissRequest = { showScheduleSheet = false }) {
             Column(
                 modifier = Modifier
@@ -611,8 +645,9 @@ internal fun PlannerSettingsScreen(
                 )
                 TransitSheetChoice(
                     title = "选择到达时间",
-                    subtitle = "寻找在指定时间前到达的行程",
+                    subtitle = if (amapTransit) "高德公交暂不支持按到达时间查询" else "寻找在指定时间前到达的行程",
                     selected = state.transitTimeMode == TransitTimeMode.ARRIVE_BY,
+                    enabled = !amapTransit,
                     onClick = {
                         val current = LocalDateTime.now(zoneId).withSecond(0).withNano(0)
                         pendingTimeMode = TransitTimeMode.ARRIVE_BY
@@ -627,6 +662,7 @@ internal fun PlannerSettingsScreen(
     }
 
     if (showTransitOptionsSheet) {
+        val amapTransit = state.transitExecutionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND
         val selectedTravelModes = selectedTransitTravelModes(state.transitTravelModes)
         ModalBottomSheet(onDismissRequest = { showTransitOptionsSheet = false }) {
             Column(
@@ -639,7 +675,11 @@ internal fun PlannerSettingsScreen(
             ) {
                 Text("公交选项", style = MaterialTheme.typography.titleLarge)
                 Text(
-                    "这些是 Google 路线偏好。系统会尽量遵循，必要时仍可能返回其他交通方式。",
+                    if (amapTransit) {
+                        "高德公交支持少步行和少换乘偏好，但暂不支持按交通方式筛选。"
+                    } else {
+                        "路线服务会尽量遵循这些偏好，必要时仍可能返回其他交通方式。"
+                    },
                     color = MutedInk,
                     style = MaterialTheme.typography.bodyMedium,
                 )
@@ -657,7 +697,7 @@ internal fun PlannerSettingsScreen(
                         FilterChip(
                             selected = selected,
                             onClick = { onTransitTravelModeToggle(mode) },
-                            enabled = !state.isLoading && (!selected || selectedTravelModes.size > 1),
+                            enabled = !amapTransit && !state.isLoading && (!selected || selectedTravelModes.size > 1),
                             label = { Text(transitTravelModeLabel(mode)) },
                             leadingIcon = if (selected) {
                                 { Icon(Icons.Rounded.Check, contentDescription = null, modifier = Modifier.size(18.dp)) }
@@ -1331,10 +1371,12 @@ private fun TransitSheetChoice(
     title: String,
     subtitle: String,
     selected: Boolean,
+    enabled: Boolean = true,
     onClick: () -> Unit,
 ) {
     Card(
         onClick = onClick,
+        enabled = enabled,
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
@@ -1436,6 +1478,7 @@ private fun RoutePreviewScreen(
     onBack: () -> Unit,
     onMove: (Int, Int) -> Unit,
     onApplyOrder: () -> Unit,
+    onUseAmapExternalFallback: () -> Unit,
     onStartNavigation: () -> Unit,
 ) {
     val transitSections = remember(plan.legs) { groupTransitJourneySections(plan.legs) }
@@ -1466,6 +1509,7 @@ private fun RoutePreviewScreen(
                             transitSections = transitSections,
                             onMove = onMove,
                             onApplyOrder = onApplyOrder,
+                            onUseAmapExternalFallback = onUseAmapExternalFallback,
                             onStartNavigation = onStartNavigation,
                             modifier = Modifier
                                 .weight(1f)
@@ -1487,6 +1531,7 @@ private fun RoutePreviewScreen(
                             transitSections = transitSections,
                             onMove = onMove,
                             onApplyOrder = onApplyOrder,
+                            onUseAmapExternalFallback = onUseAmapExternalFallback,
                             onStartNavigation = onStartNavigation,
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -1508,9 +1553,11 @@ internal fun RoutePreviewDetails(
     onApplyOrder: () -> Unit,
     onStartNavigation: () -> Unit,
     modifier: Modifier = Modifier,
+    onUseAmapExternalFallback: () -> Unit = {},
     onOpenGoogleMaps: ((UnavailableRouteSegment) -> Boolean)? = null,
 ) {
     val context = LocalContext.current
+    val amapExternalFallback = plan.isAmapExternalFallback()
     val transitPresentation = plannerTransitPresentation(
         mode = plan.mode,
         executionStrategy = plan.executionStrategy,
@@ -1534,7 +1581,29 @@ internal fun RoutePreviewDetails(
             verticalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             item {
-                if (transitPresentation.showExternalProviderMessage) {
+                if (amapExternalFallback) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primaryContainer,
+                        shape = RoundedCornerShape(14.dp),
+                        modifier = Modifier.testTag("planner-amap-fallback-notice"),
+                    ) {
+                        Column(modifier = Modifier.padding(14.dp)) {
+                            Text(
+                                "高德地图 · 仅按当前顺序分段",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.SemiBold,
+                            )
+                            Text(
+                                "此方案不含路线详情、距离或预计时间，也不会调用 Google 或路线后端；" +
+                                    "开始后将按当前顺序逐段打开设备上的高德地图。",
+                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                style = MaterialTheme.typography.bodyMedium,
+                                modifier = Modifier.padding(top = 4.dp),
+                            )
+                        }
+                    }
+                } else if (transitPresentation.showExternalProviderMessage) {
                     Surface(
                         color = MaterialTheme.colorScheme.primaryContainer,
                         shape = RoundedCornerShape(14.dp),
@@ -1568,11 +1637,13 @@ internal fun RoutePreviewDetails(
                         message = message,
                         unavailableRouteSegment = state.unavailableRouteSegment,
                         onShowDetails = { showUnavailableRouteDetails = true },
+                        showAmapExternalFallback = state.amapExternalFallbackAvailable,
+                        onUseAmapExternalFallback = onUseAmapExternalFallback,
                         modifier = Modifier.padding(vertical = 4.dp),
                     )
                 }
             }
-            googleRouteBetaNotice(plan.mode)?.let { notice ->
+            googleRouteBetaNotice(plan.mode).takeIf { plan.mapProvider == MapProvider.GOOGLE }?.let { notice ->
                 item {
                     Text(
                         notice,
@@ -1581,7 +1652,7 @@ internal fun RoutePreviewDetails(
                     )
                 }
             }
-            if (transitPresentation.showTransitJourneyDetails) {
+            if (transitPresentation.showTransitJourneyDetails && !amapExternalFallback) {
                 item {
                     Column {
                         Text(
@@ -1635,7 +1706,7 @@ internal fun RoutePreviewDetails(
             item {
                 Column(modifier = Modifier.padding(vertical = 8.dp)) {
                     Text(
-                        "Google Maps",
+                        if (plan.mapProvider == MapProvider.AMAP) "高德地图" else "Google Maps",
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodyMedium,
                     )
@@ -1653,8 +1724,11 @@ internal fun RoutePreviewDetails(
             onClick = if (state.orderChanged) onApplyOrder else onStartNavigation,
             enabled = !state.isLoading,
             label = when {
+                state.isLoading && amapExternalFallback -> "正在更新分段顺序"
                 state.isLoading -> "正在重新生成路线"
+                state.orderChanged && amapExternalFallback -> "按此顺序更新分段"
                 state.orderChanged -> "按此顺序重新生成"
+                amapExternalFallback -> "开始高德分段导航"
                 plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
                     "开始日本公交行程"
                 plan.mode == TravelMode.TRANSIT -> "开始公交行程"
@@ -1685,6 +1759,8 @@ private fun PlannerErrorCard(
     unavailableRouteSegment: UnavailableRouteSegment?,
     onShowDetails: () -> Unit,
     modifier: Modifier = Modifier,
+    showAmapExternalFallback: Boolean = false,
+    onUseAmapExternalFallback: () -> Unit = {},
 ) {
     Surface(
         color = MaterialTheme.colorScheme.errorContainer,
@@ -1732,6 +1808,29 @@ private fun PlannerErrorCard(
                     }
                 }
                 Text(message, style = MaterialTheme.typography.bodyMedium)
+                if (showAmapExternalFallback) {
+                    Text(
+                        "可选择只保存当前顺序并逐段打开高德地图；不会显示路线、距离或预计时间。",
+                        style = MaterialTheme.typography.bodySmall,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    TextButton(
+                        onClick = onUseAmapExternalFallback,
+                        modifier = Modifier
+                            .heightIn(min = 48.dp)
+                            .testTag("planner-use-amap-external-fallback"),
+                        contentPadding = PaddingValues(horizontal = 0.dp, vertical = 6.dp),
+                        colors = ButtonDefaults.textButtonColors(
+                            contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                        ),
+                    ) {
+                        Text(
+                            "仅按当前顺序分段打开高德地图",
+                            fontWeight = FontWeight.Bold,
+                            textDecoration = TextDecoration.Underline,
+                        )
+                    }
+                }
             }
         }
     }

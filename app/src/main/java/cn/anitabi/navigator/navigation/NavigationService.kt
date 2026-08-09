@@ -21,12 +21,16 @@ import androidx.core.app.NotificationCompat
 import cn.anitabi.navigator.AnitabiApplication
 import cn.anitabi.navigator.MainActivity
 import cn.anitabi.navigator.R
+import cn.anitabi.navigator.core.model.CoordinateSystem
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.NavigationProgress
 import cn.anitabi.navigator.core.model.NavigationState
+import cn.anitabi.navigator.core.model.TourLeg
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.model.isExternalMapNavigation
 import cn.anitabi.navigator.core.navigation.JapanExternalTransitEngine
 import cn.anitabi.navigator.core.navigation.JapanExternalTransitRuntimeState
 import cn.anitabi.navigator.core.navigation.JapanExternalTransitUpdate
@@ -173,11 +177,11 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
     }
 
     private fun reportExternalLocationPermissionFailure(intent: Intent?, startId: Int) {
-        val message = if (intent?.action == ACTION_RESUME_EXTERNAL) {
-            "需要精确定位权限才能恢复日本公交行程"
-        } else {
-            "需要精确定位权限才能继续日本公交行程"
-        }
+        val strategy = plan?.executionStrategy ?: NavigationRuntime.state.value.plan?.executionStrategy
+        val message = externalLocationPermissionMessage(
+            strategy = strategy,
+            resume = intent?.action == ACTION_RESUME_EXTERNAL,
+        )
         intent?.resultReceiver()?.sendError(message)
         NavigationRuntime.update { state ->
             state.copy(
@@ -370,6 +374,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
             runCatching { locationManager.removeUpdates(this) }
             val saved = tourId?.let { container.tourRepository.get(it) }
                 ?: error("没有可恢复的巡礼路线")
+            saved.routingError?.let { routingError -> error(storedRoutingErrorMessage(routingError)) }
             if (generation != navigationGeneration) return
             if (saved.progress?.state in setOf(NavigationState.COMPLETED, NavigationState.ENDED)) {
                 error("这条巡礼路线已经结束")
@@ -377,12 +382,12 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
             ActiveNavigationStore.set(this, saved.plan.id)
             var loadedPlan = saved.plan
             plan = loadedPlan
-            val externalJapan = loadedPlan.isExternalJapanTransit()
-            if (externalJapan && !AndroidLocationProvider.hasFineLocationPermission(this)) {
+            val externalMap = loadedPlan.isExternalJapanTransit()
+            if (externalMap && !AndroidLocationProvider.hasFineLocationPermission(this)) {
                 throw MissingLocationPermissionException()
             }
             val destinations = loadedPlan.legs.mapNotNull { it.destinationPointId }.toSet()
-            val startPointIds = if (externalJapan) {
+            val startPointIds = if (externalMap) {
                 emptySet()
             } else {
                 loadedPlan.orderedPoints
@@ -394,7 +399,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                 it.copy(completedPointIds = it.completedPointIds + startPointIds)
             }
             if (saved.routeNeedsRefresh) {
-                if (externalJapan) {
+                if (externalMap) {
                     loadedPlan = container.tourPlanner.rebuild(loadedPlan, loadedPlan.orderedPoints)
                     container.tourRepository.save(loadedPlan, initialProgress)
                 } else {
@@ -426,8 +431,9 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
             if (initialProgress.state in setOf(NavigationState.COMPLETED, NavigationState.ENDED)) {
                 error("这条巡礼路线已经结束")
             }
+            externalPlanStartMismatch(loadedPlan)?.let { message -> error(message) }
             container.tourRepository.noteRuntimeProgress(initialProgress)
-            if (externalJapan && initialProgress.state == NavigationState.PLANNED) {
+            if (externalMap && initialProgress.state == NavigationState.PLANNED) {
                 if (!NavigationControlAvailability.hasExternalTransitControl(this)) {
                     throw ExternalTransitControlUnavailableException()
                 }
@@ -443,7 +449,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                 )
                 container.tourRepository.save(loadedPlan, initialProgress)
             }
-            if (externalJapan) {
+            if (externalMap) {
                 val loadedJapanEngine = JapanExternalTransitEngine(loadedPlan, initialProgress)
                 plan = loadedPlan
                 engine = null
@@ -596,7 +602,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
         if (stopping || expectedGeneration != navigationGeneration || update == null) return
         val currentPlan = plan ?: return
         container.tourRepository.noteRuntimeProgress(update.progress)
-        val instruction = japanInstruction(currentPlan, update.progress)
+        val instruction = externalMapInstruction(currentPlan, update.progress)
         val targetDistance = update.runtimeState.targetDistanceMeters
         NavigationRuntime.set(
             NavigationRuntimeState(
@@ -621,7 +627,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                 NavigationState.COMPLETED,
             )
         ) {
-            speak(instruction, "japan:${update.progress.state}:${update.progress.legIndex}")
+            speak(instruction, "external:${update.progress.state}:${update.progress.legIndex}")
         }
         if (update.progress.state in setOf(NavigationState.COMPLETED, NavigationState.ENDED)) {
             ActiveNavigationStore.clear(this, currentPlan.id)
@@ -731,19 +737,35 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
         return true
     }
 
-    private fun japanInstruction(currentPlan: TourPlan, progress: NavigationProgress): String {
-        if (progress.isPaused) return "日本公交行程已暂停"
+    private fun externalMapInstruction(currentPlan: TourPlan, progress: NavigationProgress): String {
+        if (currentPlan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
+            if (progress.isPaused) return "日本公交行程已暂停"
+            val targetName = currentPlan.legs.getOrNull(progress.legIndex)?.destinationPointId?.let { id ->
+                currentPlan.selectedPoints.firstOrNull { it.id == id }?.name
+            } ?: "起点"
+            return when (progress.state) {
+                NavigationState.PLANNED -> "准备开始日本公交分段导航"
+                NavigationState.NAVIGATING -> "前往 $targetName；路线、班次和换乘由 Google 地图提供"
+                NavigationState.ARRIVING -> "已接近 $targetName，请手动确认到达"
+                NavigationState.DWELLING -> "已到达 $targetName，正在停留"
+                NavigationState.NEXT_STOP -> "停留结束，请手动开始下一段"
+                NavigationState.COMPLETED -> "日本公交巡礼路线已完成"
+                NavigationState.ENDED -> "日本公交巡礼行程已结束"
+            }
+        }
+        if (progress.isPaused) return "高德地图外部分段导航已暂停"
         val targetName = currentPlan.legs.getOrNull(progress.legIndex)?.destinationPointId?.let { id ->
             currentPlan.selectedPoints.firstOrNull { it.id == id }?.name
         } ?: "起点"
+        val modeLabel = currentPlan.mode.externalModeLabel()
         return when (progress.state) {
-            NavigationState.PLANNED -> "准备开始日本公交分段导航"
-            NavigationState.NAVIGATING -> "前往 $targetName；路线、班次和换乘由 Google 地图提供"
+            NavigationState.PLANNED -> "准备开始高德地图外部分段$modeLabel"
+            NavigationState.NAVIGATING -> "前往 $targetName；本段${modeLabel}由高德地图提供"
             NavigationState.ARRIVING -> "已接近 $targetName，请手动确认到达"
             NavigationState.DWELLING -> "已到达 $targetName，正在停留"
             NavigationState.NEXT_STOP -> "停留结束，请手动开始下一段"
-            NavigationState.COMPLETED -> "日本公交巡礼路线已完成"
-            NavigationState.ENDED -> "日本公交巡礼行程已结束"
+            NavigationState.COMPLETED -> "高德地图巡礼路线已完成"
+            NavigationState.ENDED -> "高德地图巡礼行程已结束"
         }
     }
 
@@ -1076,8 +1098,8 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                 }
                 val currentPlan = plan?.takeIf {
                     it.id == request.tourId && it.isExternalJapanTransit()
-                } ?: error("当前日本公交行程已变化，请返回应用确认")
-                val activeEngine = japanEngine ?: error("日本公交行程尚未准备完成")
+                } ?: error("当前外部分段行程已变化，请返回应用确认")
+                val activeEngine = japanEngine ?: error("外部分段行程尚未准备完成")
                 val before = activeEngine.progress
                 if (japanCommitInFlight) error(EXTERNAL_TRANSIT_SAVE_IN_PROGRESS_MESSAGE)
                 if (before.isPaused) error("行程已暂停，请先恢复")
@@ -1120,6 +1142,14 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                             request.receiver.sendError("当前分段不存在")
                             return@commitJapanUpdateIfChanged
                         }
+                        externalHandoffMismatch(committedPlan, leg)?.let { mismatch ->
+                            request.receiver.sendError(mismatch)
+                            return@commitJapanUpdateIfChanged
+                        }
+                        val (originName, destinationName) = externalHandoffNames(
+                            committedPlan,
+                            update.progress.legIndex,
+                        )
                         request.receiver.send(
                             RESULT_HANDOFF_READY,
                             Bundle().apply {
@@ -1134,6 +1164,13 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                                     leg.to.longitude,
                                 )
                                 putInt(EXTRA_EXPECTED_LEG_INDEX, update.progress.legIndex)
+                                putString(
+                                    TransitHandoffActivity.EXTRA_EXECUTION_STRATEGY,
+                                    committedPlan.executionStrategy.name,
+                                )
+                                putString(TransitHandoffActivity.EXTRA_TRAVEL_MODE, leg.mode.name)
+                                putString(TransitHandoffActivity.EXTRA_ORIGIN_NAME, originName)
+                                putString(TransitHandoffActivity.EXTRA_DESTINATION_NAME, destinationName)
                             },
                         )
                     },
@@ -1295,7 +1332,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
             return
         }
         if (requestedTourId.isNullOrBlank()) {
-            receiver?.sendError("没有正在进行的日本公交行程")
+            receiver?.sendError("没有正在进行的外部分段导航")
             return
         }
         if (currentPlan != null && currentPlan.id != requestedTourId) {
@@ -1363,9 +1400,9 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
         val terminalJob = serviceScope.launch(start = CoroutineStart.LAZY) {
             try {
                 val saved = container.tourRepository.get(requestedTourId)
-                    ?: error("没有正在进行的日本公交行程")
+                    ?: error("没有正在进行的外部分段导航")
                 val storedPlan = saved.plan.takeIf { it.isExternalJapanTransit() }
-                    ?: error("当前行程不是日本外部公交行程")
+                    ?: error("当前行程不是外部分段导航")
                 val before = saved.progress ?: NavigationProgress(tourId = storedPlan.id)
                 if (before.legIndex != expectedLegIndex) {
                     error("当前分段已变化，请返回应用确认")
@@ -1386,7 +1423,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
                         plan = committedPlan,
                         progress = ended,
                         currentLocation = NavigationRuntime.state.value.currentLocation,
-                        instruction = "日本公交巡礼行程已结束",
+                        instruction = externalMapInstruction(committedPlan, ended),
                         isRunning = false,
                     ),
                 )
@@ -1859,7 +1896,7 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
         private const val ROUTE_REFRESH_REQUIRED_MESSAGE =
             "路线暂时无法刷新，请联网后重试；行程顺序和导航进度已保留"
         private const val EXTERNAL_CONTROL_REQUIRED_MESSAGE =
-            "请至少启用悬浮窗或可见的导航通知后再继续日本公交行程"
+            "请至少启用悬浮窗或可见的导航通知后再继续外部分段导航"
         private const val EXTERNAL_TRANSIT_SAVE_IN_PROGRESS_MESSAGE =
             "正在保存当前分段，请稍后重试"
         private const val STALE_EXTERNAL_TRANSIT_MESSAGE = "行程状态已变化，请重试"
@@ -1873,8 +1910,66 @@ class NavigationService : Service(), LocationListener, TextToSpeech.OnInitListen
 }
 
 private fun TourPlan?.isExternalJapanTransit(): Boolean =
-    this?.mode == TravelMode.TRANSIT &&
-        executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+    this?.executionStrategy?.isExternalMapNavigation() == true
+
+private fun TravelMode.externalModeLabel(): String = when (this) {
+    TravelMode.DRIVE -> "驾车导航"
+    TravelMode.BIKE -> "骑行导航"
+    TravelMode.WALK -> "步行导航"
+    TravelMode.TRANSIT -> "公交路线"
+}
+
+internal fun externalHandoffMismatch(plan: TourPlan, leg: TourLeg): String? = when {
+    plan.executionStrategy == TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES ->
+        "当前行程不是外部分段导航"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN &&
+        (plan.mode != TravelMode.TRANSIT || leg.mode != TravelMode.TRANSIT) ->
+        "Google 日本外部交接只支持公交分段"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN &&
+        (plan.mapProvider != MapProvider.GOOGLE || leg.provider != MapProvider.GOOGLE) ->
+        "Google 外部交接提供方不一致"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN &&
+        (plan.coordinateSystem != CoordinateSystem.WGS84 || leg.coordinateSystem != CoordinateSystem.WGS84) ->
+        "Google 外部交接坐标系不一致"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND &&
+        (plan.mapProvider != MapProvider.AMAP || leg.provider != MapProvider.AMAP) ->
+        "高德外部交接提供方不一致"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND &&
+        leg.geometry.isNotEmpty() &&
+        (plan.coordinateSystem != CoordinateSystem.GCJ02 || leg.coordinateSystem != CoordinateSystem.GCJ02) ->
+        "高德路线几何必须为 GCJ02"
+    else -> null
+}
+
+internal fun externalHandoffNames(plan: TourPlan, legIndex: Int): Pair<String, String> {
+    val leg = plan.legs.getOrNull(legIndex) ?: return "起点" to "终点"
+    fun pointName(pointId: String?): String? = pointId?.let { id ->
+        plan.selectedPoints.firstOrNull { it.id == id }?.name
+    }
+    val originName = pointName(plan.legs.getOrNull(legIndex - 1)?.destinationPointId)
+        ?: plan.selectedPoints.firstOrNull { it.coordinate == leg.from }?.name
+        ?: if (legIndex == 0) "当前位置" else "上一站"
+    val destinationName = pointName(leg.destinationPointId)
+        ?: plan.selectedPoints.firstOrNull { it.coordinate == leg.to }?.name
+        ?: "终点"
+    return originName to destinationName
+}
+
+internal fun externalLocationPermissionMessage(
+    strategy: TransitExecutionStrategy?,
+    resume: Boolean,
+): String = when {
+    strategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN && resume ->
+        "需要精确定位权限才能恢复日本公交行程"
+    strategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+        "需要精确定位权限才能继续日本公交行程"
+    strategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND && resume ->
+        "需要精确定位权限才能恢复高德地图外部分段导航"
+    strategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+        "需要精确定位权限才能继续高德地图外部分段导航"
+    resume -> "需要精确定位权限才能恢复外部分段导航"
+    else -> "需要精确定位权限才能继续外部分段导航"
+}
 
 internal fun externalTransitOverlayMustHideImmediately(progress: NavigationProgress): Boolean =
     progress.isPaused || progress.state in setOf(NavigationState.COMPLETED, NavigationState.ENDED)
@@ -1936,10 +2031,9 @@ internal fun locationForegroundRequestRequiresFinePermission(
 ): Boolean = requireFineLocation || externalLocationForegroundActionRequiresFinePermission(action)
 
 internal fun navigationPlanRequiresFineLocationForeground(
-    mode: TravelMode,
+    @Suppress("UNUSED_PARAMETER") mode: TravelMode,
     executionStrategy: TransitExecutionStrategy,
-): Boolean = mode == TravelMode.TRANSIT &&
-    executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+): Boolean = executionStrategy.isExternalMapNavigation()
 
 internal fun tryLocationForegroundPromotion(
     promote: () -> Unit,
@@ -2010,8 +2104,8 @@ internal fun navigationFailureMessage(throwable: Throwable): String = when (thro
     is ApiException.RateLimited -> "请求过于频繁，请稍后再试"
     is ApiException.Unauthenticated -> "匿名连接失败，请检查网络后重试"
     is ApiException.InvalidArgument -> "路线请求参数无效，请返回重新生成路线"
-    is ApiException.NoRoute, is ApiException.NotFound -> "Google 未找到可用路线，请返回重新生成"
-    is ApiException.UpstreamUnavailable -> "Google 路线服务暂时不可用，请稍后再试"
+    is ApiException.NoRoute, is ApiException.NotFound -> "未找到可用路线，请返回重新生成"
+    is ApiException.UpstreamUnavailable -> "路线服务暂时不可用，请稍后再试"
     is ApiException.BackendUnavailable, is ApiException.Server ->
         "路线服务暂时不可用；行程和导航进度仍保留在本机"
     is ApiException.Network -> "无法连接路线服务，请检查网络后重试"
@@ -2021,7 +2115,7 @@ internal fun navigationFailureMessage(throwable: Throwable): String = when (thro
     is MissingLocationPermissionException -> "需要定位权限才能开始导航"
     is LocationUnavailableException -> "暂时无法取得当前位置，请检查系统定位开关"
     is ExternalTransitControlUnavailableException ->
-        "请至少启用悬浮窗或可见的导航通知后再继续日本公交行程"
+        "请至少启用悬浮窗或可见的导航通知后再继续外部分段导航"
     else -> throwable.message ?: "无法开始连续导航"
 }
 

@@ -3,6 +3,8 @@ package cn.anitabi.navigator.core.routing
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.CoordinateSystem
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.RouteObjective
@@ -13,7 +15,12 @@ import cn.anitabi.navigator.core.model.TransitRoutingPreference
 import cn.anitabi.navigator.core.model.TransitTimeMode
 import cn.anitabi.navigator.core.model.TransitTravelMode
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.model.TerritoryRegion
 import cn.anitabi.navigator.core.region.JapanRegion
+import cn.anitabi.navigator.core.region.ResolvedJourneyProvider
+import cn.anitabi.navigator.core.region.JourneyProviderResolutionException
+import cn.anitabi.navigator.core.region.TerritoryRegionDataException
+import cn.anitabi.navigator.core.region.resolveJourneyProvider
 import cn.anitabi.navigator.data.network.ApiException
 import java.time.Duration
 import java.time.OffsetDateTime
@@ -29,9 +36,29 @@ class TourPlanner(
     private val transitProvider: TransitJourneyProvider,
     private val optimizer: TourOptimizer = TourOptimizer(),
     private val classifyRegion: (GeoPoint) -> JapanRegion = { JapanRegion.NON_JAPAN },
+    classifyTerritory: ((GeoPoint) -> TerritoryRegion?)? = null,
+    private val regionDataVersion: () -> String? = { null },
+    private val isProviderAvailable: (MapProvider) -> Boolean = { true },
 ) {
-    fun transitExecutionStrategy(points: List<PilgrimagePoint>): TransitExecutionStrategy =
-        classifyTransitExecutionStrategy(points, classifyRegion)
+    private val explicitTerritoryClassifier = classifyTerritory
+    private val classifyTerritoryPoint: (GeoPoint) -> TerritoryRegion? = classifyTerritory ?: { point ->
+        if (classifyRegion(point) == JapanRegion.JAPAN) TerritoryRegion.JAPAN else TerritoryRegion.OTHER
+    }
+
+    fun transitExecutionStrategy(points: List<PilgrimagePoint>): TransitExecutionStrategy {
+        require(points.isNotEmpty()) { "Select at least one pilgrimage point" }
+        return if (explicitTerritoryClassifier == null) {
+            classifyTransitExecutionStrategy(points, classifyRegion)
+        } else {
+            executionStrategy(TravelMode.TRANSIT, points.first().coordinate, points)
+        }
+    }
+
+    fun executionStrategy(
+        mode: TravelMode,
+        start: GeoPoint,
+        points: List<PilgrimagePoint>,
+    ): TransitExecutionStrategy = resolveRouting(mode, start, points).executionStrategy(mode)
 
     suspend fun planRoad(request: RoadPlanRequest): TourPlan {
         require(request.mode != TravelMode.TRANSIT) { "Road planner requires drive, bike or walk mode" }
@@ -49,6 +76,8 @@ class TourPlanner(
         } else {
             null
         }
+        val regionalRouting = resolveRouting(request.mode, request.start, request.selectedPoints)
+        val routingContext = regionalRouting.routingContext()
         val orderedStops = orderRoadStops(
             start = request.start,
             stops = stops,
@@ -56,10 +85,11 @@ class TourPlanner(
             objective = request.objective,
             endPolicy = request.endPolicy,
             fixedEndPointId = fixedEndPointId,
+            routingContext = routingContext,
         )
         val orderedPoints = listOfNotNull(startPoint) + orderedStops
         val routeCoordinates = buildRouteCoordinates(request.start, orderedStops, request.endPolicy)
-        val route = roadDirections(request.mode, routeCoordinates)
+        val route = roadDirections(request.mode, routeCoordinates, routingContext)
         return TourPlan(
             id = UUID.randomUUID().toString(),
             anime = request.anime,
@@ -75,9 +105,13 @@ class TourPlanner(
             objective = request.objective,
             endPolicy = request.endPolicy,
             estimatedDurationSeconds = route.segments.sumOf { it.durationSeconds },
-            attribution = listOf(GOOGLE_ROUTES_SOURCE, "Google"),
+            attribution = routingContext.attribution(),
             initialStart = request.start,
             state = NavigationState.PLANNED,
+            executionStrategy = regionalRouting.executionStrategy(request.mode),
+            mapProvider = routingContext.provider,
+            coordinateSystem = routingContext.responseCoordinateSystem,
+            regionDataVersion = regionDataVersion(),
         )
     }
 
@@ -87,10 +121,18 @@ class TourPlanner(
     ): TourPlan {
         require(request.selectedPoints.size >= 2) { "Select at least 2 pilgrimage points" }
         require(request.dwellMinutes >= 0) { "Dwell time cannot be negative" }
-        val executionStrategy = transitExecutionStrategy(request.selectedPoints)
+        val regionalRouting = resolveRouting(TravelMode.TRANSIT, request.start, request.selectedPoints)
+        val executionStrategy = regionalRouting.executionStrategy(TravelMode.TRANSIT)
+        if (executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND) {
+            require(request.timeMode != TransitTimeMode.ARRIVE_BY) {
+                "AMap transit does not support arrive-by planning"
+            }
+            require(request.transitTravelModes.isEmpty()) { "AMap transit does not support transit-mode filters" }
+        }
         if (executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
             return planExternalJapanTransit(request)
         }
+        val routingContext = regionalRouting.routingContext()
         val startPoint = request.startPointId?.let { id ->
             request.selectedPoints.singleOrNull { it.id == id }
                 ?: throw IllegalArgumentException("Start point must be selected")
@@ -111,6 +153,7 @@ class TourPlanner(
             transitTravelModes = request.transitTravelModes,
             dwellMinutes = request.dwellMinutes,
             returnToStart = request.endPolicy == EndPolicy.RETURN_TO_START,
+            routingContext = routingContext,
             onProgress = onProgress,
         )
         return TourPlan(
@@ -125,7 +168,7 @@ class TourPlanner(
             estimatedDurationSeconds = itinerary.estimatedDurationSeconds(
                 finalDwellMinutes = if (request.endPolicy == EndPolicy.RETURN_TO_START) 0 else request.dwellMinutes,
             ),
-            attribution = listOf(GOOGLE_ROUTES_SOURCE, "Google"),
+            attribution = routingContext.attribution(),
             departureTime = itinerary.departureTime,
             arrivalTime = itinerary.arrivalTime,
             transitTimeMode = request.timeMode,
@@ -140,6 +183,82 @@ class TourPlanner(
             initialStart = request.start,
             state = NavigationState.PLANNED,
             executionStrategy = executionStrategy,
+            mapProvider = routingContext.provider,
+            coordinateSystem = routingContext.responseCoordinateSystem,
+            regionDataVersion = regionDataVersion(),
+        )
+    }
+
+    fun planAmapExternalFallback(request: AmapExternalFallbackRequest): TourPlan {
+        require(request.selectedPoints.size >= 2) { "Select at least 2 pilgrimage points" }
+        require(
+            request.orderedPoints.size == request.selectedPoints.size &&
+                request.orderedPoints.map(PilgrimagePoint::id).toSet() ==
+                request.selectedPoints.map(PilgrimagePoint::id).toSet(),
+        ) {
+            "Fallback order must contain every selected point exactly once"
+        }
+        val selectedStart = request.startPointId?.let { id ->
+            request.selectedPoints.singleOrNull { it.id == id }
+                ?: throw IllegalArgumentException("Start point must be selected")
+        }
+        if (selectedStart != null) {
+            require(request.orderedPoints.firstOrNull()?.id == selectedStart.id) {
+                "Selected start must remain first in fallback order"
+            }
+        }
+        if (request.endPolicy == EndPolicy.FIXED) {
+            val fixedEndPointId = requireNotNull(request.fixedEndPointId) {
+                "A fixed end point is required"
+            }
+            require(fixedEndPointId != selectedStart?.id) {
+                "Fixed end must differ from the selected start"
+            }
+            require(request.orderedPoints.lastOrNull()?.id == fixedEndPointId) {
+                "Fixed end must remain last in fallback order"
+            }
+        }
+
+        val resolved = resolveRouting(request.mode, request.start, request.selectedPoints)
+        require(resolved.provider == MapProvider.AMAP) {
+            "External AMap fallback is only available for AMap journeys"
+        }
+        val fallbackRegionDataVersion = regionDataVersion()?.takeIf(String::isNotBlank)
+            ?: throw TerritoryRegionDataException("Approved region data version is unavailable")
+        val visits = if (selectedStart == null) {
+            request.orderedPoints
+        } else {
+            request.orderedPoints.drop(1)
+        }
+        return TourPlan(
+            id = UUID.randomUUID().toString(),
+            anime = request.anime,
+            selectedPoints = request.selectedPoints,
+            orderedPoints = request.orderedPoints,
+            legs = externalMapLegs(
+                start = request.start,
+                orderedPoints = visits,
+                endPolicy = request.endPolicy,
+                mode = request.mode,
+                strategy = TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND,
+                includeApproximateDistance = false,
+            ),
+            mode = request.mode,
+            objective = request.objective,
+            endPolicy = request.endPolicy,
+            estimatedDurationSeconds = 0.0,
+            attribution = listOf(EXTERNAL_AMAP_SOURCE),
+            transitTimeMode = TransitTimeMode.NOW,
+            transitRoutingPreference = TransitRoutingPreference.RECOMMENDED,
+            transitTravelModes = emptySet(),
+            dwellMinutes = request.dwellMinutes,
+            initialStart = request.start,
+            state = NavigationState.PLANNED,
+            executionStrategy = TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND,
+            mapProvider = MapProvider.AMAP,
+            coordinateSystem = CoordinateSystem.WGS84,
+            regionDataVersion = fallbackRegionDataVersion,
+            externalRouteFallback = true,
         )
     }
 
@@ -149,11 +268,16 @@ class TourPlanner(
         completedPointIds: Set<String>,
         currentTime: String,
     ): TourPlan {
-        if (plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
-            return replanExternalJapanTransit(plan, currentLocation, completedPointIds)
-        }
         val remaining = plan.orderedPoints.filterNot { it.id in completedPointIds }
         val originalStart = plan.initialStart ?: plan.legs.firstOrNull()?.from ?: currentLocation
+        requirePlanRouting(plan, currentLocation, remaining, originalStart)
+        if (
+            plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ||
+            plan.isAmapExternalFallback()
+        ) {
+            return replanExternalJapanTransit(plan, currentLocation, completedPointIds)
+        }
+        val routingContext = plan.routingContext()
         if (remaining.isEmpty()) {
             val returnItinerary = if (plan.endPolicy != EndPolicy.RETURN_TO_START) {
                 null
@@ -168,6 +292,7 @@ class TourPlanner(
                     dwellMinutes = plan.dwellMinutes,
                     returnToStart = true,
                     returnDestination = originalStart,
+                    routingContext = routingContext,
                 )
             } else {
                 null
@@ -178,7 +303,7 @@ class TourPlanner(
                 requireNotNull(returnItinerary).legs
             } else {
                 val coordinates = listOf(currentLocation, originalStart)
-                roadDirections(plan.mode, coordinates).toTourLegs(
+                roadDirections(plan.mode, coordinates, routingContext).toTourLegs(
                     points = coordinates,
                     mode = plan.mode,
                     destinationPointIds = listOf(null),
@@ -194,6 +319,8 @@ class TourPlanner(
                 transitTimeMode = if (plan.mode == TravelMode.TRANSIT) TransitTimeMode.NOW else plan.transitTimeMode,
                 transitAnchorTime = if (plan.mode == TravelMode.TRANSIT) null else plan.transitAnchorTime,
                 initialStart = originalStart,
+                mapProvider = routingContext.provider,
+                coordinateSystem = routingContext.responseCoordinateSystem,
             )
         }
 
@@ -219,6 +346,7 @@ class TourPlanner(
                 dwellMinutes = plan.dwellMinutes,
                 returnToStart = plan.endPolicy == EndPolicy.RETURN_TO_START,
                 returnDestination = originalStart,
+                routingContext = routingContext,
             )
             legs = transitItinerary.legs
         } else {
@@ -229,10 +357,11 @@ class TourPlanner(
                 objective = plan.objective,
                 endPolicy = plan.endPolicy,
                 fixedEndPointId = if (plan.endPolicy == EndPolicy.FIXED) remaining.last().id else null,
+                routingContext = routingContext,
             )
             val coordinates = listOf(currentLocation) + orderedRemaining.map { it.coordinate } +
                 if (plan.endPolicy == EndPolicy.RETURN_TO_START) listOf(originalStart) else emptyList()
-            legs = roadDirections(plan.mode, coordinates).toTourLegs(
+            legs = roadDirections(plan.mode, coordinates, routingContext).toTourLegs(
                 points = coordinates,
                 mode = plan.mode,
                 destinationPointIds = orderedRemaining.map { it.id } +
@@ -250,6 +379,8 @@ class TourPlanner(
             transitTimeMode = if (plan.mode == TravelMode.TRANSIT) TransitTimeMode.NOW else plan.transitTimeMode,
             transitAnchorTime = if (plan.mode == TravelMode.TRANSIT) null else plan.transitAnchorTime,
             initialStart = originalStart,
+            mapProvider = routingContext.provider,
+            coordinateSystem = routingContext.responseCoordinateSystem,
         )
     }
 
@@ -260,11 +391,29 @@ class TourPlanner(
         ) {
             "Manual order must contain every selected point exactly once"
         }
-        if (plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
-            val start = plan.initialStart ?: orderedPoints.first().coordinate
+        val start = plan.initialStart ?: plan.legs.firstOrNull()?.from ?: orderedPoints.first().coordinate
+        requirePlanRouting(plan, start, orderedPoints, plan.initialStart ?: start)
+        if (
+            plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ||
+            plan.isAmapExternalFallback()
+        ) {
+            val externalPoints = if (
+                plan.isAmapExternalFallback() && orderedPoints.firstOrNull()?.coordinate == start
+            ) {
+                orderedPoints.drop(1)
+            } else {
+                orderedPoints
+            }
             return plan.copy(
                 orderedPoints = orderedPoints,
-                legs = externalJapanLegs(start, orderedPoints, plan.endPolicy),
+                legs = externalMapLegs(
+                    start = start,
+                    orderedPoints = externalPoints,
+                    endPolicy = plan.endPolicy,
+                    mode = plan.mode,
+                    strategy = plan.executionStrategy,
+                    includeApproximateDistance = !plan.isAmapExternalFallback(),
+                ),
                 estimatedDurationSeconds = 0.0,
                 departureTime = null,
                 arrivalTime = null,
@@ -274,7 +423,7 @@ class TourPlanner(
                 transitTravelModes = emptySet(),
             )
         }
-        val start = plan.initialStart ?: plan.legs.firstOrNull()?.from ?: orderedPoints.first().coordinate
+        val routingContext = plan.routingContext()
         val visits = if (orderedPoints.firstOrNull()?.coordinate == start) orderedPoints.drop(1) else orderedPoints
         var transitItinerary: BuiltTransitItinerary? = null
         val legs = if (plan.mode == TravelMode.TRANSIT) {
@@ -293,6 +442,7 @@ class TourPlanner(
                 transitTravelModes = plan.transitTravelModes,
                 dwellMinutes = plan.dwellMinutes,
                 returnToStart = plan.endPolicy == EndPolicy.RETURN_TO_START,
+                routingContext = routingContext,
             )
             transitItinerary.legs
         } else {
@@ -302,6 +452,7 @@ class TourPlanner(
                 coordinates = coordinates,
                 destinationPointIds = visits.map { it.id } +
                     if (plan.endPolicy == EndPolicy.RETURN_TO_START) listOf(null) else emptyList(),
+                routingContext = routingContext,
             )
         }
         return plan.copy(
@@ -312,6 +463,8 @@ class TourPlanner(
             ) ?: legs.sumOf(TourLeg::durationSeconds),
             departureTime = transitItinerary?.departureTime ?: plan.departureTime,
             arrivalTime = transitItinerary?.arrivalTime ?: plan.arrivalTime,
+            mapProvider = routingContext.provider,
+            coordinateSystem = routingContext.responseCoordinateSystem,
         )
     }
 
@@ -323,15 +476,23 @@ class TourPlanner(
         reusableRoadLegs: List<TourLeg>,
     ): ActiveFutureSuffix {
         val originalStart = plan.initialStart ?: start
-        if (plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
-            val legs = externalJapanLegs(
+        requirePlanRouting(plan, start, orderedFuturePoints, originalStart)
+        if (
+            plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ||
+            plan.isAmapExternalFallback()
+        ) {
+            val legs = externalMapLegs(
                 start = start,
                 orderedPoints = orderedFuturePoints,
                 endPolicy = plan.endPolicy,
                 returnDestination = originalStart,
+                mode = plan.mode,
+                strategy = plan.executionStrategy,
+                includeApproximateDistance = !plan.isAmapExternalFallback(),
             )
             return ActiveFutureSuffix(legs = legs, estimatedDurationSeconds = 0.0)
         }
+        val routingContext = plan.routingContext()
         if (plan.mode == TravelMode.TRANSIT) {
             val itinerary = buildTransitItinerary(
                 start = start,
@@ -343,6 +504,7 @@ class TourPlanner(
                 dwellMinutes = plan.dwellMinutes,
                 returnToStart = plan.endPolicy == EndPolicy.RETURN_TO_START,
                 returnDestination = originalStart,
+                routingContext = routingContext,
             )
             return ActiveFutureSuffix(
                 legs = itinerary.legs,
@@ -368,6 +530,7 @@ class TourPlanner(
                 plan = plan.copy(legs = reusableRoadLegs),
                 coordinates = coordinates,
                 destinationPointIds = destinationPointIds,
+                routingContext = routingContext,
             )
         }
         return ActiveFutureSuffix(
@@ -386,6 +549,7 @@ class TourPlanner(
         dwellMinutes: Int,
         returnToStart: Boolean,
         returnDestination: GeoPoint = start,
+        routingContext: RoutingProviderContext,
         onProgress: (completedSegments: Int, segmentCount: Int) -> Unit = { _, _ -> },
     ): BuiltTransitItinerary {
         val destinations = orderedStops.map { it.coordinate } +
@@ -403,6 +567,7 @@ class TourPlanner(
                 routingPreference = routingPreference,
                 transitTravelModes = transitTravelModes,
                 dwellMinutes = dwellMinutes,
+                routingContext = routingContext,
                 onProgress = onProgress,
             )
         } else {
@@ -414,6 +579,7 @@ class TourPlanner(
                 routingPreference = routingPreference,
                 transitTravelModes = transitTravelModes,
                 dwellMinutes = dwellMinutes,
+                routingContext = routingContext,
                 onProgress = onProgress,
             )
         }
@@ -436,6 +602,7 @@ class TourPlanner(
         routingPreference: TransitRoutingPreference,
         transitTravelModes: Set<TransitTravelMode>,
         dwellMinutes: Int,
+        routingContext: RoutingProviderContext,
         onProgress: (completedSegments: Int, segmentCount: Int) -> Unit,
     ): BuiltTransitItinerary {
         val legs = mutableListOf<TourLeg>()
@@ -454,6 +621,7 @@ class TourPlanner(
                 ),
                 segmentIndex = index,
                 segmentCount = destinations.size,
+                routingContext = routingContext,
             )
             if (index == 0) {
                 actualDeparture = formatTransitDepartureTime(OffsetDateTime.parse(journey.departureTime))
@@ -479,6 +647,7 @@ class TourPlanner(
         routingPreference: TransitRoutingPreference,
         transitTravelModes: Set<TransitTravelMode>,
         dwellMinutes: Int,
+        routingContext: RoutingProviderContext,
         onProgress: (completedSegments: Int, segmentCount: Int) -> Unit,
     ): BuiltTransitItinerary {
         val origins = listOf(start) + destinations.dropLast(1)
@@ -498,6 +667,7 @@ class TourPlanner(
                 ),
                 segmentIndex = index,
                 segmentCount = destinations.size,
+                routingContext = routingContext,
             )
             if (index == destinations.lastIndex) {
                 actualArrival = formatTransitDepartureTime(OffsetDateTime.parse(journey.arrivalTime))
@@ -521,13 +691,14 @@ class TourPlanner(
         query: TransitJourneyQuery,
         segmentIndex: Int,
         segmentCount: Int,
+        routingContext: RoutingProviderContext,
     ): TransitJourney = if (from == to) {
-        walkingConnector(from, to, query)
+        walkingConnector(from, to, query, routingContext)
     } else try {
-        transitProvider.journey(from, to, query)
+        transitJourney(from, to, query, routingContext)
     } catch (transitFailure: ApiException.NoRoute) {
         try {
-            walkingConnector(from, to, query)
+            walkingConnector(from, to, query, routingContext)
         } catch (walkingFailure: ApiException.NoRoute) {
             throw TransitSegmentUnavailableException(
                 segmentNumber = segmentIndex + 1,
@@ -543,20 +714,27 @@ class TourPlanner(
         from: GeoPoint,
         to: GeoPoint,
         query: TransitJourneyQuery,
+        routingContext: RoutingProviderContext,
     ): TransitJourney {
         val route = if (from == to) {
             RoadRoute(
                 listOf(
                     RoadRouteSegment(
-                        geometry = listOf(from),
+                        geometry = if (routingContext.responseCoordinateSystem == CoordinateSystem.WGS84) {
+                            listOf(from)
+                        } else {
+                            emptyList()
+                        },
                         steps = emptyList(),
                         distanceMeters = 0.0,
                         durationSeconds = 0.0,
+                        provider = routingContext.provider,
+                        coordinateSystem = routingContext.responseCoordinateSystem,
                     ),
                 ),
             )
         } else {
-            roadProvider.directions(TravelMode.WALK, listOf(from, to))
+            roadDirections(TravelMode.WALK, listOf(from, to), routingContext)
         }
         if (route.segments.size != 1) {
             throw ApiException.InvalidResponse(IllegalStateException("Walking connector must contain one segment"))
@@ -596,6 +774,7 @@ class TourPlanner(
         objective: RouteObjective,
         endPolicy: EndPolicy,
         fixedEndPointId: String?,
+        routingContext: RoutingProviderContext,
     ): List<PilgrimagePoint> {
         val approximate = optimizer.approximateGlobalOrder(
             start = start,
@@ -606,10 +785,11 @@ class TourPlanner(
         val refined = ArrayList<PilgrimagePoint>(approximate.size)
         var anchor = start
         approximate.chunked(TourRequestBatcher.MAX_MATRIX_LOCATIONS - 1).forEachIndexed { index, window ->
-            val matrix = roadProvider.matrix(
+            val matrix = roadMatrixProvider(
                 mode = mode,
                 points = listOf(anchor) + window.map(PilgrimagePoint::coordinate),
                 objective = objective,
+                routingContext = routingContext,
             )
             val costs = when (objective) {
                 RouteObjective.FASTEST -> matrix.durations
@@ -630,16 +810,32 @@ class TourPlanner(
         return refined
     }
 
-    private suspend fun roadDirections(mode: TravelMode, locations: List<GeoPoint>): RoadRoute = RoadRoute(
-        segments = TourRequestBatcher.routeBatches(locations).flatMap { batch ->
-            roadProvider.directions(mode, batch).segments
-        },
-    )
+    private suspend fun roadDirections(
+        mode: TravelMode,
+        locations: List<GeoPoint>,
+        routingContext: RoutingProviderContext,
+    ): RoadRoute {
+        val segments = TourRequestBatcher.routeBatches(locations).flatMap { batch ->
+            roadDirectionsProvider(mode, batch, routingContext).segments
+        }
+        if (
+            segments.any {
+                it.provider != routingContext.provider ||
+                    it.coordinateSystem != routingContext.responseCoordinateSystem
+            }
+        ) {
+            throw ApiException.InvalidResponse(
+                IllegalStateException("Route segments mix providers or coordinate systems"),
+            )
+        }
+        return RoadRoute(segments)
+    }
 
     private suspend fun refreshChangedRoadLegs(
         plan: TourPlan,
         coordinates: List<GeoPoint>,
         destinationPointIds: List<String?>,
+        routingContext: RoutingProviderContext,
     ): List<TourLeg> {
         val legCount = coordinates.size - 1
         val usedLegIndexes = mutableSetOf<Int>()
@@ -647,6 +843,8 @@ class TourPlanner(
             val reusableIndex = plan.legs.indices.firstOrNull { candidateIndex ->
                 candidateIndex !in usedLegIndexes && plan.legs[candidateIndex].let { candidate ->
                     candidate.mode == plan.mode &&
+                        candidate.provider == routingContext.provider &&
+                        candidate.coordinateSystem == routingContext.responseCoordinateSystem &&
                         candidate.from == coordinates[index] &&
                         candidate.to == coordinates[index + 1] &&
                         candidate.destinationPointId == destinationPointIds.getOrNull(index)
@@ -664,7 +862,7 @@ class TourPlanner(
 
         changedLegRanges(changedIndexes).forEach { range ->
             val requestPoints = coordinates.slice(range.first..range.last + 1)
-            val segments = roadProvider.directions(plan.mode, requestPoints).segments
+            val segments = roadDirectionsProvider(plan.mode, requestPoints, routingContext).segments
             check(segments.size == range.count()) { "Route leg count does not match changed locations" }
             segments.forEachIndexed { offset, segment ->
                 val index = range.first + offset
@@ -676,7 +874,9 @@ class TourPlanner(
                     steps = segment.steps,
                     distanceMeters = segment.distanceMeters,
                     durationSeconds = segment.durationSeconds,
-                    source = GOOGLE_ROUTES_SOURCE,
+                    source = segment.provider.routeSource(),
+                    provider = segment.provider,
+                    coordinateSystem = segment.coordinateSystem,
                     destinationPointId = destinationPointIds.getOrNull(index),
                 )
             }
@@ -716,7 +916,9 @@ class TourPlanner(
                 steps = segment.steps,
                 distanceMeters = segment.distanceMeters,
                 durationSeconds = segment.durationSeconds,
-                source = GOOGLE_ROUTES_SOURCE,
+                source = segment.provider.routeSource(),
+                provider = segment.provider,
+                coordinateSystem = segment.coordinateSystem,
                 destinationPointId = destinationPointIds.getOrNull(index),
             )
         }
@@ -747,7 +949,13 @@ class TourPlanner(
             anime = request.anime,
             selectedPoints = request.selectedPoints,
             orderedPoints = orderedPoints,
-            legs = externalJapanLegs(request.start, orderedPoints, request.endPolicy),
+            legs = externalMapLegs(
+                start = request.start,
+                orderedPoints = orderedPoints,
+                endPolicy = request.endPolicy,
+                mode = TravelMode.TRANSIT,
+                strategy = TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN,
+            ),
             mode = TravelMode.TRANSIT,
             objective = RouteObjective.FASTEST,
             endPolicy = request.endPolicy,
@@ -760,7 +968,76 @@ class TourPlanner(
             initialStart = request.start,
             state = NavigationState.PLANNED,
             executionStrategy = TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN,
+            mapProvider = MapProvider.GOOGLE,
+            coordinateSystem = CoordinateSystem.WGS84,
+            regionDataVersion = regionDataVersion(),
         )
+    }
+
+    private suspend fun transitJourney(
+        from: GeoPoint,
+        to: GeoPoint,
+        query: TransitJourneyQuery,
+        routingContext: RoutingProviderContext,
+    ): TransitJourney {
+        val provider = transitProvider as? ProviderAwareTransitJourneyProvider
+            ?: requireGoogleOnlyProvider(routingContext, "transit") { transitProvider }
+        val journey = if (provider is ProviderAwareTransitJourneyProvider) {
+            provider.journey(from, to, query, routingContext)
+        } else {
+            provider.journey(from, to, query)
+        }
+        if (
+            journey.legs.any {
+                it.provider != routingContext.provider ||
+                    it.coordinateSystem != routingContext.responseCoordinateSystem
+            }
+        ) {
+            throw ApiException.InvalidResponse(
+                IllegalStateException("Transit legs mix providers or coordinate systems"),
+            )
+        }
+        return journey
+    }
+
+    private suspend fun roadMatrixProvider(
+        mode: TravelMode,
+        points: List<GeoPoint>,
+        objective: RouteObjective,
+        routingContext: RoutingProviderContext,
+    ): TravelMatrix {
+        val provider = roadProvider as? ProviderAwareRoadRoutingProvider
+            ?: requireGoogleOnlyProvider(routingContext, "road matrix") { roadProvider }
+        return if (provider is ProviderAwareRoadRoutingProvider) {
+            provider.matrix(mode, points, objective, routingContext)
+        } else {
+            provider.matrix(mode, points, objective)
+        }
+    }
+
+    private suspend fun roadDirectionsProvider(
+        mode: TravelMode,
+        points: List<GeoPoint>,
+        routingContext: RoutingProviderContext,
+    ): RoadRoute {
+        val provider = roadProvider as? ProviderAwareRoadRoutingProvider
+            ?: requireGoogleOnlyProvider(routingContext, "road route") { roadProvider }
+        return if (provider is ProviderAwareRoadRoutingProvider) {
+            provider.directions(mode, points, routingContext)
+        } else {
+            provider.directions(mode, points)
+        }
+    }
+
+    private fun <T> requireGoogleOnlyProvider(
+        routingContext: RoutingProviderContext,
+        operation: String,
+        provider: () -> T,
+    ): T {
+        require(routingContext == RoutingProviderContext.GOOGLE) {
+            "$operation provider does not support explicit AMap dispatch"
+        }
+        return provider()
     }
 
     private fun replanExternalJapanTransit(
@@ -770,11 +1047,14 @@ class TourPlanner(
     ): TourPlan {
         val remaining = plan.orderedPoints.filterNot { it.id in completedPointIds }
         val originalStart = plan.initialStart ?: currentLocation
-        val legs = externalJapanLegs(
+        val legs = externalMapLegs(
             start = currentLocation,
             orderedPoints = remaining,
             endPolicy = plan.endPolicy,
             returnDestination = originalStart,
+            mode = plan.mode,
+            strategy = plan.executionStrategy,
+            includeApproximateDistance = !plan.isAmapExternalFallback(),
         )
         return plan.copy(
             orderedPoints = remaining,
@@ -790,11 +1070,14 @@ class TourPlanner(
         )
     }
 
-    private fun externalJapanLegs(
+    private fun externalMapLegs(
         start: GeoPoint,
         orderedPoints: List<PilgrimagePoint>,
         endPolicy: EndPolicy,
+        mode: TravelMode,
+        strategy: TransitExecutionStrategy,
         returnDestination: GeoPoint = start,
+        includeApproximateDistance: Boolean = true,
     ): List<TourLeg> {
         val destinations = orderedPoints.map(PilgrimagePoint::coordinate) +
             if (endPolicy == EndPolicy.RETURN_TO_START) listOf(returnDestination) else emptyList()
@@ -805,17 +1088,117 @@ class TourPlanner(
             TourLeg(
                 from = origin,
                 to = destination,
-                mode = TravelMode.TRANSIT,
+                mode = mode,
                 geometry = emptyList(),
                 steps = emptyList(),
-                distanceMeters = TourOptimizer.haversineMeters(origin, destination),
+                distanceMeters = if (includeApproximateDistance) {
+                    TourOptimizer.haversineMeters(origin, destination)
+                } else {
+                    0.0
+                },
                 durationSeconds = 0.0,
-                source = EXTERNAL_GOOGLE_MAPS_SOURCE,
+                source = if (strategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND) {
+                    EXTERNAL_AMAP_SOURCE
+                } else {
+                    EXTERNAL_GOOGLE_MAPS_SOURCE
+                },
+                provider = if (strategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND) {
+                    MapProvider.AMAP
+                } else {
+                    MapProvider.GOOGLE
+                },
+                coordinateSystem = CoordinateSystem.WGS84,
                 destinationPointId = destinationIds[index],
             ).also { origin = destination }
         }
     }
 
+    private fun resolveRouting(
+        mode: TravelMode,
+        start: GeoPoint,
+        points: List<PilgrimagePoint>,
+    ): ResolvedJourneyProvider = resolveRoutingCoordinates(
+        mode = mode,
+        start = start,
+        destinations = points.map(PilgrimagePoint::coordinate),
+    )
+
+    private fun resolveRoutingCoordinates(
+        mode: TravelMode,
+        start: GeoPoint,
+        destinations: List<GeoPoint>,
+    ): ResolvedJourneyProvider = try {
+        resolveJourneyProvider(
+            start = start,
+            destinations = destinations,
+            mode = mode,
+            classify = classifyTerritoryPoint,
+        ).also { resolved ->
+            if (!isProviderAvailable(resolved.provider)) {
+                throw MapProviderUnavailableException(resolved.provider)
+            }
+        }
+    } catch (exception: JourneyProviderResolutionException.MixedTransitRegions) {
+        if (explicitTerritoryClassifier == null) throw MixedTransitRegionException()
+        throw exception
+    }
+
+    private fun requirePlanRouting(
+        plan: TourPlan,
+        start: GeoPoint,
+        orderedPoints: List<PilgrimagePoint>,
+        returnDestination: GeoPoint,
+    ) {
+        val destinations = orderedPoints.map(PilgrimagePoint::coordinate) +
+            if (plan.endPolicy == EndPolicy.RETURN_TO_START) listOf(returnDestination) else emptyList()
+        val resolved = resolveRoutingCoordinates(plan.mode, start, destinations)
+        require(
+            resolved.provider == plan.mapProvider &&
+                resolved.executionStrategy(plan.mode) == plan.executionStrategy,
+        ) {
+            "Map provider no longer matches the current journey"
+        }
+    }
+
+}
+
+private fun ResolvedJourneyProvider.executionStrategy(mode: TravelMode): TransitExecutionStrategy = when {
+    provider == MapProvider.AMAP -> TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND
+    mode == TravelMode.TRANSIT && regions == setOf(TerritoryRegion.JAPAN) ->
+        TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
+    else -> TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
+}
+
+private fun ResolvedJourneyProvider.routingContext(): RoutingProviderContext = when (provider) {
+    MapProvider.GOOGLE -> RoutingProviderContext.GOOGLE
+    MapProvider.AMAP -> RoutingProviderContext.AMAP
+}
+
+private fun TourPlan.routingContext(): RoutingProviderContext = when {
+    mapProvider == MapProvider.GOOGLE && coordinateSystem == CoordinateSystem.WGS84 ->
+        RoutingProviderContext.GOOGLE
+    mapProvider == MapProvider.AMAP && coordinateSystem == CoordinateSystem.GCJ02 ->
+        RoutingProviderContext.AMAP
+    mapProvider == MapProvider.AMAP &&
+        coordinateSystem == CoordinateSystem.WGS84 &&
+        legs.all { it.geometry.isEmpty() } -> RoutingProviderContext.AMAP
+    else -> throw IllegalArgumentException("Tour provider and route coordinate system do not match")
+}
+
+internal fun TourPlan.isAmapExternalFallback(): Boolean =
+    externalRouteFallback &&
+    executionStrategy == TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND &&
+        mapProvider == MapProvider.AMAP &&
+        coordinateSystem == CoordinateSystem.WGS84
+
+private fun RoutingProviderContext.attribution(): List<String> = when (provider) {
+    MapProvider.GOOGLE -> listOf(GOOGLE_ROUTES_SOURCE, "Google")
+    MapProvider.AMAP -> listOf(AMAP_WEB_SERVICE_SOURCE, "AMap")
+}
+
+private fun MapProvider.routeSource(): String = when (this) {
+    MapProvider.GOOGLE -> GOOGLE_ROUTES_SOURCE
+    MapProvider.AMAP -> AMAP_WEB_SERVICE_SOURCE
 }
 
 private val transitDepartureTimeFormatter = DateTimeFormatterBuilder()
@@ -854,6 +1237,19 @@ data class TransitPlanRequest(
     val dwellMinutes: Int = 15,
 )
 
+data class AmapExternalFallbackRequest(
+    val anime: Anime,
+    val selectedPoints: List<PilgrimagePoint>,
+    val orderedPoints: List<PilgrimagePoint>,
+    val start: GeoPoint,
+    val startPointId: String? = null,
+    val mode: TravelMode,
+    val objective: RouteObjective,
+    val endPolicy: EndPolicy,
+    val fixedEndPointId: String? = null,
+    val dwellMinutes: Int = 15,
+)
+
 private data class BuiltTransitItinerary(
     val legs: List<TourLeg>,
     val departureTime: String,
@@ -882,9 +1278,14 @@ class TransitSegmentUnavailableException(
 
 class TransitRideUnavailableException : Exception("Transit itinerary contains no transit ride")
 
+class MapProviderUnavailableException(
+    val provider: MapProvider,
+) : IllegalStateException("${provider.name} map provider is not available")
+
 const val MIXED_TRANSIT_REGION_MESSAGE = "不支持此操作，请去除日本或日本以外的点。"
 const val REGION_DATA_ERROR_MESSAGE = "地区数据无法读取，请重新安装应用后重试"
 const val EXTERNAL_GOOGLE_MAPS_SOURCE = "Google Maps"
+const val EXTERNAL_AMAP_SOURCE = "AMap"
 
 class MixedTransitRegionException : IllegalArgumentException(MIXED_TRANSIT_REGION_MESSAGE)
 

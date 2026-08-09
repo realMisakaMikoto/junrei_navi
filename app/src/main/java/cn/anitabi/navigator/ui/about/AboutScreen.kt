@@ -55,10 +55,15 @@ import cn.anitabi.navigator.ui.theme.Vermilion
 fun AboutScreen(
     onBack: () -> Unit,
     telemetryConsentController: TelemetryConsentController,
+    amapPrivacyConsentEnabled: Boolean = false,
+    onAmapPrivacyConsentChange: (Boolean) -> Unit = {},
 ) {
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     var telemetryConsent by remember(telemetryConsentController) {
         mutableStateOf(telemetryConsentController.currentConsent())
+    }
+    var amapPrivacyConsent by remember(amapPrivacyConsentEnabled) {
+        mutableStateOf(amapPrivacyConsentEnabled)
     }
 
     Surface(
@@ -87,11 +92,32 @@ fun AboutScreen(
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Text(
-                            "规划或偏航重算时，必要坐标、模式和出发时间会经自建服务发送给 Google。Firebase 匿名身份不需要邮箱、姓名或密码；Analytics 与 Crashlytics 默认关闭。",
+                            "规划或偏航重算时，必要坐标、模式和出发时间会经自建服务发送给当前地区对应的路线提供方。Firebase 匿名身份不需要邮箱、姓名或密码；Analytics 与 Crashlytics 默认关闭。",
                             color = MutedInk,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp),
                         )
+                    }
+                }
+                item {
+                    Column(modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth()) {
+                        SectionHeading("高德地图隐私授权")
+                        Surface(
+                            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            shape = RoundedCornerShape(16.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
+                        ) {
+                            TelemetryConsentRow(
+                                title = "允许高德地图 SDK",
+                                description = "仅在选择高德提供方时使用。关闭会先销毁正在显示的高德地图，再撤回 SDK 隐私授权；Google 地区和本地行程仍可使用。",
+                                checked = amapPrivacyConsent,
+                                onCheckedChange = { enabled ->
+                                    onAmapPrivacyConsentChange(enabled)
+                                    amapPrivacyConsent = enabled
+                                },
+                            )
+                        }
                     }
                 }
                 item {
@@ -145,20 +171,20 @@ fun AboutScreen(
                         SourceLink("Google Navigation SDK 与 Routes API") {
                             uriHandler.openUri("https://developers.google.com/maps/documentation/navigation/android-sdk")
                         }
+                        SourceLink("高德地图 Android SDK") {
+                            uriHandler.openUri("https://lbs.amap.com/api/android-sdk/summary")
+                        }
                         SourceLink("Firebase") {
                             uriHandler.openUri("https://firebase.google.com/")
                         }
-                        SourceLink("Natural Earth · 日本边界 v5.1.1") {
-                            uriHandler.openUri("https://www.naturalearthdata.com/")
-                        }
                         Text(
-                            "道路导航使用 Navigation SDK；日本以外的公共交通使用 Routes API。日本公交只在本机排序，并由用户逐段交给 Google 地图，不经过路线后端。",
+                            "路线会先按起点和所有目的地解析为单一地图提供方。Google 与高德的路线和地图内容不会混合显示；高德道路及公交由后端规划，导航执行交给高德地图。日本公交仍在本机排序并逐段交给 Google 地图。",
                             color = MutedInk,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp),
                         )
                         Text(
-                            "日本地区由随 APK 固定携带的 Natural Earth 边界离线判定；日本与日本以外点不能混合生成同一条公交行程。",
+                            "地区判定只使用经过批准且带版本和校验信息的离线数据；数据缺失、损坏、边界重叠或无法判定时会停止地图与路线请求。日本与日本以外点不能混合生成同一条公交行程。",
                             color = MutedInk,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 6.dp),

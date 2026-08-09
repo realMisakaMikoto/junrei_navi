@@ -18,13 +18,16 @@ import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.model.isExternalMapNavigation
 import cn.anitabi.navigator.core.region.JapanRegionDataException
+import cn.anitabi.navigator.core.region.TerritoryRegionDataException
 import cn.anitabi.navigator.core.routing.ActiveTourEditException
 import cn.anitabi.navigator.core.routing.MixedTransitRegionException
 import cn.anitabi.navigator.core.routing.REGION_DATA_ERROR_MESSAGE
 import cn.anitabi.navigator.core.routing.TourPlanner
 import cn.anitabi.navigator.core.routing.editActiveTourFuture
 import cn.anitabi.navigator.data.repository.SavedTour
+import cn.anitabi.navigator.data.repository.StoredRoutingError
 import cn.anitabi.navigator.data.repository.TourRepository
 import kotlin.coroutines.resume
 import kotlinx.coroutines.CancellationException
@@ -61,6 +64,21 @@ class NavigationViewModel(
                     }
                     return@launch
                 }
+                saved.routingError?.let { routingError ->
+                    NavigationRuntime.update { current ->
+                        navigationRuntimeAfterColdRecovery(
+                            current = current,
+                            recovered = NavigationRuntimeState(
+                                plan = saved.plan,
+                                progress = saved.progress,
+                                instruction = "地区地图提供方尚未安全解析",
+                                isRunning = false,
+                                errorMessage = storedRoutingErrorMessage(routingError),
+                            ),
+                        )
+                    }
+                    return@launch
+                }
                 val progress = saved.progress ?: run {
                     ActiveNavigationStore.clear(context, saved.plan.id)
                     return@launch
@@ -73,7 +91,7 @@ class NavigationViewModel(
                     return@launch
                 }
                 if (NavigationRuntime.state.value.isRunning) return@launch
-                if (saved.plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
+                if (saved.plan.executionStrategy.isExternalMapNavigation()) {
                     val restoredPlan = restoreExternalJapanControlPlan(
                         plan = saved.plan,
                         routeNeedsRefresh = saved.routeNeedsRefresh,
@@ -85,11 +103,7 @@ class NavigationViewModel(
                             recovered = NavigationRuntimeState(
                                 plan = restoredPlan,
                                 progress = progress,
-                                instruction = if (progress.isPaused) {
-                                    "已恢复暂停的日本公交行程，请手动恢复"
-                                } else {
-                                    "已恢复日本公交行程，不会自动打开 Google 地图"
-                                },
+                                instruction = externalRecoveryInstruction(restoredPlan, progress.isPaused),
                                 isRunning = false,
                                 errorMessage = "请手动继续当前分段",
                             ),
@@ -108,7 +122,9 @@ class NavigationViewModel(
             } catch (exception: CancellationException) {
                 throw exception
             } catch (exception: Exception) {
-                val message = if (exception is JapanRegionDataException) {
+                val message = if (
+                    exception is JapanRegionDataException || exception is TerritoryRegionDataException
+                ) {
                     REGION_DATA_ERROR_MESSAGE
                 } else {
                     exception.message ?: "无法恢复导航行程，请稍后重试"
@@ -119,12 +135,16 @@ class NavigationViewModel(
     }
 
     fun start(plan: TourPlan) {
+        externalPlanStartMismatch(plan)?.let { message ->
+            NavigationRuntime.update { it.copy(plan = plan, isRunning = false, errorMessage = message) }
+            return
+        }
         if (
             navigationPlanRequiresFineLocationForeground(plan.mode, plan.executionStrategy) &&
             !AndroidLocationProvider.hasFineLocationPermission(getApplication())
         ) {
             NavigationRuntime.update {
-                it.copy(errorMessage = "需要精确定位权限才能继续日本公交分段导航")
+                it.copy(errorMessage = externalFineLocationMessage(plan, resume = false))
             }
             return
         }
@@ -160,7 +180,7 @@ class NavigationViewModel(
         val currentPlan = runtime.plan
         val progress = runtime.progress
         if (
-            currentPlan?.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN &&
+            currentPlan?.executionStrategy?.isExternalMapNavigation() == true &&
             progress != null
         ) {
             openHandoff(TransitHandoffActivity.MODE_END, currentPlan, progress.legIndex)
@@ -176,7 +196,7 @@ class NavigationViewModel(
         val currentPlan = runtime.plan
         val progress = runtime.progress
         if (
-            currentPlan?.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN &&
+            currentPlan?.executionStrategy?.isExternalMapNavigation() == true &&
             progress != null
         ) {
             openHandoff(TransitHandoffActivity.MODE_CONFIRM_ARRIVAL, currentPlan, progress.legIndex)
@@ -218,7 +238,7 @@ class NavigationViewModel(
         val currentPlan = state.value.plan ?: return
         if (!AndroidLocationProvider.hasFineLocationPermission(getApplication())) {
             NavigationRuntime.update {
-                it.copy(errorMessage = "需要精确定位权限才能恢复日本公交行程")
+                it.copy(errorMessage = externalFineLocationMessage(currentPlan, resume = true))
             }
             return
         }
@@ -424,7 +444,7 @@ class NavigationViewModel(
             } catch (exception: Exception) {
                 val message = when (exception) {
                     is MixedTransitRegionException -> exception.message
-                    is JapanRegionDataException -> REGION_DATA_ERROR_MESSAGE
+                    is JapanRegionDataException, is TerritoryRegionDataException -> REGION_DATA_ERROR_MESSAGE
                     is ActiveTourEditException -> "无法保存后续点，请保持已完成点和当前点不变"
                     else -> exception.message ?: "无法保存后续点，请稍后重试"
                 }
@@ -471,7 +491,7 @@ class NavigationViewModel(
             !AndroidLocationProvider.hasFineLocationPermission(getApplication())
         ) {
             NavigationRuntime.update {
-                it.copy(errorMessage = "需要精确定位权限才能继续日本公交分段导航")
+                it.copy(errorMessage = externalFineLocationMessage(plan, resume = false))
             }
             return
         }
@@ -497,7 +517,7 @@ internal suspend fun restoreExternalJapanControlPlan(
     routeNeedsRefresh: Boolean,
     planner: TourPlanner,
 ): TourPlan {
-    require(plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN)
+    require(plan.executionStrategy.isExternalMapNavigation())
     return if (routeNeedsRefresh) planner.rebuild(plan, plan.orderedPoints) else plan
 }
 
@@ -525,17 +545,47 @@ internal enum class NavigationBootRestoreAction {
 
 internal fun navigationBootRestoreAction(saved: SavedTour?): NavigationBootRestoreAction {
     val candidate = saved ?: return NavigationBootRestoreAction.CLEAR_STALE_POINTER
+    if (candidate.routingError != null) return NavigationBootRestoreAction.IGNORE_NON_EXTERNAL
     if (candidate.progress?.state !in RECOVERABLE_LEGACY_STATES) {
         return NavigationBootRestoreAction.CLEAR_STALE_POINTER
     }
-    return if (
-        candidate.plan.mode == TravelMode.TRANSIT &&
-        candidate.plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN
-    ) {
+    return if (candidate.plan.executionStrategy.isExternalMapNavigation()) {
         NavigationBootRestoreAction.SHOW_EXTERNAL_JAPAN_CONTROL
     } else {
         NavigationBootRestoreAction.IGNORE_NON_EXTERNAL
     }
+}
+
+internal fun storedRoutingErrorMessage(error: StoredRoutingError): String = when (error) {
+    StoredRoutingError.REGION_UNRESOLVED -> "无法安全判定地图地区，未启动导航"
+    StoredRoutingError.MIXED_MAP_PROVIDERS -> "一次行程的起点和所有目的地必须使用同一地图提供方"
+    StoredRoutingError.MIXED_TRANSIT_REGIONS -> "公交行程不能跨越不同的地区提供方"
+    StoredRoutingError.REGION_DATA_OUTDATED -> REGION_DATA_ERROR_MESSAGE
+}
+
+internal fun externalRecoveryInstruction(plan: TourPlan, paused: Boolean): String = when {
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN && paused ->
+        "已恢复暂停的日本公交行程，请手动恢复"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+        "已恢复日本公交行程，不会自动打开 Google 地图"
+    paused -> "已恢复暂停的高德地图外部分段导航，请手动恢复"
+    else -> "已恢复高德地图外部分段导航，不会自动打开高德地图"
+}
+
+internal fun externalPlanStartMismatch(plan: TourPlan): String? {
+    if (!plan.executionStrategy.isExternalMapNavigation()) return null
+    if (plan.regionDataVersion.isNullOrBlank()) return REGION_DATA_ERROR_MESSAGE
+    if (plan.legs.isEmpty()) return "当前外部分段路线尚未安全解析，未启动导航"
+    return plan.legs.firstNotNullOfOrNull { leg -> externalHandoffMismatch(plan, leg) }
+}
+
+private fun externalFineLocationMessage(plan: TourPlan, resume: Boolean): String = when {
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN && resume ->
+        "需要精确定位权限才能恢复日本公交行程"
+    plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+        "需要精确定位权限才能继续日本公交分段导航"
+    resume -> "需要精确定位权限才能恢复高德地图外部分段导航"
+    else -> "需要精确定位权限才能继续高德地图外部分段导航"
 }
 
 internal fun navigationRuntimeAfterColdRecovery(

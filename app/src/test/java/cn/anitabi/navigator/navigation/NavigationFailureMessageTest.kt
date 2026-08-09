@@ -34,7 +34,7 @@ class NavigationFailureMessageTest {
     @Test
     fun `upstream failure is not described as missing transit coverage`() {
         assertEquals(
-            "Google 路线服务暂时不可用，请稍后再试",
+            "路线服务暂时不可用，请稍后再试",
             navigationFailureMessage(ApiException.UpstreamUnavailable()),
         )
     }

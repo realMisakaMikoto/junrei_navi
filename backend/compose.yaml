@@ -2,7 +2,7 @@ services:
   api:
     build:
       context: .
-    image: anitabi-api:0.2.1
+    image: anitabi-api:0.2.5
     init: true
     restart: unless-stopped
     user: node
@@ -15,12 +15,27 @@ services:
       ANITABI_DATABASE_PATH: /data/anitabi.sqlite
       ANITABI_SERVICE_ACCOUNT_FILE: /run/secrets/google_service_account.json
       ANITABI_IP_HMAC_KEY_FILE: /run/secrets/ip_hmac_key
+      ANITABI_REGION_DATA_FILE: /run/region-data/territories.json
+      ANITABI_MINIMUM_APP_VERSION: "0.2.5"
+      ANITABI_V025_RELEASE_AT: "${ANITABI_V025_RELEASE_AT:?Set the exact v0.2.5 release UTC instant}"
+      ANITABI_AMAP_ENABLED: "${ANITABI_AMAP_ENABLED:-0}"
+      ANITABI_AMAP_API_KEY_FILE: /run/anitabi-secrets/amap-web-key
+      ANITABI_AMAP_SIGNATURE_SECRET_FILE: /run/anitabi-secrets/amap-signature-secret
+      ANITABI_AMAP_CONVERSION_DAILY_LIMIT: "${ANITABI_AMAP_CONVERSION_DAILY_LIMIT:-}"
+      ANITABI_AMAP_CONVERSION_MONTHLY_LIMIT: "${ANITABI_AMAP_CONVERSION_MONTHLY_LIMIT:-}"
+      ANITABI_AMAP_GEOCODE_DAILY_LIMIT: "${ANITABI_AMAP_GEOCODE_DAILY_LIMIT:-}"
+      ANITABI_AMAP_GEOCODE_MONTHLY_LIMIT: "${ANITABI_AMAP_GEOCODE_MONTHLY_LIMIT:-}"
+      ANITABI_AMAP_DISTANCE_DAILY_LIMIT: "${ANITABI_AMAP_DISTANCE_DAILY_LIMIT:-}"
+      ANITABI_AMAP_DISTANCE_MONTHLY_LIMIT: "${ANITABI_AMAP_DISTANCE_MONTHLY_LIMIT:-}"
+      ANITABI_AMAP_ROUTE_DAILY_LIMIT: "${ANITABI_AMAP_ROUTE_DAILY_LIMIT:-}"
+      ANITABI_AMAP_ROUTE_MONTHLY_LIMIT: "${ANITABI_AMAP_ROUTE_MONTHLY_LIMIT:-}"
       ANITABI_HOST: 0.0.0.0
       ANITABI_PORT: "8787"
     volumes:
       - /var/lib/anitabi-api:/data
       - /etc/anitabi-api/secrets/google-service-account.json:/run/secrets/google_service_account.json:ro
       - /etc/anitabi-api/secrets/ip-hmac-key:/run/secrets/ip_hmac_key:ro
+      - /etc/anitabi-api/region-data:/run/region-data:ro
     tmpfs:
       - /tmp:rw,noexec,nosuid,nodev,size=16m
     cap_drop:

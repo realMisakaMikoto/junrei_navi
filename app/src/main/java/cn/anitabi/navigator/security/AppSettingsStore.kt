@@ -20,6 +20,18 @@ class AppSettingsStore(context: Context) : TelemetryConsentStore {
         preferences.edit(commit = true) { putBoolean(PREFERENCE_ONBOARDING_COMPLETE, true) }
     }
 
+    fun hasCurrentAmapPrivacyConsent(): Boolean =
+        preferences.getInt(PREFERENCE_AMAP_PRIVACY_CONSENT_VERSION, 0) == AMAP_PRIVACY_CONSENT_VERSION
+
+    fun setAmapPrivacyConsent(accepted: Boolean) {
+        preferences.edit(commit = true) {
+            putInt(
+                PREFERENCE_AMAP_PRIVACY_CONSENT_VERSION,
+                if (accepted) AMAP_PRIVACY_CONSENT_VERSION else 0,
+            )
+        }
+    }
+
     override fun telemetryConsent(): TelemetryConsent = TelemetryConsent(
         analyticsEnabled = preferences.getBoolean(PREFERENCE_ANALYTICS_CONSENT, false),
         crashlyticsEnabled = preferences.getBoolean(PREFERENCE_CRASHLYTICS_CONSENT, false),
@@ -56,10 +68,12 @@ class AppSettingsStore(context: Context) : TelemetryConsentStore {
         internal const val PREFERENCE_ONBOARDING_COMPLETE = "onboarding_complete"
         internal const val PREFERENCE_ANALYTICS_CONSENT = "analytics_consent"
         internal const val PREFERENCE_CRASHLYTICS_CONSENT = "crashlytics_consent"
+        internal const val PREFERENCE_AMAP_PRIVACY_CONSENT_VERSION = "amap_privacy_consent_version"
         internal const val LEGACY_PREFERENCES_NAME = "secure_routing_settings"
         internal const val LEGACY_ORS_KEY = "ors_key_encrypted"
         internal const val LEGACY_ONBOARDING_COMPLETE = "onboarding_complete"
         internal const val LEGACY_KEY_ALIAS = "anitabi_ors_key_v1"
         private const val ANDROID_KEYSTORE = "AndroidKeyStore"
+        const val AMAP_PRIVACY_CONSENT_VERSION = 1
     }
 }

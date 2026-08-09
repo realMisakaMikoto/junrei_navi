@@ -18,3 +18,5 @@
 -keepclasseswithmembers class * extends com.google.android.libraries.geo.mapcore.renderer.ej {
     <init>();
 }
+# AMap is loaded only after the explicit privacy gate has prepared the SDK.
+-keep class com.amap.api.maps.MapsInitializer { public *; }

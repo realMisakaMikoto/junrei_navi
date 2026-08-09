@@ -1,69 +1,91 @@
-# v0.2.4 发布检查清单
+# v0.2.5 发布检查清单
 
-稳定 `v0.2.4` 发布前必须完成版本、自动验证、固定签名和首次导览后台设置回归，并确认继承的日本外部公交边界没有变化。精确公开 Release APK 的 API 26/API 37 验证只能在资产发布后进行；失败时必须立即停止宣称发布完成并修复。Debug、JVM 或模拟器证据不得冒充正式签名 APK 真机证据。
+v0.2.5 将中国大陆/中国官方地图专用区与其他地区严格分流到不同地图提供方。任何书面授权、地区数据许可/审图、独立密钥、额度或真实隔离证据缺失时，发布状态必须保持 `BLOCKED`。合成数据、JVM、模拟器、Debug APK 或网页文档均不能替代这些门禁。
 
-每个版本或 RC 在 `docs/releases/` 保存一份带证据的实际记录；未验证项保持未勾选。
+每个 RC 或稳定候选在 `docs/releases/v0.2.5.md` 记录精确提交和实际证据。未执行项保持未勾选；历史 v0.2.4 及更早记录不得改写。
 
-## 版本、许可与文档
+## 硬发布门禁
 
-- [ ] `versionCode=10`、`versionName=0.2.4`，RC 标签为 `v0.2.4-rc.N`，稳定标签为 `v0.2.4`。
-- [ ] README、NOTICE、隐私说明、关于页和发布说明只描述 Google/Firebase/VPS 当前架构；MapLibre、OpenFreeMap、ORS 与 Transitous 只出现在明确标注的历史记录中。
-- [ ] GPL-3.0-or-later 与 `LICENSE` 中仅针对 Google Navigation/Firebase SDK 的窄范围链接例外一致。
-- [ ] Google Maps Platform、Navigation SDK、Routes API、Firebase、Bangumi 与 Anitabi 的署名和链接可见。
-- [ ] v0.2.0、v0.2.1、v0.2.2、v0.2.3 及 RC 的发布记录、哈希与真机证据保持历史原文，没有改写成 v0.2.4 结果。
-- [ ] Natural Earth v5.1.1 日本派生资产的来源、公共领域条款、源/派生 SHA-256 和精确 geometry equality 证据可核对。
+- [ ] Google 书面确认同一 Android 应用按行程地区互斥使用 Google Navigation/Routes 与高德地图/Web 服务的具体方式，且 Google 内容不会与非 Google 地图共同显示或混用。
+- [ ] 高德书面确认 Android 地图 SDK、Web 服务、坐标转换、路线规划和高德地图 App URI 交接的实际用途、包名、签名和生产域名。
+- [ ] 版权所有者已明确处理 `LICENSE` 中尚未覆盖高德 SDK 的链接/分发例外，并完成第三方 SDK 许可复核。
+- [ ] 中国生产地区数据来自官方或有明确再分发权的渠道，具备来源、版本、许可、源/派生 SHA-256、审图机关、审图号/结论和审核日期。
+- [ ] Android 与后端生产数据字节/规范化 SHA-256、`regionDataVersion` 和全部权威分类夹具完全一致。
+- [ ] Android 高德 Key 与高德 Web 服务 Key/数字签名私钥相互独立；实际值均位于仓库和附件外的受限 secret 系统。
+- [ ] Google/高德各计费类别的生产日/月硬上限、预算告警、责任人和恢复流程已书面确认。
+- [ ] v0.2.5 精确正式发布时间和其后 14 天的 UTC v1 停止时间已记录。
+- [ ] 隐私说明、首次同意、关于页、第三方署名、地图审核展示和应用商店披露完成复核。
 
-## Google、Firebase 与费用控制
+门禁的证据格式和当前状态见 [`V0.2.5_RELEASE_GATE.md`](V0.2.5_RELEASE_GATE.md)。
 
-- [ ] Navigation SDK Android Key 只允许 `cn.anitabi.navigator`、正式/调试 SHA-1 和 Navigation SDK。
-- [ ] Firebase Android Key 只允许该包名、正式/调试 SHA-1 和所需 Firebase API；旧泄露 Key 保持删除状态。
-- [ ] VPS 服务账号只有所需最小权限，JSON 不在 APK、Git、日志或构建产物中。
-- [ ] Google Cloud 预算告警有效；VPS 月度硬上限仍为 Matrix 9,000 元素、Route 9,000 次、Navigation 900 个目的地。
-- [ ] 不存在 UID 每日额度或 UID 突发令牌桶；Firebase 匿名身份只做访问鉴权，基于 HMAC-IP 的防滥用限速生效，且原始 IP 不进入日志或配额账本。
-- [ ] Analytics 与 Crashlytics 默认关闭，分别选择加入并可撤回；撤回时执行既定本机清理。
+## 版本、协议与地区数据
 
-## 后端与安全
+- [ ] Android 为 `versionCode=11`、`versionName=0.2.5`；后端 package/镜像为 `0.2.5` / `anitabi-api:0.2.5`。
+- [ ] Room schema 保持 2；v0.2.4 记录覆盖安装后保留导览、选择、顺序、设置、进度和用户 WGS84 坐标，并在首次使用前重新分类旧行程。
+- [ ] 生产构建不打包、挂载或回退到 TEST_ONLY 多边形、Natural Earth 中国边界、矩形、文本地址、时区或网络 Geocoder。
+- [ ] 地区资产缺失、损坏、校验不符、审核元数据缺失、点在边界、地区重叠或版本不一致时，Android 与后端均 fail closed。
+- [ ] 起点/当前位置与全部目的地都参与判定；中国大陆和官方地图专用区只得到 `AMAP`，香港/澳门/台湾/日本/其他只得到 `GOOGLE`。
+- [ ] v2 POST 同时要求 Firebase Token、HTTPS JSON、`X-Anitabi-App-Version` 和 `X-Anitabi-Region-Data-Version`；请求体不能选择提供方或坐标系。
+- [ ] `/v2/policy`、`/v2/health`、`/v2/matrix`、`/v2/route`、`/v2/navigation/reserve` 的字段、状态和安全错误体与 [`API_V2.md`](API_V2.md) 一致。
+- [ ] v1 兼容期内中国 matrix/route 在上游和额度前返回 426；停止时间后全部 v1 POST 返回 426；Android v0.2.5 不自动回退 v1。
 
-- [ ] `npm test` 全部通过，包含 Firebase JWT 访问鉴权、固定 OAuth/Routes 上游、single-flight、输入边界、HMAC-IP 防滥用、无 UID 限额、并发 SQLite 共享配额、月度周期切换、脱敏与错误映射。
-- [ ] 12 个并发 SQLite 连接证明 9,000 元素月度上限不会被突破。
-- [ ] 公网 `GET /v1/health` 仅返回服务与数据库健康；HTTP 跳转 HTTPS，证书有效。
-- [ ] 容器非 root、只读根文件系统、无额外 capabilities、只读密钥、健康检查、自动重启和 loopback-only 端口均保持。
-- [ ] SQLite 一致性备份定时器有效、保留七日；恢复后的计费默认关闭逻辑经过测试。
-- [ ] 现有个人网站和原有容器仍正常；没有修改用户的密码、SSH 配置、端口、登录方式或防火墙。
+## 提供方与坐标系隔离
 
-## Android 自动验证
+- [ ] Google Routes/Navigation 内容只在 Google 地图/SDK 使用，高德路线/内容只在高德地图使用；任何跨提供方响应被丢弃。
+- [ ] 屏幕和进程 UI 所有权始终只有一个活动 MapView；提供方变化时先完成旧视图 lifecycle/destroy/cleanup，再创建新视图。
+- [ ] 地图提供方只由固定行程分类或用户明确的提供方入口切换，不随 viewport、搜索结果滚动或瞬时相机范围变化。
+- [ ] Room、设置、行程、外部交接和 v2 请求只使用 WGS84。高德官方转换后的 GCJ-02 只存在于内存响应并只画在高德地图。
+- [ ] 每个 route/leg/step 的提供方、坐标系和地区版本与顶层元数据一致；不从提供方名称猜测坐标系，不重复偏移或反向转换。
+- [ ] 搜索/选择界面按提供方分组并提供明确切换；混合提供方在定位、额度和上游前显示可操作错误。
 
-- [ ] `testDebugUnitTest`、`lintRelease`、`assembleRelease` 通过；JVM 测试零失败、零错误、零跳过。
-- [ ] Room 使用真实 v0.2.0 schema/记录完成 1→2 迁移：保留导览、行程和进度，删除旧 Key/路线，失败记录可恢复，重复迁移幂等。
-- [ ] 大行程覆盖 200 点排序、10 点矩阵窗口、12 位置预览批次、25 目的地 Navigation SDK 生产批次、公交逐段、拖动受影响窗口和不可达点。
-- [ ] 公交覆盖现在出发、指定出发、指定到达、停留时间倒推、交通方式/少走路/少换乘偏好、跨时区显示、步行接驳与精确失败段提示。
-- [ ] Google 成功空路线只映射为无路线；HTTP 404、上游异常与格式异常不得误报为地区无公交；额度错误不得泄漏英文或保留虚假的引导状态。
-- [ ] 地区分类覆盖日本主要岛屿、离岛、邻国/地区、近海、边界、孔洞及损坏资产；日本/非日本混合在定位和后端调用前显示精确提示。
-- [ ] 全日本公交、100 个日本点、恢复、未来点编辑、暂停和换段路径对 `/v1/matrix`、`/v1/route` 与 Routes provider 的调用计数均为 0；道路模式行为不变。
-- [ ] Google Maps URL 只含 `api=1`、编码后的起终点和 `travelmode=transit`；Maps 应用、同 URL 浏览器回退、双失败保留/重试全部覆盖。
-- [ ] 日本状态机覆盖 50 米精度、80/120 米滞回、持续 15 秒、人工/提前确认、停留、暂停冻结、手动换段、返回起点、ENDED 与连续五段。
-- [ ] 控制入口覆盖仅悬浮窗、仅通知、两者均无、运行中撤权、通知全局/频道关闭；服务从不自行启动 Google 地图或下一段 Activity。
-- [ ] 首次导览显示电池优化、后台锁定和悬浮窗三个非阻断建议；电池与悬浮窗使用真实系统状态，设置返回后刷新，厂商后台锁定不伪造统一 API 或完成状态。
-- [ ] v0.2.2 缺执行策略记录、进程死亡、设备重启、暂停、当前段和未来点插删重排恢复后不自动打开 Google 地图。
-- [ ] API 26/API 37 均通过冷启动、完整权限导览、迁移、遥测设置、两次离线恢复、前台服务、息屏模拟位置到达、崩溃检查和证据上传。
-- [ ] tracked-source audit 与 APK audit 通过；APK 不含服务端 Google 私钥、VPS 凭据、签名密码、ORS Key、Transitous/ORS/OpenFreeMap/MapLibre 请求路径或 keystore。
-- [ ] `apksigner verify --verbose --print-certs` 通过，证书 SHA-256 与公开 v0.2.0 相同；APK SHA-256 随 Release 发布。
+## 高德 Android 与外部交接
 
-## 真机与正式签名证据边界
+- [ ] 固定使用经授权的 `com.amap.api:3dmap-location-search:11.2.000_loc11.2.000_sea9.8.0`，并记录发布时当前官方版本差异和继续固定旧版本的批准依据。
+- [ ] `MapsInitializer.updatePrivacyShow` 与 `updatePrivacyAgree` 在任何高德 SDK 接口/MapView 之前调用；未同意、Key 缺失或生产地区数据未就绪时不初始化 SDK。
+- [ ] Android Key 只通过忽略的本地 Gradle 属性/环境变量和 CI Secret 注入；Release 缺 Key 时构建失败。
+- [ ] 高德 Marker/折线只接收明确 GCJ-02 坐标；保存点仍是 WGS84，官方 `CoordinateConverter` 只用于高德显示所需的点位转换。
+- [ ] 驾车、公交、步行、骑行外部 URI 使用官方 `amapuri://route/plan/`、定向 `com.autonavi.minimap`、编码名称、WGS84 起终点和 `dev=1`，模式映射分别为 0/1/2/3。
+- [ ] 高德 App 不可用或交接失败时只保留当前高德分段和明确重试，不打开 Google、不伪造 ETA/班次/到达结果。
+- [ ] 到达时间和高德不支持的公交方式筛选在 UI 禁用且后端调用前拒绝；少走路/少换乘只映射到高德明确支持的策略。
 
-- [ ] 实体设备候选完成日本/非日本/混合规划、Google 地图分段交接、悬浮窗拖动、通知动作、撤权、暂停、停留、换段、结束和恢复验收。
-- [ ] 本地和 GitHub Actions 正式包均沿用固定签名，`versionName=0.2.4` / `versionCode=10`，并通过签名、R8、源码和 APK 内容审计。
-- [ ] 正式签名 v0.2.4 从公开 v0.2.3 原位覆盖安装并保留 Room schema 2 数据；未执行时保持未勾选且不得声明升级已真机验证。
-- [ ] 用户明确同意 Google Navigation 条款，GMS 地图与当前位置正常。
-- [ ] 驾车、骑行或步行完成 Google 原生语音、锁屏、偏航重路由、到达/停留/下一站和服务结束。
-- [ ] 长行程跨生产 25 目的地技术批次，批次边界前为下一批完成共享月度额度原子预留；共享额度耗尽时不绕过。
-- [ ] 非日本公交仍在应用内展示线路、站点、换乘、时间和步行接驳；日本公交只由用户逐段打开 Google 地图，应用不读取或推断外部结果。
-- [ ] 真实定位、断网/VPS 故障、共享月度额度错误、HMAC-IP 防滥用限速和恢复路径符合隐私与本地进度保留要求。
+## 后端、安全与费用
 
-## 发布
+- [ ] AMap 只访问源码固定的官方 HTTPS 主机/路径；数字签名按参数名升序、包含 Web Key、拼接私钥后 MD5，Key/私钥只从只读文件读取。
+- [ ] WGS84→GCJ-02 官方转换每批最多 40 个点；转换、逆地理、距离、v5 路线整组在任一请求前于 SQLite 原子预留。
+- [ ] `upstream_usage` 为独立 STRICT 表，按 provider/bucket/UTC day/UTC month 原子限制；不修改旧 `quota_usage` CHECK 或 UID 历史行。
+- [ ] 高德额度缺失、账本损坏、恢复回退或 billing disabled 时高德不可用；恢复同时关闭所有计费提供方，人工对账后才启用。
+- [ ] AMap 全进程上游并发不超过配置上限；超时、重定向、超大/畸形 JSON、异常数字/坐标/折线和未知错误均安全失败。
+- [ ] AMap 请求坐标最多六位小数；响应 GCJ-02 折线转换为 precision-5 encoded polyline，并带显式 `coordinateSystem=GCJ02`。
+- [ ] 上游错误按官方代码区分每日/余额耗尽、QPS 限速、无路线和服务异常；不返回或记录 `info`、URL、Key、sig、坐标或响应正文。
+- [ ] HMAC-IP 限速 Map 有界并可淘汰；日志继续只允许端点模板、状态、延迟区间和安全错误码。
+- [ ] 容器非 root、只读根、cap-drop、no-new-privileges、loopback-only、资源限制、只读 secrets、v2 healthcheck 和七日一致性备份保持有效。
+- [ ] 部署具备候选健康、精确切换、可重复回滚、备份/恢复和高德官方域名出口限制；不影响个人网站或无关容器。
 
-- [ ] RC 在 GitHub 标记为 Prerelease；稳定 v0.2.4 仅在自动门禁、固定签名核验和明确的真机证据边界记录完成后发布。
-- [ ] 固定签名 keystore 位于工作区外且有离线加密备份；Actions Secrets 完整，日志未输出秘密或 Base64 keystore。
-- [ ] 发布说明列出升级迁移、GMS 要求、联网要求、费用熔断、隐私变化、已知限制和证据边界。
-- [ ] 精确 Release APK 在 API 26/API 37 完成下载、版本检查、安装、冷启动、首次导览和空崩溃缓冲区验证。
-- [ ] 稳定 `v0.2.4` 发布后更新“Latest”状态和最终验收记录；RC 不标记为 Latest。
+## 自动验证
+
+- [ ] 后端 `npm run typecheck`、`npm test`、`npm run build`、`npm audit --omit=dev` 和 Docker build 全部通过。
+- [ ] 地区测试覆盖大陆、官方地图专用区、香港、澳门、台湾、日本、其他、孔洞、边界、重叠、无效坐标、损坏元数据/校验和与大资产限制。
+- [ ] API 测试覆盖两个版本 header、最低稳定版本、v2 provider/CRS metadata、混合/未解析 422、地区版本 409、客户端/v1 426 和 health/policy readiness。
+- [ ] AMap 测试覆盖签名、固定主机、六位坐标、≤40 转换、所有模式、逆地理、precision-5 折线、响应大小、超时、重定向、官方错误码、全局并发和 secret 脱敏。
+- [ ] 12+ 并发 SQLite 连接证明 Google 月度和高德日/月额度不超限；组预留全成或全败，失败不退款，旧账本可直接打开。
+- [ ] Android `testDebugUnitTest`、`lintDebug`、`assembleDebug`、`assembleDebugAndroidTest`、Release Lint/R8/assemble 和目标测试全部通过。
+- [ ] Android 测试覆盖跨端 checksum 向量、起点判定、混合提供方、旧存储重分类、provider/CRS guard、一个活动 MapView、destroy-before-create、隐私顺序和四种 URI。
+- [ ] 原有 200 点排序、10 点矩阵窗口、12 位置预览、25 目的地批次、日本公交状态机、离线恢复、悬浮/通知、首次导览和 Room 1→2 回归全部通过。
+- [ ] tracked-source、Navigation R8、APK 内容和签名审计通过；APK 不含 Web Key、签名私钥、服务账号、VPS 凭据、keystore 或旧 Provider。
+- [ ] API 26/API 37 均通过冷启动、首次导览、迁移、离线恢复、前台服务和无崩溃 instrumentation。
+
+## 真实提供方、真机与发布
+
+- [ ] 使用正式候选和受限测试额度证明中国请求从未到 Google、非中国请求从未到高德；证据只记录脱敏计数。
+- [ ] 至少五段中国大陆路线覆盖所需模式、地图显示、提供方切换、断网、额度耗尽、交接失败、暂停/恢复和到达流程。
+- [ ] 无线设备通过 `adb connect 192.168.31.36:5555` 显式选择唯一 transport；不运行会卸载/清数据的整套 connected Gradle 任务。
+- [ ] 正式签名 v0.2.5 从公开 v0.2.4 原位覆盖，固定 RSA-4096 证书不变，Room 2 与用户进度保留。
+- [ ] 精确 Release APK 在 API 26/API 37 下载、哈希、签名、版本、安装、冷启动、首次导览和 crash buffer 检查通过。
+- [ ] RC 仅在全部硬门禁和候选部署证据完成后创建为 Prerelease；稳定版仅在 RC 闭环后创建为 Latest。
+- [ ] `v0.2.5-release` GitHub Environment 要求独立复核且禁止发起人自批；受保护的获批提交 SHA 与标签提交完全一致。
+- [ ] Environment 只允许受保护默认分支部署；发布从默认分支手动输入已存在的 `v0.2.5` / `v0.2.5-rc.N` 标签，通用 `v*` 标签不能触发该流程。
+- [ ] Release 工作流所有第三方 Action 均固定到经独立核对的完整提交 SHA，且最小权限 `ANITABI_RELEASE_TOKEN` 只注入独立发布任务的最后一步。
+- [ ] 工作流从受保护的私有 HTTPS 位置恢复地区资产，并核对完整文件 SHA-256、内部校验值和 `regionDataVersion`。
+- [ ] 构建任务核对原始地区资产与 APK 内 `assets/approved_regions/territory_regions_v1.json` 的 SHA-256；独立发布任务下载只读构建产物后再次核对 APK 哈希和内置地区资产哈希。
+- [ ] 发布任务在 `gh release create` 前立即重新解析远端标签对象和最终提交，并与构建时记录及受保护候选提交完全比对。
+- [ ] 发布说明诚实列出双地图授权/数据版本、隐私变化、v1 停止时间、GMS/高德要求、额度、已知限制和未完成真机边界。

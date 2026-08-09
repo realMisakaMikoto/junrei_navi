@@ -1,6 +1,8 @@
 package cn.anitabi.navigator.core.routing
 
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.CoordinateSystem
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TransitRoutingPreference
 import cn.anitabi.navigator.core.model.TransitTravelMode
@@ -10,6 +12,7 @@ import cn.anitabi.navigator.data.network.ApiException
 import cn.anitabi.navigator.data.network.ApiHttpClient
 import cn.anitabi.navigator.data.network.UserAgentInterceptor
 import cn.anitabi.navigator.data.network.backend.BackendApi
+import cn.anitabi.navigator.data.network.backend.BackendContractVersion
 import kotlinx.coroutines.runBlocking
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
@@ -33,6 +36,7 @@ class RoutingProvidersTest {
             httpClient = ApiHttpClient(UserAgentInterceptor("AnitabiNavigator", "test", "https://example.org")),
             tokenProvider = IdTokenProvider { "test-token" },
             baseUrl = server.url("/").toString(),
+            contractVersion = BackendContractVersion.V1_COMPAT,
         )
     }
 
@@ -167,5 +171,62 @@ class RoutingProvidersTest {
         assertEquals(0.0, journey.legs.single().distanceMeters, 0.0)
         assertEquals(coordinate, journey.legs.single().from)
         assertEquals(coordinate, journey.legs.single().to)
+    }
+
+    @Test
+    fun `AMap nontrivial route rejects missing GCJ02 geometry`() {
+        api = BackendApi(
+            httpClient = ApiHttpClient(UserAgentInterceptor("AnitabiNavigator", "test", "https://example.org")),
+            tokenProvider = IdTokenProvider { "test-token" },
+            baseUrl = server.url("/").toString(),
+            regionDataVersion = { "TEST_ONLY-v1" },
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """{"distanceMeters":1000,"durationSeconds":600,"legs":[{"distanceMeters":1000,"durationSeconds":600,"steps":[]}],"provider":"AMAP","coordinateSystem":"GCJ02","regionDataVersion":"TEST_ONLY-v1"}""",
+            ),
+        )
+
+        assertThrows(ApiException.InvalidResponse::class.java) {
+            runBlocking {
+                BackendRoadRoutingProvider(api).directions(
+                    TravelMode.WALK,
+                    listOf(GeoPoint(30.0, 120.0), GeoPoint(30.1, 120.1)),
+                    RoutingProviderContext.AMAP,
+                )
+            }
+        }
+    }
+
+    @Test
+    fun `AMap transit keeps WGS84 handoff endpoints separate from GCJ02 geometry`() = runBlocking {
+        api = BackendApi(
+            httpClient = ApiHttpClient(UserAgentInterceptor("AnitabiNavigator", "test", "https://example.org")),
+            tokenProvider = IdTokenProvider { "test-token" },
+            baseUrl = server.url("/").toString(),
+            regionDataVersion = { "TEST_ONLY-v1" },
+        )
+        server.enqueue(
+            MockResponse().setBody(
+                """{"distanceMeters":1000,"durationSeconds":600,"encodedPolyline":"_p~iF~ps|U_ulLnnqC","legs":[{"distanceMeters":1000,"durationSeconds":600,"steps":[{"travelMode":"TRANSIT","distanceMeters":1000,"durationSeconds":600,"encodedPolyline":"_p~iF~ps|U_ulLnnqC","transit":{"lineShortName":"T","vehicleType":"BUS"}}]}],"provider":"AMAP","coordinateSystem":"GCJ02","regionDataVersion":"TEST_ONLY-v1"}""",
+            ),
+        )
+        val from = GeoPoint(30.0, 120.0)
+        val to = GeoPoint(30.1, 120.1)
+
+        val journey = BackendTransitJourneyProvider(api).journey(
+            from = from,
+            to = to,
+            query = TransitJourneyQuery(departureTime = "2026-08-10T09:00:00+08:00"),
+            context = RoutingProviderContext.AMAP,
+        )
+
+        val leg = journey.legs.single()
+        assertEquals(from, leg.from)
+        assertEquals(to, leg.to)
+        assertEquals(MapProvider.AMAP, leg.provider)
+        assertEquals(CoordinateSystem.GCJ02, leg.coordinateSystem)
+        assertTrue(leg.geometry.isNotEmpty())
+        assertTrue(leg.geometry.first() != from)
     }
 }

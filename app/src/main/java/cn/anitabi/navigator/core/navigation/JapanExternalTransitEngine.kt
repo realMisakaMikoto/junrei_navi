@@ -1,11 +1,14 @@
 package cn.anitabi.navigator.core.navigation
 
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.CoordinateSystem
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.NavigationProgress
 import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.model.isExternalMapNavigation
 import cn.anitabi.navigator.core.routing.TourOptimizer
 
 class JapanExternalTransitEngine(
@@ -21,9 +24,36 @@ class JapanExternalTransitEngine(
     private var lastInsideSampleElapsedRealtimeMillis: Long? = null
 
     init {
-        require(plan.mode == TravelMode.TRANSIT) { "Japan external transit requires transit mode" }
-        require(plan.executionStrategy == TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN) {
-            "Japan external transit requires the external Google Maps strategy"
+        require(plan.executionStrategy.isExternalMapNavigation()) {
+            "External map navigation requires an external execution strategy"
+        }
+        when (plan.executionStrategy) {
+            TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN -> {
+                require(plan.mode == TravelMode.TRANSIT) { "Google Japan external navigation requires transit mode" }
+                require(plan.mapProvider == MapProvider.GOOGLE) { "Google external navigation requires Google" }
+                require(plan.legs.all { it.provider == MapProvider.GOOGLE }) {
+                    "Google external legs require Google"
+                }
+                require(plan.legs.all { it.coordinateSystem == CoordinateSystem.WGS84 }) {
+                    "Google external legs must be WGS84"
+                }
+            }
+            TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND -> {
+                require(plan.mapProvider == MapProvider.AMAP) { "AMap external navigation requires AMap" }
+                require(plan.legs.all { it.provider == MapProvider.AMAP }) {
+                    "AMap external legs require AMap"
+                }
+                require(
+                    plan.legs.none { it.geometry.isNotEmpty() } ||
+                        plan.coordinateSystem == CoordinateSystem.GCJ02,
+                ) { "AMap plan route geometry must already be GCJ02" }
+                require(
+                    plan.legs.all { leg ->
+                        leg.geometry.isEmpty() || leg.coordinateSystem == CoordinateSystem.GCJ02
+                    },
+                ) { "AMap route geometry must already be GCJ02" }
+            }
+            TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES -> error("In-app navigation is not external")
         }
         require(plan.dwellMinutes >= 0) { "Dwell time cannot be negative" }
         require(initialProgress.tourId == plan.id) { "Progress belongs to a different tour" }

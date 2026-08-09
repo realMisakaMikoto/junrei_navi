@@ -80,8 +80,12 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import cn.anitabi.navigator.R
 import cn.anitabi.navigator.core.model.Anime
+import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.PilgrimagePoint
+import cn.anitabi.navigator.core.model.TerritoryRegion
+import cn.anitabi.navigator.core.model.mapProvider
 import cn.anitabi.navigator.data.repository.PilgrimageWarning
 import cn.anitabi.navigator.ui.theme.Ink
 import cn.anitabi.navigator.ui.theme.MutedInk
@@ -94,6 +98,8 @@ import cn.anitabi.navigator.navigation.NavigationViewModel
 import cn.anitabi.navigator.ui.navigation.NavigationRoute
 import cn.anitabi.navigator.ui.about.AboutScreen
 import cn.anitabi.navigator.telemetry.TelemetryConsentController
+import cn.anitabi.navigator.security.AppSettingsStore
+import cn.anitabi.navigator.ui.map.AmapPrivacyGate
 import coil3.compose.AsyncImage
 
 @Composable
@@ -102,10 +108,17 @@ fun SearchRoute(
     plannerViewModel: PlannerViewModel,
     navigationViewModel: NavigationViewModel,
     telemetryConsentController: TelemetryConsentController,
+    appSettingsStore: AppSettingsStore,
+    amapPrivacyGate: AmapPrivacyGate,
+    classifyTerritory: (GeoPoint) -> TerritoryRegion?,
 ) {
     val state by viewModel.state.collectAsStateWithLifecycle()
     val navigationState by navigationViewModel.state.collectAsStateWithLifecycle()
     val navigationPlanId = navigationState.plan?.id
+    val selectionMapProvider = resolveSearchMapProvider(
+        points = state.combinedPilgrimageData?.points.orEmpty(),
+        classifyTerritory = classifyTerritory,
+    )
     val hasRecoverableNavigation = navigationPlanId != null &&
         navigationState.errorMessage != null &&
         navigationState.progress?.state?.let { progressState ->
@@ -137,6 +150,15 @@ fun SearchRoute(
         AboutScreen(
             onBack = viewModel::closeAbout,
             telemetryConsentController = telemetryConsentController,
+            amapPrivacyConsentEnabled = appSettingsStore.hasCurrentAmapPrivacyConsent(),
+            onAmapPrivacyConsentChange = { enabled ->
+                appSettingsStore.setAmapPrivacyConsent(enabled)
+                if (enabled) {
+                    amapPrivacyGate.prepareIfAllowed(true)
+                } else {
+                    amapPrivacyGate.revoke()
+                }
+            },
         )
     } else if (state.plannerOpen) {
         PlannerRoute(
@@ -159,6 +181,9 @@ fun SearchRoute(
     } else {
         PilgrimageSelectionScreen(
             state = state,
+            mapProvider = selectionMapProvider,
+            amapRegionDataReady = selectionMapProvider == MapProvider.AMAP,
+            amapPrivacyAndKeyReady = amapPrivacyGate.isReady,
             onBack = viewModel::backToResults,
             onTogglePoint = viewModel::togglePoint,
             onBoundsChanged = viewModel::updateVisibleBounds,
@@ -609,6 +634,9 @@ private fun AnimeSelectionFooter(
 @Composable
 internal fun PilgrimageSelectionScreen(
     state: SearchUiState,
+    mapProvider: MapProvider? = null,
+    amapRegionDataReady: Boolean = false,
+    amapPrivacyAndKeyReady: Boolean = false,
     onBack: () -> Unit,
     onTogglePoint: (String) -> Unit,
     onBoundsChanged: (GeoBounds) -> Unit,
@@ -620,9 +648,14 @@ internal fun PilgrimageSelectionScreen(
     forceListMode: Boolean = false,
 ) {
     val data = state.combinedPilgrimageData
+    val availableMapProvider = availableSearchMapProvider(
+        provider = mapProvider,
+        amapRegionDataReady = amapRegionDataReady,
+        amapPrivacyAndKeyReady = amapPrivacyAndKeyReady,
+    )
     BoxWithConstraints(modifier = Modifier.fillMaxSize().testTag("point-selection-screen")) {
         val widthClass = contentWidthClass(maxWidth)
-        val useDualPane = !forceListMode &&
+        val useDualPane = availableMapProvider != null && !forceListMode &&
             (widthClass == ContentWidthClass.Expanded || maxWidth > maxHeight)
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -632,7 +665,17 @@ internal fun PilgrimageSelectionScreen(
                     partialData = data?.warnings?.contains(PilgrimageWarning.PARTIAL_DATA) == true,
                     onBack = onBack,
                 )
-                StatusMessage(state.errorMessage)
+                StatusMessage(
+                    state.errorMessage ?: if (data != null && availableMapProvider == null) {
+                        if (mapProvider == MapProvider.AMAP) {
+                            "高德地图地区数据、隐私同意或 Android Key 尚未就绪，已切换为列表"
+                        } else {
+                            "地图地区无法安全判定或包含不同地图提供方，已切换为列表"
+                        }
+                    } else {
+                        null
+                    },
+                )
 
                 when {
                     state.isLoading || data == null -> Box(modifier = Modifier.weight(1f)) {
@@ -661,12 +704,14 @@ internal fun PilgrimageSelectionScreen(
                             onVisibleBoundsChanged = onBoundsChanged,
                             onSelectVisible = onSelectVisible,
                             onMapUnavailable = onMapUnavailable,
+                            mapProvider = requireNotNull(availableMapProvider),
+                            amapRegionDataReady = amapRegionDataReady,
                             modifier = Modifier
                                 .weight(0.58f)
                                 .fillMaxHeight(),
                         )
                     }
-                    state.showList || forceListMode -> PointList(
+                    state.showList || forceListMode || availableMapProvider == null -> PointList(
                         points = data.points,
                         selectedPointIds = state.selectedPointIds,
                         onTogglePoint = onTogglePoint,
@@ -680,6 +725,8 @@ internal fun PilgrimageSelectionScreen(
                         onVisibleBoundsChanged = onBoundsChanged,
                         onSelectVisible = onSelectVisible,
                         onMapUnavailable = onMapUnavailable,
+                        mapProvider = requireNotNull(availableMapProvider),
+                        amapRegionDataReady = amapRegionDataReady,
                         modifier = Modifier.weight(1f),
                     )
                 }
@@ -711,6 +758,16 @@ private fun contentWidthClass(width: Dp): ContentWidthClass = when {
 
 private fun Int?.orZero(): Int = this ?: 0
 
+internal fun availableSearchMapProvider(
+    provider: MapProvider?,
+    amapRegionDataReady: Boolean,
+    amapPrivacyAndKeyReady: Boolean,
+): MapProvider? = when (provider) {
+    MapProvider.AMAP -> provider.takeIf { amapRegionDataReady && amapPrivacyAndKeyReady }
+    MapProvider.GOOGLE -> provider
+    null -> null
+}
+
 @Composable
 private fun PilgrimageMapPane(
     contentKey: String,
@@ -720,6 +777,8 @@ private fun PilgrimageMapPane(
     onVisibleBoundsChanged: (GeoBounds) -> Unit,
     onSelectVisible: () -> Unit,
     onMapUnavailable: () -> Unit,
+    mapProvider: MapProvider,
+    amapRegionDataReady: Boolean,
     modifier: Modifier = Modifier,
 ) {
     Box(modifier = modifier) {
@@ -730,6 +789,8 @@ private fun PilgrimageMapPane(
             onPointToggle = onPointToggle,
             onVisibleBoundsChanged = onVisibleBoundsChanged,
             onMapUnavailable = onMapUnavailable,
+            provider = mapProvider,
+            amapRegionDataReady = amapRegionDataReady,
             modifier = Modifier.fillMaxSize(),
         )
         OutlinedButton(
@@ -748,11 +809,23 @@ private fun PilgrimageMapPane(
             Text("选择地图范围", modifier = Modifier.padding(start = 6.dp))
         }
         Attribution(
+            mapProvider = mapProvider,
             modifier = Modifier
                 .align(Alignment.BottomStart)
                 .padding(6.dp),
         )
     }
+}
+
+internal fun resolveSearchMapProvider(
+    points: List<PilgrimagePoint>,
+    classifyTerritory: (GeoPoint) -> TerritoryRegion?,
+): MapProvider? {
+    if (points.isEmpty()) return null
+    val providers = points.mapTo(mutableSetOf()) { point ->
+        classifyTerritory(point.coordinate)?.mapProvider ?: return null
+    }
+    return providers.singleOrNull()
 }
 
 @Composable
@@ -1090,9 +1163,12 @@ private fun ViewModeOption(
 }
 
 @Composable
-private fun Attribution(modifier: Modifier = Modifier) {
+private fun Attribution(mapProvider: MapProvider, modifier: Modifier = Modifier) {
     Text(
-        text = "Google Maps",
+        text = when (mapProvider) {
+            MapProvider.GOOGLE -> "Google Maps"
+            MapProvider.AMAP -> "高德地图"
+        },
         color = Ink,
         style = MaterialTheme.typography.labelSmall,
         modifier = modifier

@@ -13,6 +13,9 @@ class AnitabiApplication : Application(), SingletonImageLoader.Factory {
     override fun onCreate() {
         super.onCreate()
         container.telemetryConsentController.applyStoredConsent()
+        container.amapPrivacyGate.prepareIfAllowed(
+            container.appSettingsStore.hasCurrentAmapPrivacyConsent(),
+        )
     }
 
     override fun newImageLoader(context: Context): ImageLoader {

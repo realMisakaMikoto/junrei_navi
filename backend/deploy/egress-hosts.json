@@ -1,0 +1,24 @@
+{
+  "schemaVersion": 1,
+  "defaultAction": "deny",
+  "transport": "tcp",
+  "port": 443,
+  "hosts": [
+    {
+      "hostname": "oauth2.googleapis.com",
+      "purpose": "Google service-account OAuth token exchange"
+    },
+    {
+      "hostname": "routes.googleapis.com",
+      "purpose": "Google Routes matrix and route requests"
+    },
+    {
+      "hostname": "www.googleapis.com",
+      "purpose": "Firebase Authentication public signing keys"
+    },
+    {
+      "hostname": "restapi.amap.com",
+      "purpose": "AMap coordinate conversion, distance, reverse geocoding, and v5 routes"
+    }
+  ]
+}

@@ -8,6 +8,7 @@ import androidx.core.app.NotificationCompat
 import cn.anitabi.navigator.AnitabiApplication
 import cn.anitabi.navigator.MainActivity
 import cn.anitabi.navigator.R
+import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +62,7 @@ class NavigationRestoreReceiver : BroadcastReceiver() {
         val notification = NotificationCompat.Builder(context, NavigationService.CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_navigation_notification)
             .setContentTitle("巡礼手帳 · 行程可恢复")
-            .setContentText("点按返回应用恢复控制；不会自动打开 Google 地图")
+            .setContentText(externalRestoreNotificationText(externalTour.plan.executionStrategy))
             .setContentIntent(openIntent)
             .setAutoCancel(true)
             .setCategory(navigationNotificationCategory())
@@ -75,4 +76,13 @@ class NavigationRestoreReceiver : BroadcastReceiver() {
         private const val RESTORE_REQUEST_CODE = 2002
         private const val RESTORE_NOTIFICATION_ID = 2002
     }
+}
+
+internal fun externalRestoreNotificationText(strategy: TransitExecutionStrategy): String = when (strategy) {
+    TransitExecutionStrategy.EXTERNAL_GOOGLE_MAPS_JAPAN ->
+        "点按返回应用恢复控制；不会自动打开 Google 地图"
+    TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND ->
+        "点按返回应用恢复控制；不会自动打开高德地图"
+    TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES ->
+        "点按返回应用恢复导航控制"
 }

@@ -3,10 +3,10 @@
 > 这是使用 [Anitabi](https://anitabi.cn) 巡礼数据制作的第三方开源 Android 应用，与 Anitabi 官方没有隶属关系。
 
 把一部或多部动画的巡礼点放到同一张地图上，选出真正想去的地方，再生成步行、骑行、驾车或公交行程。
-本项目不负责中国大陆与印度点位的可用性。
+公开稳定版 v0.2.4 不负责中国大陆与印度点位的可用性。当前源码包含尚未发布的 v0.2.5 双地图候选；在全部授权、地区数据、地图审核、许可和真实隔离门禁完成前，中国地图与路线必须保持关闭。
 ## 下载与更新
 
-- 当前源码和公开稳定版均为 v0.2.4。
+- 当前源码为 v0.2.5 的受阻候选，公开稳定版仍为 v0.2.4。不要把本分支自行构建的 APK 当作正式中国地图版本分发。
 - [下载 v0.2.4](https://github.com/realMisakaMikoto/junrei_navi/releases/tag/v0.2.4)：当前稳定版，首次导览会提示后台导航所需的电池优化、后台锁定和悬浮窗设置。
 - [下载 v0.2.3](https://github.com/realMisakaMikoto/junrei_navi/releases/tag/v0.2.3)：旧稳定版，包含日本公共交通分段交接、连续控制和同版本路线额度策略更新。
 - [下载 v0.2.2](https://github.com/realMisakaMikoto/junrei_navi/releases/tag/v0.2.2)：旧稳定版，包含全新界面、地图显示修复和无线路详情。
@@ -15,6 +15,12 @@
 - 支持 Android 8.0 及以上版本。
 
 从 v0.2.3 更新到 v0.2.4 时，请直接覆盖安装，不要先卸载应用或清除数据。应用会保留导览状态、作品与点位选择、行程顺序、设置和导航进度；Room schema 仍为 2，没有数据库迁移。
+
+## v0.2.5 候选状态
+
+候选实现按完整行程地区互斥选择提供方：中国大陆及经批准的中国官方地图专用区只使用高德，香港、澳门、台湾、日本和其他地区只使用 Google。Android 与后端独立使用同一版本的许可地区数据，持久化与协议坐标保持 WGS84，高德 GCJ-02 内容只允许画在高德地图；缺失、损坏、边界不确定、跨提供方或版本不一致时一律拒绝而不猜测或跨提供方回退。
+
+当前仓库没有可发布的生产地区资产、针对本应用用途的双地图书面授权、地图审核/审图证据、独立生产密钥与额度、真实设备/上游隔离证据；现有 GPL 链接例外也尚未覆盖高德 SDK。因此不得部署 v0.2.5 后端、创建 RC/稳定标签或分发候选 APK。详见 [v0.2.5 发布门禁](docs/V0.2.5_RELEASE_GATE.md)、[API v2 协议](docs/API_V2.md) 和 [候选验收记录](docs/releases/v0.2.5.md)。以下使用说明描述当前公开稳定版 v0.2.4。
 
 ## 你可以做什么
 
@@ -103,6 +109,6 @@ Bangumi 与 Anitabi 是独立公共服务。部分网络出口可能被其防护
 - 源码构建说明：[docs/BUILD.md](docs/BUILD.md)
 - 第三方服务、SDK 与数据署名：[NOTICE.md](NOTICE.md)
 - 安全问题报告：[SECURITY.md](SECURITY.md)
-- 许可证：[GPL-3.0-or-later，并附 Google Navigation/Firebase SDK 窄范围链接例外](LICENSE)
+- 许可证：[GPL-3.0-or-later，并附 Google Navigation/Firebase SDK 窄范围链接例外](LICENSE)。当前例外不覆盖候选中的高德 SDK，分发前必须由版权所有者明确处理。
 
-Bangumi、Anitabi、Google 和 Firebase 均为独立服务，不由本项目运营或保证可用性。
+Bangumi、Anitabi、Google、高德和 Firebase 均为独立服务，不由本项目运营或保证可用性。

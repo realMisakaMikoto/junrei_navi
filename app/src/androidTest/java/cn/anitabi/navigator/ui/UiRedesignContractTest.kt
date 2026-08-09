@@ -199,6 +199,46 @@ class UiRedesignContractTest {
     }
 
     @Test
+    fun plannerSettings_requiresExplicitClickForAmapFallback() {
+        val data = pilgrimageData()
+        var fallbackSelected = false
+
+        composeRule.setContent {
+            AnitabiTheme {
+                PlannerSettingsScreen(
+                    state = PlannerUiState(
+                        anime = data.anime,
+                        selectedPoints = data.points,
+                        transitDate = LocalDate.of(2026, 8, 1),
+                        transitTime = LocalTime.NOON,
+                        errorMessage = "路线服务暂时不可用",
+                        amapExternalFallbackAvailable = true,
+                    ),
+                    onBack = {},
+                    onModeChange = {},
+                    onObjectiveChange = {},
+                    onEndPolicyChange = {},
+                    onStartChange = {},
+                    onUseCurrentLocation = {},
+                    onFixedEndChange = {},
+                    onTransitScheduleChange = { _, _, _ -> },
+                    onTransitPreferenceChange = {},
+                    onTransitTravelModeToggle = {},
+                    onDwellChange = {},
+                    onGenerate = {},
+                    onUseAmapExternalFallback = { fallbackSelected = true },
+                )
+            }
+        }
+
+        composeRule.runOnIdle { assertEquals(false, fallbackSelected) }
+        composeRule.onNodeWithTag("planner-use-amap-external-fallback")
+            .assertIsDisplayed()
+            .performClick()
+        composeRule.runOnIdle { assertTrue(fallbackSelected) }
+    }
+
+    @Test
     fun plannerNoRouteDetails_showExactEndpointsAndGoogleMapsAction() {
         val origin = PilgrimagePoint("origin", "测试起点", GeoPoint(12.345678, -98.765432))
         val destination = PilgrimagePoint("destination", "测试终点", GeoPoint(-1.25, 2.5))
