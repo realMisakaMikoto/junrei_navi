@@ -167,6 +167,13 @@ class TerritoryRegionClassifierTest {
         if (expectedVersion != null) {
             assertEquals(expectedVersion, classifier.metadata.version)
         }
+        assertEquals(TerritoryRegion.MAINLAND_CHINA, classifier.classify(GeoPoint(39.9042, 116.4074)))
+        assertEquals(TerritoryRegion.CHINA_OFFICIAL_MAP_ONLY, classifier.classify(GeoPoint(25.75, 123.5)))
+        assertEquals(TerritoryRegion.HONG_KONG_SAR, classifier.classify(GeoPoint(22.3193, 114.1694)))
+        assertEquals(TerritoryRegion.MACAO_SAR, classifier.classify(GeoPoint(22.1987, 113.5439)))
+        assertEquals(TerritoryRegion.CHINA_TAIWAN, classifier.classify(GeoPoint(25.033, 121.5654)))
+        assertEquals(TerritoryRegion.JAPAN, classifier.classify(GeoPoint(35.6762, 139.6503)))
+        assertEquals(TerritoryRegion.OTHER, classifier.classify(GeoPoint(40.7128, -74.006)))
     }
 
     private fun mutateFixture(change: (MutableMap<String, JsonElement>) -> Unit): String {
