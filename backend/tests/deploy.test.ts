@@ -45,3 +45,21 @@ test("reverse proxy and backup templates preserve HTTPS and the selected Compose
   assert.match(backup, /-p "\$active_project" exec -T api node dist\/admin\.js backup/);
   assert.doesNotMatch(backup, /docker compose exec -T api/);
 });
+
+test("the candidate image packages a bounded AMap real-provider smoke", () => {
+  const testsDirectory = dirname(fileURLToPath(import.meta.url));
+  const backendDirectory = join(testsDirectory, "..");
+  const dockerfile = readFileSync(join(backendDirectory, "Dockerfile"), "utf8");
+  const smoke = readFileSync(join(backendDirectory, "scripts", "amap-live-smoke.mjs"), "utf8");
+  const runbook = readFileSync(join(backendDirectory, "deploy", "DEPLOY_V0.2.5.md"), "utf8");
+
+  assert.match(dockerfile, /COPY --chown=node:node scripts \.\/scripts/);
+  assert.match(smoke, /ANITABI_AMAP_API_KEY_FILE/);
+  assert.match(smoke, /ANITABI_AMAP_SIGNATURE_SECRET_FILE/);
+  for (const mode of ["DRIVE", "WALK", "BICYCLE", "TRANSIT"]) {
+    assert.match(smoke, new RegExp(`mode: "${mode}"`));
+  }
+  assert.doesNotMatch(smoke, /console\.(?:log|error)\([^\n]*(?:apiKey|signingSecret)/);
+  assert.match(runbook, /node scripts\/amap-live-smoke\.mjs/);
+  assert.match(runbook, /Before switching traffic/);
+});
