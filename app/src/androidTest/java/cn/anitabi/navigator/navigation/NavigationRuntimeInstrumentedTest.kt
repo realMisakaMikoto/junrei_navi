@@ -58,7 +58,11 @@ class NavigationRuntimeInstrumentedTest {
         val plan = fixturePlan(RECOVERY_TOUR_ID)
         application.container.tourRepository.save(
             plan,
-            NavigationProgress(tourId = plan.id, state = NavigationState.NAVIGATING),
+            NavigationProgress(
+                tourId = plan.id,
+                completedPointIds = setOf(START_ID),
+                state = NavigationState.NAVIGATING,
+            ),
         )
         val saved = application.container.tourRepository.get(plan.id)
         assertEquals(NavigationState.NAVIGATING, saved?.progress?.state)
