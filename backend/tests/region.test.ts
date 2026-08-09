@@ -253,7 +253,7 @@ test("polygon and ring limits are aggregate across the entire region document", 
       region,
       geometry: {
         type: "Polygon" as const,
-        coordinates: Array.from({ length: 167 }, () => ring),
+        coordinates: Array.from({ length: 834 }, () => ring),
       },
     };
   });

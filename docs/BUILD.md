@@ -39,7 +39,7 @@ Navigation SDK Key 必须限制为：
 
 高德 Android Key 必须是独立的 Android 平台 Key，并限制为包名 `cn.anitabi.navigator` 与实际使用的调试或正式签名。不得把高德 Web 服务 Key 或数字签名私钥作为 `ANITABI_AMAP_API_KEY`；这些材料只允许由后端的只读 secret 文件注入。
 
-v0.2.5 Release 还要求把经过许可、地图审核和双人复核的地区资产放在不提交的生产输入位置 `app/src/main/assets/approved_regions/territory_regions_v1.json`。格式见 [地区数据格式](REGION_DATA_FORMAT_v1.md)。没有该资产时 Debug 构建仍可用于不含真实边界的单元测试，但地区规划必须 fail closed；Release 构建会拒绝继续。不得以测试夹具、Natural Earth 中国边界或矩形代替生产资产。
+v0.2.5 Release 还要求把经过许可、地图审核和双人复核的地区资产放在不提交的生产输入位置 `app/src/main/assets/approved_regions/territory_regions_v1.json`。格式见 [地区数据格式](REGION_DATA_FORMAT_v1.md)，v0.2.5 固定来源、原始/派生哈希和可重复构建方式见 [生产地区数据来源记录](REGION_DATA_PROVENANCE_v0.2.5.md)。没有该资产时 Debug 构建仍可用于不含真实边界的单元测试，但地区规划必须 fail closed；Release 构建会拒绝继续。不得以测试夹具、Natural Earth 中国边界或矩形代替生产资产。
 
 服务账号 JSON 只能放在服务端，绝不能进入 Android 工程、APK 或 Git。
 

@@ -494,7 +494,7 @@ function stableJson(value: unknown): string {
 const EPSILON = 1e-10;
 const AREA_EPSILON = 1e-14;
 const MAX_POLYGONS = 10_000;
-const MAX_RINGS = 1_000;
+const MAX_RINGS = 5_000;
 const MAX_POSITIONS_PER_RING = 1_000_000;
 const MAX_TOTAL_POSITIONS = 2_000_000;
 const MAX_DOCUMENT_BYTES = 64 * 1_024 * 1_024;

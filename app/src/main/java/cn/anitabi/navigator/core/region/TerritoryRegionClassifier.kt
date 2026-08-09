@@ -358,7 +358,7 @@ class ApprovedTerritoryClassifier private constructor(
         private const val MAX_DOCUMENT_BYTES = 64 * 1024 * 1024
         private const val MAX_FEATURES = 64
         private const val MAX_POLYGONS = 10_000
-        private const val MAX_RINGS = 1_000
+        private const val MAX_RINGS = 5_000
         private const val MAX_TOTAL_POSITIONS = 2_000_000
         private const val MAX_POSITIONS_PER_RING = 1_000_000
         private const val EPSILON = 1e-10
