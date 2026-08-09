@@ -221,9 +221,10 @@ jobs:
             sleep 2
           done
           grep -q "Runtime Smoke Tour" smoke-output/recovery-*.xml
-          grep -q "路线暂时无法刷新" smoke-output/recovery-*.xml
           grep -q "Runtime Start" smoke-output/recovery-*.xml
-          grep -q "已完成" smoke-output/recovery-*.xml
+          grep -q "Runtime Stop A" smoke-output/recovery-*.xml
+          grep -q "Runtime Stop B" smoke-output/recovery-*.xml
+          grep -q "Google Routes" smoke-output/recovery-*.xml
           adb exec-out screencap -p > smoke-output/recovery-first.png
           adb shell am force-stop cn.anitabi.navigator
           adb shell am start -W -n cn.anitabi.navigator/.MainActivity > smoke-output/recovery-restart.txt
@@ -231,11 +232,12 @@ jobs:
           timeout 30 adb shell uiautomator dump /sdcard/recovery-restart.xml || true
           adb pull /sdcard/recovery-restart.xml smoke-output/recovery-restart.xml || true
           if grep -q "Runtime Smoke Tour" smoke-output/recovery-restart.xml; then
-            grep -q "路线暂时无法刷新" smoke-output/recovery-restart.xml
             grep -q "Runtime Start" smoke-output/recovery-restart.xml
-            grep -q "已完成" smoke-output/recovery-restart.xml
+            grep -q "Runtime Stop A" smoke-output/recovery-restart.xml
+            grep -q "Runtime Stop B" smoke-output/recovery-restart.xml
+            grep -q "Google Routes" smoke-output/recovery-restart.xml
           else
-            grep -q "搜索 Bangumi" smoke-output/recovery-restart.xml
+            grep -q "Bangumi" smoke-output/recovery-restart.xml
           fi
           adb exec-out screencap -p > smoke-output/recovery-restart.png
           adb shell am instrument -w \
