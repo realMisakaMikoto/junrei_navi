@@ -7,8 +7,10 @@ import coil3.SingletonImageLoader
 import coil3.network.okhttp.OkHttpNetworkFetcherFactory
 import okhttp3.OkHttpClient
 
-class AnitabiApplication : Application(), SingletonImageLoader.Factory {
-    val container by lazy { AppContainer(this) }
+open class AnitabiApplication : Application(), SingletonImageLoader.Factory {
+    val container by lazy { createContainer() }
+
+    protected open fun createContainer(): AppContainer = AppContainer(this)
 
     override fun onCreate() {
         super.onCreate()

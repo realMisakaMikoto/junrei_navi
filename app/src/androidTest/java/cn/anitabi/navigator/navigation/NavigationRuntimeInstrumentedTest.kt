@@ -19,6 +19,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.AnitabiApplication
 import cn.anitabi.navigator.MainActivity
+import cn.anitabi.navigator.TEST_REGION_DATA_VERSION
+import cn.anitabi.navigator.TestAnitabiApplication
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
@@ -30,6 +32,7 @@ import cn.anitabi.navigator.core.model.RouteStep
 import cn.anitabi.navigator.core.model.TourLeg
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.data.repository.StoredRoutingError
 import java.io.FileInputStream
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -48,13 +51,18 @@ class NavigationRuntimeInstrumentedTest {
 
     @Test
     fun seedProcessRecoveryFixture() = runBlocking {
+        assertTrue(application is TestAnitabiApplication)
         prepareDevice()
         application.stopService(Intent(application, NavigationService::class.java))
         NavigationRuntime.set(NavigationRuntimeState())
         val plan = fixturePlan(RECOVERY_TOUR_ID)
         application.container.tourRepository.save(
             plan,
-            NavigationProgress(tourId = plan.id, state = NavigationState.NAVIGATING),
+            NavigationProgress(
+                tourId = plan.id,
+                completedPointIds = setOf(START_ID),
+                state = NavigationState.NAVIGATING,
+            ),
         )
         val saved = application.container.tourRepository.get(plan.id)
         assertEquals(NavigationState.NAVIGATING, saved?.progress?.state)
@@ -63,14 +71,21 @@ class NavigationRuntimeInstrumentedTest {
 
     @Test
     fun verifyFailedProcessRecoveryState() = runBlocking {
-        val saved = requireNotNull(application.container.tourRepository.get(RECOVERY_TOUR_ID))
+        val testApplication = application as TestAnitabiApplication
+        testApplication.useProductionRegionPolicy()
+        try {
+            val saved = requireNotNull(application.container.tourRepository.get(RECOVERY_TOUR_ID))
 
-        assertTrue(saved.routeNeedsRefresh)
-        assertTrue(saved.plan.legs.isEmpty())
-        assertEquals(NavigationState.PLANNED, saved.progress?.state)
-        assertTrue(START_ID in saved.progress?.completedPointIds.orEmpty())
-        assertNull(ActiveNavigationStore.get(application))
-        reportEvidence("RECOVERY_FAILED_ROUTE_REMAINS_REFRESHABLE")
+            assertTrue(saved.routeNeedsRefresh)
+            assertTrue(saved.plan.legs.isEmpty())
+            assertEquals(StoredRoutingError.REGION_UNRESOLVED, saved.routingError)
+            assertEquals(NavigationState.NAVIGATING, saved.progress?.state)
+            assertTrue(START_ID in saved.progress?.completedPointIds.orEmpty())
+            assertNull(ActiveNavigationStore.get(application))
+            reportEvidence("RECOVERY_FAILED_ROUTE_REMAINS_REFRESHABLE")
+        } finally {
+            testApplication.useSyntheticRegionPolicy()
+        }
     }
 
     @Test
@@ -339,6 +354,7 @@ class NavigationRuntimeInstrumentedTest {
             attribution = listOf("Runtime fixture"),
             dwellMinutes = 0,
             initialStart = start.coordinate,
+            regionDataVersion = TEST_REGION_DATA_VERSION,
         )
     }
 
