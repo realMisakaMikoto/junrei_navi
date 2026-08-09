@@ -54,7 +54,7 @@ v0.2.5 将中国大陆/中国官方地图专用区与其他地区严格分流到
 - [ ] WGS84→GCJ-02 官方转换每批最多 40 个点；转换、逆地理、距离、v5 路线整组在任一请求前于 SQLite 原子预留。
 - [ ] `upstream_usage` 为独立 STRICT 表，按 provider/bucket/UTC day/UTC month 原子限制；不修改旧 `quota_usage` CHECK 或 UID 历史行。
 - [ ] 高德额度缺失、账本损坏、恢复回退或 billing disabled 时高德不可用；恢复同时关闭所有计费提供方，人工对账后才启用。
-- [ ] AMap 全进程上游并发不超过配置上限；超时、重定向、超大/畸形 JSON、异常数字/坐标/折线和未知错误均安全失败。
+- [ ] AMap 全进程上游并发不超过 2，任意滚动 1 秒内最多启动 3 个上游请求；超时、重定向、超大/畸形 JSON、异常数字/坐标/折线和未知错误均安全失败。
 - [ ] AMap 请求坐标最多六位小数；响应 GCJ-02 折线转换为 precision-5 encoded polyline，并带显式 `coordinateSystem=GCJ02`。
 - [ ] 上游错误按官方代码区分每日/余额耗尽、QPS 限速、无路线和服务异常；不返回或记录 `info`、URL、Key、sig、坐标或响应正文。
 - [ ] HMAC-IP 限速 Map 有界并可淘汰；日志继续只允许端点模板、状态、延迟区间和安全错误码。

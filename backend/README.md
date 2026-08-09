@@ -14,7 +14,7 @@ The v0.2.5 backend is a single Node.js 24 LTS / Fastify process backed by SQLite
 
 POST bodies are capped at 16 KiB and must arrive through HTTPS with Firebase auth. Every v2 POST also requires `X-Anitabi-App-Version` (stable `major.minor.patch`, at least the configured minimum) and `X-Anitabi-Region-Data-Version` (exact match). Clients never select a provider. Mixed providers, unresolved boundaries, and mixed Japanese/non-Japanese Google transit fail before quota or upstream calls.
 
-Google and AMap upstream URLs, timeouts, concurrency, response-size limits, field selection, response normalization, and safe error mapping are fixed in source. AMap semicolon-delimited GCJ-02 geometry is validated and re-encoded using the common precision-5 encoded-polyline format; raw upstream geometry is never returned.
+Google and AMap upstream URLs, timeouts, concurrency, response-size limits, field selection, response normalization, and safe error mapping are fixed in source. The AMap client allows at most two concurrent upstream calls and starts at most three calls in any rolling one-second window, matching the verified personal-developer QPS allowance. AMap semicolon-delimited GCJ-02 geometry is validated and re-encoded using the common precision-5 encoded-polyline format; raw upstream geometry is never returned.
 
 ## Region data
 
