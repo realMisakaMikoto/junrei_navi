@@ -675,16 +675,17 @@ Public License instead of this License.  But first, please read
 
 -------------------------------------------------------------------------------
 
-巡礼手帳 Google SDK Linking Exception
+巡礼手帳 Third-Party SDK Linking Exception
 
 Copyright (C) 2026 realMisakaMikoto
 
 As a special exception, the copyright holder of 巡礼手帳 gives you
 permission to link this Program with unmodified versions of the Google
-Navigation SDK for Android and the Firebase Android SDKs, and to copy and
-distribute the resulting linked executable, provided that you comply with the
-GNU General Public License, version 3 or (at your option) any later version,
-for all of the Program other than those SDKs.
+Navigation SDK for Android, the Firebase Android SDKs, and the AMap Android 3D
+Map SDK (including its vendor-published combined map, location, and search
+artifact), and to copy and distribute the resulting linked executable, provided
+that you comply with the GNU General Public License, version 3 or (at your
+option) any later version, for all of the Program other than those SDKs.
 
 This exception applies only to the act of linking and distributing with the
 SDKs named above. It grants no rights to those SDKs, does not waive their

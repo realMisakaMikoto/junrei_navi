@@ -1,8 +1,8 @@
 # 第三方服务、SDK、数据与署名
 
-本项目自有代码采用 GPL-3.0-or-later，并附 `LICENSE` 末尾所载、仅用于 Google Navigation SDK for Android 与 Firebase Android SDK 链接和分发的窄范围例外。该例外不改变任何第三方组件、服务或数据的许可与条款。
+本项目自有代码采用 GPL-3.0-or-later，并附 `LICENSE` 末尾所载、仅用于 Google Navigation SDK for Android、Firebase Android SDK 与未修改的高德 Android 3D 地图 SDK 链接和分发的窄范围例外。该例外不改变任何第三方组件、服务或数据的许可与条款，也不替代高德开放平台技术服务许可。
 
-v0.2.5 候选源码正在接入高德 Android SDK 与 Web 服务，但尚未发布。现有链接例外没有列出高德 SDK，仓库也没有已批准的生产地区数据或完整授权证据；在版权所有者明确处理链接/分发许可并完成 [`docs/V0.2.5_RELEASE_GATE.md`](docs/V0.2.5_RELEASE_GATE.md) 前，不得分发包含高德 SDK 的 APK。
+v0.2.5 候选源码正在接入高德 Android SDK 与 Web 服务，但尚未发布。版权所有者已把未修改的高德 Android 3D 地图 SDK 纳入窄范围链接/分发例外；这不授予高德 SDK 本身的权利，也不解除 [`docs/V0.2.5_RELEASE_GATE.md`](docs/V0.2.5_RELEASE_GATE.md) 中的提供方书面许可、应用合规、隐私、地区数据和生产验收要求。
 
 - 地图与道路导航：[Google Navigation SDK for Android](https://developers.google.com/maps/documentation/navigation/android-sdk)。地图与导航内容遵循 Google Maps Platform 的适用条款和署名要求。
 - 路线矩阵、道路预览与公共交通：[Google Routes API](https://developers.google.com/maps/documentation/routes)。应用只显示规范化后的会话数据，并保留 Google Routes 署名。
