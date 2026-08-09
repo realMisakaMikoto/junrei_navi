@@ -397,9 +397,10 @@ function normalizeRoadLeg(payload: Record<string, unknown>, mode: RoadMode): Leg
   if (!Array.isArray(paths)) throw new ApiError("UPSTREAM_UNAVAILABLE");
   if (paths.length === 0) throw new ApiError("NO_ROUTE");
   const path = requireRecord(paths[0]);
-  const cost = requireRecord(path["cost"]);
   const distanceMeters = requireAmapNumber(path["distance"]);
-  const durationSeconds = requireAmapNumber(cost["duration"]);
+  const durationSeconds = mode === "BICYCLE"
+    ? requireAmapNumber(path["duration"])
+    : requireAmapNumber(requireRecord(path["cost"])["duration"]);
   const stepsValue = path["steps"];
   if (!Array.isArray(stepsValue)) throw new ApiError("UPSTREAM_UNAVAILABLE");
   const steps = stepsValue.map((value) => normalizeRoadStep(value, mode));
@@ -421,12 +422,14 @@ function toUpstreamReservations(usage: AmapUsage): readonly UpstreamReservation[
   return buckets.flatMap((bucket) => usage[bucket] === 0 ? [] : [{ bucket, units: usage[bucket] }]);
 }
 
-function normalizeRoadStep(value: unknown, mode: RoadMode): StepWithGeometry {
+function normalizeRoadStep(value: unknown, mode: RoadMode, nestedPolyline = false): StepWithGeometry {
   const record = requireRecord(value);
   const cost = optionalRecord(record["cost"]);
   const distanceMeters = optionalAmapNumber(record["step_distance"] ?? record["distance"]) ?? 0;
   const durationSeconds = optionalAmapNumber(cost?.["duration"] ?? record["duration"]) ?? 0;
-  const points = optionalPolyline(record["polyline"]);
+  const points = nestedPolyline
+    ? optionalTransitPolyline(record["polyline"])
+    : optionalPolyline(record["polyline"]);
   const instruction = optionalSafeString(record["instruction"], 512);
   const maneuver = optionalSafeString(record["action"] ?? record["assistant_action"], 128);
   const base: NormalizedRouteStep = {
@@ -487,7 +490,7 @@ function normalizeTransitWalking(value: unknown): StepWithGeometry[] {
   if (walking === undefined || Object.keys(walking).length === 0) return [];
   const steps = walking["steps"];
   if (Array.isArray(steps) && steps.length > 0) {
-    return steps.map((step) => normalizeRoadStep(step, "WALK"));
+    return steps.map((step) => normalizeRoadStep(step, "WALK", true));
   }
   const distanceMeters = optionalAmapNumber(walking["distance"]) ?? 0;
   const durationSeconds = optionalAmapNumber(walking["duration"] ?? optionalRecord(walking["cost"])?.["duration"]) ?? 0;
@@ -504,9 +507,9 @@ function normalizeTransitBus(value: unknown): StepWithGeometry[] {
     const line = requireRecord(lineValue);
     const distanceMeters = optionalAmapNumber(line["distance"]) ?? 0;
     const durationSeconds = optionalAmapNumber(line["duration"] ?? optionalRecord(line["cost"])?.["duration"]) ?? 0;
-    const points = optionalPolyline(line["polyline"]);
-    const departureStop = stopName(line["start_stop"]);
-    const arrivalStop = stopName(line["end_stop"]);
+    const points = optionalTransitPolyline(line["polyline"]);
+    const departureStop = stopName(line["departure_stop"] ?? line["start_stop"]);
+    const arrivalStop = stopName(line["arrival_stop"] ?? line["end_stop"]);
     const lineName = optionalSafeString(line["name"], 256);
     const vehicleType = normalizeVehicleType(line["type"]);
     const transit: NormalizedTransitDetails = compactTransitDetails({
@@ -531,7 +534,7 @@ function normalizeTransitRailway(value: unknown): StepWithGeometry | undefined {
   const cost = optionalRecord(railway["cost"]);
   const distanceMeters = optionalAmapNumber(railway["distance"]) ?? 0;
   const durationSeconds = optionalAmapNumber(railway["duration"] ?? cost?.["duration"] ?? railway["time"]) ?? 0;
-  const points = optionalPolyline(railway["polyline"]);
+  const points = optionalTransitPolyline(railway["polyline"]);
   const transit = compactTransitDetails({
     departureStop: stopName(railway["departure_stop"]),
     arrivalStop: stopName(railway["arrival_stop"]),
@@ -553,7 +556,7 @@ function normalizeTransitTaxi(value: unknown): StepWithGeometry | undefined {
   const cost = optionalRecord(taxi["cost"]);
   const distanceMeters = optionalAmapNumber(taxi["distance"]) ?? 0;
   const durationSeconds = optionalAmapNumber(taxi["duration"] ?? cost?.["duration"]) ?? 0;
-  const points = optionalPolyline(taxi["polyline"]);
+  const points = optionalTransitPolyline(taxi["polyline"]);
   return {
     step: withEncodedPolyline(
       { travelMode: "DRIVE", distanceMeters, durationSeconds },
@@ -746,6 +749,11 @@ function optionalPolyline(value: unknown): Coordinate[] {
   const pairs = polyline.split(";");
   if (pairs.length > MAX_POLYLINE_POINTS) throw new ApiError("UPSTREAM_UNAVAILABLE");
   return pairs.map(parseCoordinatePair);
+}
+
+function optionalTransitPolyline(value: unknown): Coordinate[] {
+  const nested = optionalRecord(value);
+  return optionalPolyline(nested === undefined ? value : nested["polyline"]);
 }
 
 function parseCoordinatePair(value: string): Coordinate {

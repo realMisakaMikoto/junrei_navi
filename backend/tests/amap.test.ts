@@ -283,7 +283,7 @@ test("walking and bicycle matrices use directed v5 route pairs and preserve unre
         assert.equal(fixedEndpoint(url), endpoint);
         routeCalls += 1;
         if (routeCalls === 2) return amapJson({ route: { paths: [] } });
-        return roadResponse();
+        return mode === "BICYCLE" ? bicycleResponse() : roadResponse();
       },
     });
     const matrix = await client.matrix({
@@ -345,7 +345,7 @@ test("walking and bicycle multi-leg routes call only their fixed v5 endpoints", 
         if (fixedEndpoint(url) === AMAP_CONVERT_URL) return conversionResponse(url);
         assert.equal(fixedEndpoint(url), endpoint);
         routeCalls += 1;
-        return roadResponse();
+        return mode === "BICYCLE" ? bicycleResponse() : roadResponse();
       },
     });
     const route = await client.route({ mode, locations: syntheticCoordinates(3) });
@@ -408,6 +408,9 @@ test("transit reverse-geocodes cities, maps departure strategy, and merges norma
   assert.equal(route.distanceMeters, 2000);
   assert.equal(route.durationSeconds, 1200);
   assert.equal(route.legs.every((leg) => leg.steps.some((step) => step.travelMode === "TRANSIT")), true);
+  assert.equal(route.legs.every((leg) => leg.encodedPolyline !== undefined), true);
+  assert.equal(route.legs.every((leg) => leg.steps[0]?.encodedPolyline !== undefined), true);
+  assert.equal(route.legs.every((leg) => leg.steps[1]?.encodedPolyline !== undefined), true);
   for (const url of transitUrls) {
     assert.equal(url.searchParams.get("city1"), "010");
     assert.equal(url.searchParams.get("city2"), "010");
@@ -579,6 +582,23 @@ function roadResponse(extra: Record<string, unknown> = {}): Response {
   });
 }
 
+function bicycleResponse(): Response {
+  return amapJson({
+    route: {
+      paths: [{
+        distance: "1000",
+        duration: "100",
+        steps: [{
+          instruction: "Continue",
+          step_distance: "1000",
+          cost: { duration: "100" },
+          polyline: "110,30;110.001,30.001",
+        }],
+      }],
+    },
+  });
+}
+
 function transitResponse(): Response {
   return amapJson({
     route: {
@@ -589,9 +609,8 @@ function transitResponse(): Response {
           walking: {
             steps: [{
               instruction: "Walk",
-              step_distance: "100",
-              cost: { duration: "120" },
-              polyline: "110,30;110.0001,30.0001",
+              distance: "100",
+              polyline: { polyline: "110,30;110.0001,30.0001" },
             }],
           },
           bus: {
@@ -599,10 +618,10 @@ function transitResponse(): Response {
               name: "Synthetic Line",
               type: "普通公交线路",
               distance: "900",
-              duration: "480",
-              polyline: "110.0001,30.0001;110.001,30.001",
-              start_stop: { name: "Synthetic Start" },
-              end_stop: { name: "Synthetic End" },
+              cost: { duration: "480" },
+              polyline: { polyline: "110.0001,30.0001;110.001,30.001" },
+              departure_stop: { name: "Synthetic Start" },
+              arrival_stop: { name: "Synthetic End" },
               ignored: "must-not-pass-through",
             }],
           },
