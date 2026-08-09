@@ -10,6 +10,8 @@ import cn.anitabi.navigator.data.network.backend.BackendApi
 import cn.anitabi.navigator.data.network.bangumi.BangumiApi
 import cn.anitabi.navigator.data.repository.PilgrimageRepository
 import cn.anitabi.navigator.data.repository.TourRepository
+import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.TerritoryRegion
 import cn.anitabi.navigator.core.routing.BackendRoadRoutingProvider
 import cn.anitabi.navigator.core.routing.BackendTransitJourneyProvider
 import cn.anitabi.navigator.core.routing.TourPlanner
@@ -20,7 +22,17 @@ import cn.anitabi.navigator.telemetry.TelemetryConsentController
 import cn.anitabi.navigator.navigation.AndroidLocationProvider
 import cn.anitabi.navigator.ui.map.AmapPrivacyGate
 
-class AppContainer(context: Context) {
+class AppContainer internal constructor(
+    context: Context,
+    classifyTerritoryOverride: ((GeoPoint) -> TerritoryRegion?)?,
+    regionDataVersionOverride: (() -> String?)?,
+) {
+    constructor(context: Context) : this(
+        context = context,
+        classifyTerritoryOverride = null,
+        regionDataVersionOverride = null,
+    )
+
     private val appContext = context.applicationContext
     private val json = ApiHttpClient.defaultJson
     private val database = AnitabiDatabase.create(context)
@@ -37,10 +49,8 @@ class AppContainer(context: Context) {
     val territoryClassifier = FailClosedTerritoryClassifier.load { assetPath ->
         appContext.assets.open(assetPath)
     }
-    private val classifyTerritory = { point: cn.anitabi.navigator.core.model.GeoPoint ->
-        territoryClassifier.classify(point)
-    }
-    private val regionDataVersion = { territoryClassifier.metadata?.version }
+    private val classifyTerritory = classifyTerritoryOverride ?: territoryClassifier::classify
+    private val regionDataVersion = regionDataVersionOverride ?: { territoryClassifier.metadata?.version }
     private val httpClient = ApiHttpClient(
         userAgentInterceptor = createAppUserAgentInterceptor(),
         json = json,

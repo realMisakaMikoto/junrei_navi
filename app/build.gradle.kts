@@ -64,7 +64,7 @@ android {
         versionCode = 11
         versionName = "0.2.5"
 
-        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+        testInstrumentationRunner = "cn.anitabi.navigator.TestAnitabiRunner"
         manifestPlaceholders["NAVIGATION_API_KEY"] = navigationApiKey
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey.ifBlank { "ANITABI_AMAP_KEY_MISSING" }
         buildConfigField("boolean", "AMAP_API_KEY_CONFIGURED", amapApiKeyConfigured.toString())

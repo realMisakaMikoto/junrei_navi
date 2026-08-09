@@ -19,6 +19,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.AnitabiApplication
 import cn.anitabi.navigator.MainActivity
+import cn.anitabi.navigator.TEST_REGION_DATA_VERSION
+import cn.anitabi.navigator.TestAnitabiApplication
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
@@ -48,6 +50,7 @@ class NavigationRuntimeInstrumentedTest {
 
     @Test
     fun seedProcessRecoveryFixture() = runBlocking {
+        assertTrue(application is TestAnitabiApplication)
         prepareDevice()
         application.stopService(Intent(application, NavigationService::class.java))
         NavigationRuntime.set(NavigationRuntimeState())
@@ -339,6 +342,7 @@ class NavigationRuntimeInstrumentedTest {
             attribution = listOf("Runtime fixture"),
             dwellMinutes = 0,
             initialStart = start.coordinate,
+            regionDataVersion = TEST_REGION_DATA_VERSION,
         )
     }
 

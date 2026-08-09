@@ -164,7 +164,7 @@ jobs:
           adb shell pm clear cn.anitabi.navigator
           adb shell am instrument -w \
             -e class 'cn.anitabi.navigator.ui.onboarding.OnboardingInstrumentedTest#completesPermissionsServiceAndRestartFlow' \
-            cn.anitabi.navigator.test/androidx.test.runner.AndroidJUnitRunner \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_PERMISSION_DIALOG_SHOWN" smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_SERVICE_GUIDE_SHOWN" smoke-output/onboarding-smoke.txt
@@ -197,7 +197,7 @@ jobs:
           adb emu geo fix 139.767125 35.681236
           adb shell am instrument -w \
             -e class 'cn.anitabi.navigator.navigation.NavigationRuntimeInstrumentedTest#seedProcessRecoveryFixture' \
-            cn.anitabi.navigator.test/androidx.test.runner.AndroidJUnitRunner \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/recovery-seed.txt
           grep -q "OK (1 test)" smoke-output/recovery-seed.txt
           sdk="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
@@ -240,7 +240,7 @@ jobs:
           adb exec-out screencap -p > smoke-output/recovery-restart.png
           adb shell am instrument -w \
             -e class 'cn.anitabi.navigator.navigation.NavigationRuntimeInstrumentedTest#verifyFailedProcessRecoveryState' \
-            cn.anitabi.navigator.test/androidx.test.runner.AndroidJUnitRunner \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/recovery-state.txt
           grep -q "RECOVERY_FAILED_ROUTE_REMAINS_REFRESHABLE" smoke-output/recovery-state.txt
           grep -q "OK (1 test)" smoke-output/recovery-state.txt
@@ -251,7 +251,7 @@ jobs:
           adb shell am force-stop cn.anitabi.navigator
           adb shell am instrument -w \
             -e class 'cn.anitabi.navigator.navigation.NavigationRuntimeInstrumentedTest#foregroundServiceCompletesOfflineRouteAndPersistsProgress' \
-            cn.anitabi.navigator.test/androidx.test.runner.AndroidJUnitRunner \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/navigation-runtime.txt
           grep -q "OK (1 test)" smoke-output/navigation-runtime.txt
           adb logcat -d -b crash > smoke-output/runtime-crash.log
@@ -262,7 +262,7 @@ jobs:
           adb shell am force-stop cn.anitabi.navigator
           adb shell am instrument -w \
             -e class 'cn.anitabi.navigator.navigation.NavigationRuntimeInstrumentedTest#foregroundServiceAutoArrivesFromMockGpsWhileScreenOff' \
-            cn.anitabi.navigator.test/androidx.test.runner.AndroidJUnitRunner \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/automatic-gps-runtime.txt
           grep -q "GPS_FIX_1_ADVANCED_WHILE_SCREEN_OFF" smoke-output/automatic-gps-runtime.txt
           grep -q "GPS_FIX_2_COMPLETED_AND_PERSISTED" smoke-output/automatic-gps-runtime.txt
