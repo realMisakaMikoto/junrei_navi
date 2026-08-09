@@ -32,6 +32,7 @@ import cn.anitabi.navigator.core.model.RouteStep
 import cn.anitabi.navigator.core.model.TourLeg
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.data.repository.StoredRoutingError
 import java.io.FileInputStream
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.runBlocking
@@ -66,14 +67,21 @@ class NavigationRuntimeInstrumentedTest {
 
     @Test
     fun verifyFailedProcessRecoveryState() = runBlocking {
-        val saved = requireNotNull(application.container.tourRepository.get(RECOVERY_TOUR_ID))
+        val testApplication = application as TestAnitabiApplication
+        testApplication.useProductionRegionPolicy()
+        try {
+            val saved = requireNotNull(application.container.tourRepository.get(RECOVERY_TOUR_ID))
 
-        assertTrue(saved.routeNeedsRefresh)
-        assertTrue(saved.plan.legs.isEmpty())
-        assertEquals(NavigationState.PLANNED, saved.progress?.state)
-        assertTrue(START_ID in saved.progress?.completedPointIds.orEmpty())
-        assertNull(ActiveNavigationStore.get(application))
-        reportEvidence("RECOVERY_FAILED_ROUTE_REMAINS_REFRESHABLE")
+            assertTrue(saved.routeNeedsRefresh)
+            assertTrue(saved.plan.legs.isEmpty())
+            assertEquals(StoredRoutingError.REGION_UNRESOLVED, saved.routingError)
+            assertEquals(NavigationState.NAVIGATING, saved.progress?.state)
+            assertTrue(START_ID in saved.progress?.completedPointIds.orEmpty())
+            assertNull(ActiveNavigationStore.get(application))
+            reportEvidence("RECOVERY_FAILED_ROUTE_REMAINS_REFRESHABLE")
+        } finally {
+            testApplication.useSyntheticRegionPolicy()
+        }
     }
 
     @Test
