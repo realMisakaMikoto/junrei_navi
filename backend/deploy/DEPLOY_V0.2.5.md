@@ -37,6 +37,16 @@ ANITABI_HEALTH_PORT="$ANITABI_CANDIDATE_PORT" node -e "const p=process.env.ANITA
 
 Fetch `/v2/policy` locally and compare `apiVersion`, `regionDataVersion`, `minimumAppVersion`, `v1SunsetAt`, and both provider states with the reviewed release record. This bootstrap check sends no coordinates and consumes no routing quota.
 
+Before switching traffic, run the bounded real-provider smoke from the candidate container. It reads the already-mounted AMap credentials, stays within the reviewed personal quota, rate-limits sequential calls, and logs only one pass/fail line per travel mode:
+
+```sh
+docker compose -f compose.yaml -f compose.amap.yaml \
+  -p "$ANITABI_CANDIDATE_PROJECT" exec -T api \
+  node scripts/amap-live-smoke.mjs
+```
+
+Require `AMap live provider smoke: PASS` and record only the candidate commit, UTC run time, and operator identity. Do not copy provider URLs, coordinates, credentials, signatures, or raw responses into the release record.
+
 ## Switch
 
 1. Save a recoverable copy and checksum of the active reverse-proxy configuration.
