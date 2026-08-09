@@ -78,6 +78,7 @@ test("the client-wide semaphore caps simultaneous independent calls at two", asy
   const client = new AmapRoutesClient({
     apiKey: TEST_KEY,
     signingSecret: TEST_SECRET,
+    requestStartsPerSecond: 1_000,
     fetch: async (input) => {
       const url = checkedUrl(input, AMAP_CONVERT_URL);
       active += 1;
@@ -93,6 +94,44 @@ test("the client-wide semaphore caps simultaneous independent calls at two", asy
   assert.equal(maximumActive, 2);
 });
 
+test("the client starts at most three upstream requests in any rolling second", async () => {
+  let now = 0;
+  const starts: number[] = [];
+  const waits: number[] = [];
+  const client = new AmapRoutesClient({
+    apiKey: TEST_KEY,
+    signingSecret: TEST_SECRET,
+    requestStartClock: () => now,
+    requestStartSleep: async (milliseconds) => {
+      waits.push(milliseconds);
+      now += milliseconds;
+    },
+    fetch: async (input) => {
+      const url = checkedUrl(input, AMAP_CONVERT_URL);
+      starts.push(now);
+      return conversionResponse(url);
+    },
+  });
+
+  await Promise.all(
+    syntheticCoordinates(6).map((coordinate) => client.convertCoordinates([coordinate])),
+  );
+
+  assert.deepEqual(starts, [0, 0, 0, 1_000, 1_000, 1_000]);
+  assert.deepEqual(waits, [1_000]);
+});
+
+test("the client rejects an unsafe request-start limit", () => {
+  assert.throws(
+    () => new AmapRoutesClient({
+      apiKey: TEST_KEY,
+      signingSecret: TEST_SECRET,
+      requestStartsPerSecond: 0,
+    }),
+    /AMap request-start limit is invalid/,
+  );
+});
+
 test("the client-wide semaphore rejects safely when its bounded queue is saturated", async () => {
   let releaseActive: (() => void) | undefined;
   const activeGate = new Promise<void>((resolve) => {
@@ -103,6 +142,7 @@ test("the client-wide semaphore rejects safely when its bounded queue is saturat
     apiKey: TEST_KEY,
     signingSecret: TEST_SECRET,
     timeoutMillis: 1_000,
+    requestStartsPerSecond: 1_000,
     fetch: async (input) => {
       const url = checkedUrl(input, AMAP_CONVERT_URL);
       fetchCalls += 1;

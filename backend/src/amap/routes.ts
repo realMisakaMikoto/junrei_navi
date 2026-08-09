@@ -1,4 +1,6 @@
 import { createHash } from "node:crypto";
+import { performance } from "node:perf_hooks";
+import { setTimeout as delay } from "node:timers/promises";
 import type {
   Coordinate,
   MatrixRequest,
@@ -28,6 +30,9 @@ export const AMAP_REVERSE_GEOCODE_URL = "https://restapi.amap.com/v3/geocode/reg
 const MAX_CONVERSION_BATCH_SIZE = 40;
 const MAX_UPSTREAM_CONCURRENCY = 2;
 const MAX_UPSTREAM_QUEUE = 64;
+const DEFAULT_MAX_REQUEST_STARTS_PER_SECOND = 3;
+const MAX_CONFIGURED_REQUEST_STARTS_PER_SECOND = 1_000;
+const RATE_WINDOW_MILLIS = 1_000;
 const DEFAULT_TIMEOUT_MILLIS = 8_000;
 const MAX_TIMEOUT_MILLIS = 30_000;
 const DEFAULT_MAX_RESPONSE_BYTES = 1_048_576;
@@ -48,6 +53,9 @@ export type AmapRoutesClientOptions = Readonly<{
   timeoutMillis?: number;
   maxResponseBytes?: number;
   now?: () => Date;
+  requestStartsPerSecond?: number;
+  requestStartClock?: () => number;
+  requestStartSleep?: (milliseconds: number) => Promise<void>;
 }>;
 
 type CoordinateWithIndex = Readonly<{
@@ -94,6 +102,7 @@ export class AmapRoutesClient {
   private readonly timeoutMillis: number;
   private readonly maxResponseBytes: number;
   private readonly now: () => Date;
+  private readonly requestStartLimiter: SlidingWindowStartLimiter;
   private readonly fetchSemaphore = new AsyncSemaphore(
     MAX_UPSTREAM_CONCURRENCY,
     MAX_UPSTREAM_QUEUE,
@@ -117,6 +126,16 @@ export class AmapRoutesClient {
       "AMap response limit",
     );
     this.now = options.now ?? (() => new Date());
+    this.requestStartLimiter = new SlidingWindowStartLimiter(
+      boundedInteger(
+        options.requestStartsPerSecond ?? DEFAULT_MAX_REQUEST_STARTS_PER_SECOND,
+        1,
+        MAX_CONFIGURED_REQUEST_STARTS_PER_SECOND,
+        "AMap request-start limit",
+      ),
+      options.requestStartClock ?? (() => performance.now()),
+      options.requestStartSleep ?? ((milliseconds) => delay(milliseconds)),
+    );
   }
 
   usageForMatrix(request: MatrixRequest): readonly UpstreamReservation[] {
@@ -343,6 +362,7 @@ export class AmapRoutesClient {
     }
     const release = await this.fetchSemaphore.acquire(this.timeoutMillis);
     try {
+      await this.requestStartLimiter.acquire();
       let response: Response;
       try {
         response = await this.fetchImplementation(url, {
@@ -1004,6 +1024,41 @@ class AsyncSemaphore {
       clearTimeout(waiter.timeout);
       waiter.resolve(this.releaseFunction());
     };
+  }
+}
+
+class SlidingWindowStartLimiter {
+  private readonly starts: number[] = [];
+  private tail: Promise<void> = Promise.resolve();
+
+  constructor(
+    private readonly maximumStarts: number,
+    private readonly clock: () => number,
+    private readonly sleep: (milliseconds: number) => Promise<void>,
+  ) {}
+
+  acquire(): Promise<void> {
+    const next = this.tail.then(() => this.waitForSlot());
+    this.tail = next.catch(() => undefined);
+    return next;
+  }
+
+  private async waitForSlot(): Promise<void> {
+    while (true) {
+      const now = this.clock();
+      if (!Number.isFinite(now)) throw new ApiError("BACKEND_UNAVAILABLE");
+      while (this.starts.length > 0 && now - (this.starts[0] ?? now) >= RATE_WINDOW_MILLIS) {
+        this.starts.shift();
+      }
+      if (this.starts.length < this.maximumStarts) {
+        this.starts.push(now);
+        return;
+      }
+      const oldest = this.starts[0];
+      if (oldest === undefined) throw new ApiError("BACKEND_UNAVAILABLE");
+      const waitMillis = Math.max(1, Math.ceil(oldest + RATE_WINDOW_MILLIS - now));
+      await this.sleep(waitMillis);
+    }
   }
 }
 
