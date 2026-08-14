@@ -1,5 +1,6 @@
 package cn.anitabi.navigator.data.network.backend
 
+import cn.anitabi.navigator.BuildConfig
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TransitRoutingPreference
@@ -318,7 +319,8 @@ class BackendApiTest {
 
         assertEquals(25, reservation.reservedDestinations)
         assertTrue(server.takeRequest().body.readUtf8().contains("\"destinationCount\":25"))
-        assertEquals(BackendApi.BASE_URL, "https://api.anitabi.afunnypersonlol0.site")
+        assertEquals("https://api.anitabi.afunnypersonlol0.site", BackendApi.PRODUCTION_BASE_URL)
+        assertEquals(BuildConfig.BACKEND_BASE_URL, BackendApi.BASE_URL)
     }
 
     @Test

@@ -1,5 +1,6 @@
 package cn.anitabi.navigator.data.network.backend
 
+import cn.anitabi.navigator.BuildConfig
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.CoordinateSystem
 import cn.anitabi.navigator.core.model.MapProvider
@@ -378,7 +379,9 @@ class BackendApi(
     }
 
     companion object {
-        internal const val BASE_URL = "https://api.anitabi.afunnypersonlol0.site"
+        internal const val PRODUCTION_BASE_URL = "https://api.anitabi.afunnypersonlol0.site"
+        internal val BASE_URL: String
+            get() = BuildConfig.BACKEND_BASE_URL
         private const val POST_PACE_MILLIS = 1_000L
         private const val PACE_RESET_MILLIS = 10_000L
         private val JSON_MEDIA_TYPE = "application/json; charset=utf-8".toMediaType()
