@@ -107,18 +107,24 @@ jobs:
       - name: Install Android SDK 37
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
 
-      - name: Download the private internal-test region asset
+      - name: Fetch the exact private internal-test region asset commit
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          repository: ${{ vars.ANITABI_V025_REGION_DATA_REPOSITORY }}
+          ref: ${{ vars.ANITABI_V025_REGION_DATA_COMMIT }}
+          ssh-key: ${{ secrets.ANITABI_V025_REGION_DATA_DEPLOY_KEY }}
+          persist-credentials: false
+          path: region-asset
+          fetch-depth: 1
+
+      - name: Verify and install the private internal-test region asset
         env:
-          GH_TOKEN: ${{ github.token }}
+          REGION_ASSET_COMMIT: ${{ vars.ANITABI_V025_REGION_DATA_COMMIT }}
         run: |
           set -euo pipefail
-          asset_dir="$RUNNER_TEMP/region-asset"
-          install -d -m 700 "$asset_dir"
-          gh release download v0.2.5-internal-test-assets \
-            --repo "$GITHUB_REPOSITORY" \
-            --pattern territory_regions_v1.json \
-            --dir "$asset_dir"
-          asset="$asset_dir/territory_regions_v1.json"
+          [[ "$REGION_ASSET_COMMIT" =~ ^[0-9a-f]{40}$ ]]
+          test "$(git -C region-asset rev-parse 'HEAD^{commit}')" = "$REGION_ASSET_COMMIT"
+          asset="region-asset/territory_regions_v1.json"
           test -s "$asset"
           test "$(sha256sum "$asset" | cut -d ' ' -f 1)" = "a625c9511afe2d38389347b9e497b231e31f262930e9c5c45cedb201b23c1806"
           node -e '
@@ -197,4 +203,3 @@ jobs:
           rm -f candidate/app/google-services.json
           rm -f candidate/app/src/main/assets/approved_regions/territory_regions_v1.json
           rm -f "$RUNNER_TEMP/anitabi-test-release.jks"
-          rm -rf "$RUNNER_TEMP/region-asset"
