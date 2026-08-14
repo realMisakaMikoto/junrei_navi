@@ -41,8 +41,13 @@ jobs:
           key_file="$RUNNER_TEMP/vps-deploy-key"
           known_hosts_file="$RUNNER_TEMP/vps-known-hosts"
           umask 077
-          printf '%s\n' "$DEPLOY_KEY" > "$key_file"
-          printf '%s\n' "$KNOWN_HOSTS" > "$known_hosts_file"
+          if [[ "$DEPLOY_KEY" == -----BEGIN* ]]; then
+            printf '%b\n' "$DEPLOY_KEY" | tr -d '\r' > "$key_file"
+          else
+            printf '%s' "$DEPLOY_KEY" | base64 --decode > "$key_file"
+          fi
+          ssh-keygen -y -f "$key_file" >/dev/null
+          printf '%b\n' "$KNOWN_HOSTS" | tr -d '\r' > "$known_hosts_file"
           ssh-keygen -F "$VPS_HOST" -f "$known_hosts_file" >/dev/null
           ssh_args=(
             -i "$key_file"
