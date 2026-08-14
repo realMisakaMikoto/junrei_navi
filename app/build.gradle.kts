@@ -1,3 +1,4 @@
+import java.net.URI
 import java.util.Properties
 
 plugins {
@@ -34,6 +35,24 @@ val amapApiKey = (
     signingValue("ANITABI_AMAP_API_KEY")
         ?: localProperties.getProperty("ANITABI_AMAP_API_KEY")
     ).orEmpty()
+val productionBackendBaseUrl = "https://api.anitabi.afunnypersonlol0.site"
+val backendBaseUrl = (
+    signingValue("ANITABI_BACKEND_BASE_URL")
+        ?: productionBackendBaseUrl
+    ).trimEnd('/')
+val backendBaseUri = runCatching { URI(backendBaseUrl) }
+    .getOrElse { throw GradleException("ANITABI_BACKEND_BASE_URL must be a valid HTTPS URL") }
+require(
+    backendBaseUri.scheme.equals("https", ignoreCase = true) &&
+        !backendBaseUri.host.isNullOrBlank() &&
+        backendBaseUri.userInfo == null &&
+        backendBaseUri.query == null &&
+        backendBaseUri.fragment == null &&
+        backendBaseUri.port in setOf(-1, 443) &&
+        backendBaseUri.normalize() == backendBaseUri
+) {
+    "ANITABI_BACKEND_BASE_URL must be a normalized HTTPS URL without credentials, query, or fragment"
+}
 val amapApiKeyConfigured = amapApiKey.isNotBlank()
 val amapSdkArtifact = "com.amap.api:3dmap-location-search:11.2.000_loc11.2.000_sea9.8.0"
 val releaseSigningValues = listOf(
@@ -68,6 +87,7 @@ android {
         manifestPlaceholders["NAVIGATION_API_KEY"] = navigationApiKey
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey.ifBlank { "ANITABI_AMAP_KEY_MISSING" }
         buildConfigField("boolean", "AMAP_API_KEY_CONFIGURED", amapApiKeyConfigured.toString())
+        buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
     }
 
     signingConfigs {

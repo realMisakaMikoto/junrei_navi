@@ -1,0 +1,195 @@
+name: v0.2.5 Internal Test
+
+on:
+  workflow_dispatch:
+    inputs:
+      operation:
+        description: Internal test operation
+        required: true
+        default: inspect-host
+        type: choice
+        options:
+          - inspect-host
+          - build-signed-apk
+
+permissions:
+  contents: read
+
+concurrency:
+  group: v0.2.5-internal-test-${{ inputs.operation }}
+  cancel-in-progress: false
+
+jobs:
+  inspect-host:
+    if: inputs.operation == 'inspect-host'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: v0.2.5-release
+    steps:
+      - name: Verify the configured host without changing it
+        env:
+          DEPLOY_KEY: ${{ secrets.ANITABI_VPS_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ANITABI_VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.ANITABI_VPS_HOST }}
+          VPS_USER: ${{ vars.ANITABI_VPS_USER }}
+        run: |
+          set -euo pipefail
+          test -n "$DEPLOY_KEY"
+          test -n "$KNOWN_HOSTS"
+          test -n "$VPS_HOST"
+          test -n "$VPS_USER"
+          key_file="$RUNNER_TEMP/vps-deploy-key"
+          known_hosts_file="$RUNNER_TEMP/vps-known-hosts"
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > "$key_file"
+          printf '%s\n' "$KNOWN_HOSTS" > "$known_hosts_file"
+          ssh-keygen -F "$VPS_HOST" -f "$known_hosts_file" >/dev/null
+          ssh_args=(
+            -i "$key_file"
+            -o BatchMode=yes
+            -o IdentitiesOnly=yes
+            -o StrictHostKeyChecking=yes
+            -o UserKnownHostsFile="$known_hosts_file"
+            -o ConnectTimeout=15
+          )
+          ssh "${ssh_args[@]}" "$VPS_USER@$VPS_HOST" 'set -eu
+            printf "uid=%s\n" "$(id -u)"
+            command -v docker >/dev/null
+            docker compose version
+            printf "caddy=%s\n" "$(systemctl is-active caddy 2>/dev/null || true)"
+            printf "nginx=%s\n" "$(systemctl is-active nginx 2>/dev/null || true)"
+            if command -v cloudflared >/dev/null; then printf "cloudflared=installed\n"; else printf "cloudflared=missing\n"; fi
+            if test -s /etc/anitabi-api/secrets/google-service-account.json; then printf "google_service_account=present\n"; else printf "google_service_account=missing\n"; fi
+            if test -s /etc/anitabi-api/secrets/ip-hmac-key; then printf "ip_hmac_key=present\n"; else printf "ip_hmac_key=missing\n"; fi
+            if test -s /etc/anitabi-api/active-compose-project; then printf "active_project_file=present\n"; else printf "active_project_file=missing\n"; fi
+            if curl --fail --silent --max-time 5 http://127.0.0.1:8787/v1/health >/dev/null; then printf "v1_loopback=ok\n"; else printf "v1_loopback=unavailable\n"; fi
+            if curl --fail --silent --max-time 5 http://127.0.0.1:8788/v2/health >/dev/null; then printf "test_v2_loopback=ok\n"; else printf "test_v2_loopback=absent\n"; fi'
+
+      - name: Remove the temporary SSH material
+        if: always()
+        run: rm -f "$RUNNER_TEMP/vps-deploy-key" "$RUNNER_TEMP/vps-known-hosts"
+
+  build-signed-apk:
+    if: inputs.operation == 'build-signed-apk'
+    runs-on: ubuntu-latest
+    timeout-minutes: 40
+    environment: v0.2.5-release
+    steps:
+      - name: Fetch only the dispatched default-branch commit
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          repository_url="${GITHUB_SERVER_URL%/}/${GITHUB_REPOSITORY}.git"
+          git init candidate
+          git -C candidate remote add origin "$repository_url"
+          git -C candidate fetch --no-tags --depth=1 origin "$GITHUB_SHA"
+          git -C candidate -c advice.detachedHead=false checkout --detach "$GITHUB_SHA"
+          test "$(git -C candidate rev-parse 'HEAD^{commit}')" = "$GITHUB_SHA"
+
+      - name: Keep the internal build separate from the release gate
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          test "$(grep -c '^releaseGateStatus: BLOCKED$' docs/V0.2.5_RELEASE_GATE.md || true)" -eq 1
+
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@40fd30fb8d7440372e1316f5d1809ec01dcd3699 # v4
+      - name: Install Android SDK 37
+        run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
+
+      - name: Download the private internal-test region asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          asset_dir="$RUNNER_TEMP/region-asset"
+          install -d -m 700 "$asset_dir"
+          gh release download v0.2.5-internal-test-assets \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern territory_regions_v1.json \
+            --dir "$asset_dir"
+          asset="$asset_dir/territory_regions_v1.json"
+          test -s "$asset"
+          test "$(sha256sum "$asset" | cut -d ' ' -f 1)" = "a625c9511afe2d38389347b9e497b231e31f262930e9c5c45cedb201b23c1806"
+          node -e '
+            const fs = require("fs");
+            const data = JSON.parse(fs.readFileSync(process.argv[1], "utf8"));
+            if (data.regionDataVersion !== "2025.09-cn-gs2024-0650-jp-gm2.1-r1") process.exit(1);
+          ' "$asset"
+          install -d -m 700 candidate/app/src/main/assets/approved_regions
+          install -m 600 "$asset" candidate/app/src/main/assets/approved_regions/territory_regions_v1.json
+
+      - name: Verify the protected test backend URL
+        env:
+          TEST_BACKEND_BASE_URL: ${{ vars.ANITABI_V025_TEST_BACKEND_BASE_URL }}
+        run: |
+          set -euo pipefail
+          node -e '
+            const raw = process.argv[1];
+            const url = new URL(raw);
+            if (!raw.startsWith("https://") || url.protocol !== "https:" || !url.hostname ||
+                url.username || url.password || url.search || url.hash || url.port) process.exit(1);
+          ' "$TEST_BACKEND_BASE_URL"
+
+      - name: Restore Firebase configuration and release keystore
+        env:
+          ANITABI_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANITABI_GOOGLE_SERVICES_JSON_BASE64 }}
+          KEYSTORE_BASE64: ${{ secrets.ANITABI_KEYSTORE_BASE64 }}
+        run: |
+          set -euo pipefail
+          test -n "$ANITABI_GOOGLE_SERVICES_JSON_BASE64"
+          test -n "$KEYSTORE_BASE64"
+          umask 077
+          printf '%s' "$ANITABI_GOOGLE_SERVICES_JSON_BASE64" | base64 --decode > candidate/app/google-services.json
+          printf '%s' "$KEYSTORE_BASE64" | base64 --decode > "$RUNNER_TEMP/anitabi-test-release.jks"
+          test -s candidate/app/google-services.json
+          test -s "$RUNNER_TEMP/anitabi-test-release.jks"
+
+      - name: Build the signed internal test APK
+        working-directory: candidate
+        env:
+          ANITABI_STORE_FILE: ${{ runner.temp }}/anitabi-test-release.jks
+          ANITABI_STORE_PASSWORD: ${{ secrets.ANITABI_STORE_PASSWORD }}
+          ANITABI_KEY_ALIAS: ${{ secrets.ANITABI_KEY_ALIAS }}
+          ANITABI_KEY_PASSWORD: ${{ secrets.ANITABI_KEY_PASSWORD }}
+          ANITABI_NAVIGATION_API_KEY: ${{ secrets.ANITABI_NAVIGATION_API_KEY }}
+          ANITABI_AMAP_API_KEY: ${{ secrets.ANITABI_AMAP_API_KEY }}
+          ANITABI_BACKEND_BASE_URL: ${{ vars.ANITABI_V025_TEST_BACKEND_BASE_URL }}
+        run: ./gradlew testDebugUnitTest lintRelease assembleRelease --stacktrace
+
+      - name: Audit the private APK and fixed signer
+        working-directory: candidate
+        run: |
+          set -euo pipefail
+          apk="app/build/outputs/apk/release/app-release.apk"
+          bash .github/scripts/audit-navigation-r8.sh
+          bash .github/scripts/audit-apk.sh "$apk" a625c9511afe2d38389347b9e497b231e31f262930e9c5c45cedb201b23c1806
+          bash .github/scripts/audit-apk-signature.sh "$apk" "$ANDROID_HOME/build-tools/37.0.0/apksigner"
+          install -d -m 700 "$RUNNER_TEMP/test-payload"
+          install -m 600 "$apk" "$RUNNER_TEMP/test-payload/anitabi-v0.2.5-internal-test.apk"
+          (
+            cd "$RUNNER_TEMP/test-payload"
+            sha256sum anitabi-v0.2.5-internal-test.apk > anitabi-v0.2.5-internal-test.apk.sha256
+          )
+
+      - name: Upload the private test payload
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: anitabi-v0.2.5-internal-test
+          path: ${{ runner.temp }}/test-payload
+          if-no-files-found: error
+          compression-level: 0
+          retention-days: 7
+
+      - name: Remove restored test secrets and region data
+        if: always()
+        run: |
+          rm -f candidate/app/google-services.json
+          rm -f candidate/app/src/main/assets/approved_regions/territory_regions_v1.json
+          rm -f "$RUNNER_TEMP/anitabi-test-release.jks"
+          rm -rf "$RUNNER_TEMP/region-asset"
