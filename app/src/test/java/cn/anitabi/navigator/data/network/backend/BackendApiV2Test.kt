@@ -173,6 +173,100 @@ class BackendApiV2Test {
         assertEquals(1, server.requestCount)
     }
 
+    @Test
+    fun `missing v2 endpoints are backend failures without compatibility retries`() {
+        assertMissingEndpoint("/v2/policy") { api.policy() }
+        assertMissingEndpoint("/v2/matrix") {
+            api.matrix(
+                mode = TravelMode.WALK,
+                coordinates = points(),
+                objective = RouteObjective.FASTEST,
+                expectedProvider = MapProvider.GOOGLE,
+                expectedCoordinateSystem = CoordinateSystem.WGS84,
+            )
+        }
+        for (provider in MapProvider.entries) {
+            assertMissingEndpoint("/v2/route") {
+                api.route(
+                    mode = TravelMode.WALK,
+                    locations = points(),
+                    expectedProvider = provider,
+                    expectedCoordinateSystem = if (provider == MapProvider.AMAP) {
+                        CoordinateSystem.GCJ02
+                    } else {
+                        CoordinateSystem.WGS84
+                    },
+                )
+            }
+        }
+        assertMissingEndpoint("/v2/navigation/reserve") {
+            api.reserveNavigation(
+                origin = points().first(),
+                destinations = points().drop(1),
+                expectedProvider = MapProvider.GOOGLE,
+            )
+        }
+    }
+
+    @Test
+    fun `HTML and unknown error 404s are backend failures and do not expose the response`() {
+        val bodies = listOf(
+            "<html>private deployment detail</html>",
+            """{"error":{"code":"NOT_FOUND","message":"private deployment detail"}}""",
+        )
+        for (body in bodies) {
+            server.enqueue(MockResponse().setResponseCode(404).setBody(body))
+
+            val exception = assertThrows(ApiException.BackendUnavailable::class.java) {
+                runBlocking { api.policy() }
+            }
+
+            assertFalse(exception.message.orEmpty().contains("private deployment detail"))
+        }
+        assertEquals(bodies.size, server.requestCount)
+    }
+
+    @Test
+    fun `v2 documented no route and upstream failures retain their distinct meanings`() {
+        val cases = listOf(
+            Triple(404, "NO_ROUTE", ApiException.NoRoute::class.java),
+            Triple(502, "UPSTREAM_UNAVAILABLE", ApiException.UpstreamUnavailable::class.java),
+        )
+        for ((status, code, exceptionType) in cases) {
+            server.enqueue(
+                MockResponse().setResponseCode(status)
+                    .setBody("""{"error":{"code":"$code","message":"private provider detail"}}"""),
+            )
+
+            val exception = assertThrows(exceptionType) {
+                runBlocking {
+                    api.route(
+                        mode = TravelMode.WALK,
+                        locations = points(),
+                        expectedProvider = MapProvider.GOOGLE,
+                        expectedCoordinateSystem = CoordinateSystem.WGS84,
+                    )
+                }
+            }
+
+            assertFalse(exception.message.orEmpty().contains("private provider detail"))
+        }
+        assertEquals(cases.size, server.requestCount)
+    }
+
+    private fun assertMissingEndpoint(path: String, request: suspend () -> Unit) {
+        val countBefore = server.requestCount
+        server.enqueue(
+            MockResponse().setResponseCode(404)
+                .setBody("""{"message":"Not Found","error":"Not Found","statusCode":404}"""),
+        )
+
+        assertThrows(ApiException.BackendUnavailable::class.java) { runBlocking { request() } }
+
+        assertEquals(countBefore + 1, server.requestCount)
+        assertEquals(path, server.takeRequest().requestUrl?.encodedPath)
+    }
+
     private fun points() = listOf(GeoPoint(35.0, 139.0), GeoPoint(35.1, 139.1))
 
     private companion object {

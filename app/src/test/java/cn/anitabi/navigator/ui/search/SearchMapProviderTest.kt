@@ -57,4 +57,46 @@ class SearchMapProviderTest {
             availableSearchMapProvider(MapProvider.GOOGLE, false, false),
         )
     }
+
+    @Test
+    fun `mixed results allow explicit maps without mixing their markers`() {
+        val classifier: (GeoPoint) -> TerritoryRegion? = { coordinate ->
+            if (coordinate == points[0].coordinate) TerritoryRegion.MAINLAND_CHINA else TerritoryRegion.JAPAN
+        }
+        val initial = resolveSearchMapContent(points, classifier, null)
+        assertNull(initial.provider)
+        assertEquals(emptyList<PilgrimagePoint>(), initial.points)
+        assertEquals(setOf(MapProvider.GOOGLE, MapProvider.AMAP), initial.providerChoices)
+
+        val amap = resolveSearchMapContent(points, classifier, MapProvider.AMAP)
+        val google = resolveSearchMapContent(points, classifier, MapProvider.GOOGLE)
+        assertEquals(listOf(points[0]), amap.points)
+        assertEquals(listOf(points[1]), google.points)
+        assertEquals(MapProvider.AMAP, amap.provider)
+        assertEquals(MapProvider.GOOGLE, google.provider)
+        assertEquals(2, points.size)
+    }
+
+    @Test
+    fun `unresolved results stay off maps while resolved group can be chosen`() {
+        val classifier: (GeoPoint) -> TerritoryRegion? = { coordinate ->
+            if (coordinate == points[0].coordinate) TerritoryRegion.OTHER else null
+        }
+        assertNull(resolveSearchMapContent(points, classifier, null).provider)
+        val selected = resolveSearchMapContent(points, classifier, MapProvider.GOOGLE)
+        assertEquals(listOf(points[0]), selected.points)
+        assertEquals(setOf(MapProvider.GOOGLE), selected.providerChoices)
+        val unavailableSelection = resolveSearchMapContent(points, classifier, MapProvider.AMAP)
+        assertNull(unavailableSelection.provider)
+        assertEquals(emptyList<PilgrimagePoint>(), unavailableSelection.points)
+    }
+
+    @Test
+    fun `stale provider choice cannot show new points on the wrong map`() {
+        val updated = resolveSearchMapContent(points, { TerritoryRegion.MAINLAND_CHINA }, MapProvider.GOOGLE)
+        assertEquals(MapProvider.AMAP, updated.provider)
+        assertEquals(points, updated.points)
+        assertEquals(emptySet<MapProvider>(), updated.providerChoices)
+        assertNull(resolveSearchMapContent(emptyList(), { TerritoryRegion.JAPAN }, MapProvider.GOOGLE).provider)
+    }
 }

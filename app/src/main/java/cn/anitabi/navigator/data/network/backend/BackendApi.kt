@@ -369,7 +369,7 @@ class BackendApi(
             else -> when (status) {
                 400 -> ApiException.InvalidArgument()
                 401 -> ApiException.Unauthenticated()
-                404 -> ApiException.UpstreamUnavailable()
+                404 -> ApiException.BackendUnavailable()
                 429 -> ApiException.RateLimited()
                 426 -> ApiException.ClientUpgradeRequired()
                 503 -> ApiException.BackendUnavailable()
