@@ -10,6 +10,7 @@ on:
         type: choice
         options:
           - inspect-host
+          - provision-test-secrets
           - build-signed-apk
 
 permissions:
@@ -20,6 +21,67 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  provision-test-secrets:
+    if: inputs.operation == 'provision-test-secrets'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: v0.2.5-release
+    steps:
+      - name: Provision only the isolated test provider secrets
+        env:
+          DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
+          DEPLOY_KEY: ${{ secrets.ANITABI_VPS_DEPLOY_SSH_KEY }}
+          KNOWN_HOSTS: ${{ secrets.ANITABI_VPS_KNOWN_HOSTS }}
+          VPS_HOST: ${{ vars.ANITABI_VPS_HOST }}
+          VPS_USER: ${{ vars.ANITABI_VPS_USER }}
+          AMAP_WEB_KEY: ${{ secrets.ANITABI_AMAP_WEB_API_KEY }}
+          AMAP_SIGNING_SECRET: ${{ secrets.ANITABI_AMAP_SIGNATURE_SECRET }}
+        run: |
+          set -euo pipefail
+          test "$GITHUB_REF" = "refs/heads/$DEFAULT_BRANCH"
+          test -n "$DEPLOY_KEY" && test -n "$KNOWN_HOSTS"
+          test -n "$VPS_HOST" && test "$VPS_USER" = root
+          test -n "$AMAP_WEB_KEY" && test -n "$AMAP_SIGNING_SECRET"
+          test "$AMAP_WEB_KEY" != "$AMAP_SIGNING_SECRET"
+          umask 077
+          stage=$(mktemp -d "$RUNNER_TEMP/anitabi-provision.XXXXXX")
+          trap 'rm -f "$stage/key" "$stage/known-hosts" "$stage/amap-web-key" "$stage/amap-signature-secret"; rmdir "$stage"' EXIT
+          if [[ "$DEPLOY_KEY" == -----BEGIN* ]]; then
+            printf '%b\n' "$DEPLOY_KEY" | tr -d '\r' > "$stage/key"
+          else
+            printf '%s' "$DEPLOY_KEY" | base64 --decode > "$stage/key"
+          fi
+          ssh-keygen -y -f "$stage/key" >/dev/null
+          printf '%b\n' "$KNOWN_HOSTS" | tr -d '\r' > "$stage/known-hosts"
+          ssh-keygen -F "$VPS_HOST" -f "$stage/known-hosts" >/dev/null
+          printf '%s' "$AMAP_WEB_KEY" > "$stage/amap-web-key"
+          printf '%s' "$AMAP_SIGNING_SECRET" > "$stage/amap-signature-secret"
+          tar -C "$stage" -cf - amap-web-key amap-signature-secret | ssh \
+            -i "$stage/key" -o BatchMode=yes -o IdentitiesOnly=yes \
+            -o StrictHostKeyChecking=yes -o UserKnownHostsFile="$stage/known-hosts" \
+            -o ConnectTimeout=15 "$VPS_USER@$VPS_HOST" 'set -eu
+              test "$(id -u)" = 0
+              dest=/etc/anitabi-api/internal-test-secrets
+              test ! -L /etc/anitabi-api
+              test ! -L "$dest"
+              if test -e "$dest"; then test -d "$dest"; else install -d -m 700 "$dest"; fi
+              test "$(stat -c %u "$dest")" = 0
+              stage=$(mktemp -d "$dest/.provision.XXXXXX")
+              trap "rm -f $stage/amap-web-key $stage/amap-signature-secret; rmdir $stage" EXIT
+              tar -xf - -C "$stage" amap-web-key amap-signature-secret
+              for name in amap-web-key amap-signature-secret; do
+                test ! -L "$dest/$name"
+                test -s "$stage/$name"
+                test "$(wc -c < "$stage/$name")" -le 4096
+                if test -e "$dest/$name"; then test -f "$dest/$name"; cmp -s "$stage/$name" "$dest/$name"; fi
+              done
+              chmod 700 "$dest"
+              for name in amap-web-key amap-signature-secret; do
+                if test ! -e "$dest/$name"; then install -m 400 -o 1000 -g 1000 "$stage/$name" "$dest/$name"; fi
+                test "$(stat -c %u:%g:%a "$dest/$name")" = 1000:1000:400
+              done
+              echo "Isolated test secrets ready; no provider or proxy was started"'
+
   inspect-host:
     if: inputs.operation == 'inspect-host'
     runs-on: ubuntu-latest
