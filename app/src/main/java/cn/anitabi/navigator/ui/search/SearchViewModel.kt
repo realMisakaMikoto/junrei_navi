@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import cn.anitabi.navigator.core.model.Anime
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.StoredTourV2
 import cn.anitabi.navigator.data.network.ApiException
@@ -136,10 +137,12 @@ class SearchViewModel(
         mutableState.update { it.copy(visibleBounds = bounds) }
     }
 
-    fun selectVisiblePoints() {
+    fun selectVisiblePoints(displayedPointIds: Set<String>) {
         mutableState.update { current ->
             val visible = current.combinedPilgrimageData?.points.orEmpty()
-                .filter { point -> current.visibleBounds?.contains(point) == true }
+                .filter { point ->
+                    point.id in displayedPointIds && current.visibleBounds?.contains(point) == true
+                }
                 .map(PilgrimagePoint::id)
             current.copy(
                 selectedPointIds = current.selectedPointIds + visible,
@@ -153,14 +156,26 @@ class SearchViewModel(
     }
 
     fun setShowList(showList: Boolean) {
-        mutableState.update { it.copy(showList = showList) }
+        mutableState.update { it.copy(showList = showList, errorMessage = null) }
     }
 
-    fun handleMapUnavailable() {
+    fun selectMapProvider(provider: MapProvider) {
+        mutableState.update {
+            it.copy(
+                selectedMapProvider = provider,
+                showList = false,
+                visibleBounds = null,
+                errorMessage = null,
+            )
+        }
+    }
+
+    fun handleMapUnavailable(provider: MapProvider) {
         mutableState.update {
             it.copy(
                 showList = true,
-                errorMessage = "Google 地图暂时无法加载，已切换为列表选点",
+                visibleBounds = null,
+                errorMessage = "${provider.searchMapLabel()}暂时无法加载，已切换为列表选点",
             )
         }
     }
@@ -259,6 +274,7 @@ data class SearchUiState(
     val visibleBounds: GeoBounds? = null,
     val isLoading: Boolean = false,
     val showList: Boolean = false,
+    val selectedMapProvider: MapProvider? = null,
     val selectionOpen: Boolean = false,
     val plannerOpen: Boolean = false,
     val navigationOpen: Boolean = false,

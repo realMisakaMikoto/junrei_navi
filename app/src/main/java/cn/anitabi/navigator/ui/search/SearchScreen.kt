@@ -45,6 +45,7 @@ import androidx.compose.material.icons.rounded.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -115,10 +116,12 @@ fun SearchRoute(
     val state by viewModel.state.collectAsStateWithLifecycle()
     val navigationState by navigationViewModel.state.collectAsStateWithLifecycle()
     val navigationPlanId = navigationState.plan?.id
-    val selectionMapProvider = resolveSearchMapProvider(
+    val selectionMapContent = resolveSearchMapContent(
         points = state.combinedPilgrimageData?.points.orEmpty(),
         classifyTerritory = classifyTerritory,
+        selectedProvider = state.selectedMapProvider,
     )
+    val selectionMapProvider = selectionMapContent.provider
     val hasRecoverableNavigation = navigationPlanId != null &&
         navigationState.errorMessage != null &&
         navigationState.progress?.state?.let { progressState ->
@@ -182,15 +185,22 @@ fun SearchRoute(
         PilgrimageSelectionScreen(
             state = state,
             mapProvider = selectionMapProvider,
+            mapPoints = selectionMapContent.points,
+            mapProviderChoices = selectionMapContent.providerChoices,
+            onMapProviderSelected = viewModel::selectMapProvider,
             amapRegionDataReady = selectionMapProvider == MapProvider.AMAP,
             amapPrivacyAndKeyReady = amapPrivacyGate.isReady,
             onBack = viewModel::backToResults,
             onTogglePoint = viewModel::togglePoint,
             onBoundsChanged = viewModel::updateVisibleBounds,
-            onSelectVisible = viewModel::selectVisiblePoints,
+            onSelectVisible = {
+                viewModel.selectVisiblePoints(selectionMapContent.points.mapTo(mutableSetOf(), PilgrimagePoint::id))
+            },
             onClearSelection = viewModel::clearSelection,
             onShowList = viewModel::setShowList,
-            onMapUnavailable = viewModel::handleMapUnavailable,
+            onMapUnavailable = {
+                selectionMapProvider?.let(viewModel::handleMapUnavailable)
+            },
             onPlan = {
                 state.combinedPilgrimageData?.let { data ->
                     val points = data.points.filter { it.id in state.selectedPointIds }
@@ -635,6 +645,9 @@ private fun AnimeSelectionFooter(
 internal fun PilgrimageSelectionScreen(
     state: SearchUiState,
     mapProvider: MapProvider? = null,
+    mapPoints: List<PilgrimagePoint> = state.combinedPilgrimageData?.points.orEmpty(),
+    mapProviderChoices: Set<MapProvider> = emptySet(),
+    onMapProviderSelected: (MapProvider) -> Unit = {},
     amapRegionDataReady: Boolean = false,
     amapPrivacyAndKeyReady: Boolean = false,
     onBack: () -> Unit,
@@ -655,7 +668,8 @@ internal fun PilgrimageSelectionScreen(
     )
     BoxWithConstraints(modifier = Modifier.fillMaxSize().testTag("point-selection-screen")) {
         val widthClass = contentWidthClass(maxWidth)
-        val useDualPane = availableMapProvider != null && !forceListMode &&
+        val showList = state.showList || forceListMode || availableMapProvider == null
+        val useDualPane = !showList &&
             (widthClass == ContentWidthClass.Expanded || maxWidth > maxHeight)
         Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
@@ -665,10 +679,27 @@ internal fun PilgrimageSelectionScreen(
                     partialData = data?.warnings?.contains(PilgrimageWarning.PARTIAL_DATA) == true,
                     onBack = onBack,
                 )
+                if (mapProviderChoices.isNotEmpty()) {
+                    LazyRow(
+                        contentPadding = PaddingValues(horizontal = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        items(MapProvider.entries.filter { it in mapProviderChoices }) { provider ->
+                            FilterChip(
+                                selected = mapProvider == provider,
+                                onClick = { onMapProviderSelected(provider) },
+                                label = { Text(provider.searchMapLabel()) },
+                                modifier = Modifier.testTag("search-provider-${provider.name}"),
+                            )
+                        }
+                    }
+                }
                 StatusMessage(
                     state.errorMessage ?: if (data != null && availableMapProvider == null) {
                         if (mapProvider == MapProvider.AMAP) {
                             "高德地图地区数据、隐私同意或 Android Key 尚未就绪，已切换为列表"
+                        } else if (mapProviderChoices.isNotEmpty()) {
+                            "地点分属不同地图地区，请选择上方地图，或继续使用完整列表"
                         } else {
                             "地图地区无法安全判定或包含不同地图提供方，已切换为列表"
                         }
@@ -676,6 +707,17 @@ internal fun PilgrimageSelectionScreen(
                         null
                     },
                 )
+                if (!showList && data != null && mapPoints.size < data.points.size) {
+                    val displayedIds = mapPoints.mapTo(mutableSetOf(), PilgrimagePoint::id)
+                    val otherSelectedCount = state.selectedPointIds.count { it !in displayedIds }
+                    Text(
+                        text = "当前地图显示 ${mapPoints.size}/${data.points.size} 个地点；" +
+                            "另有 $otherSelectedCount 个已选地点在其他地区，完整列表可查看全部地点",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MutedInk,
+                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                    )
+                }
 
                 when {
                     state.isLoading || data == null -> Box(modifier = Modifier.weight(1f)) {
@@ -697,8 +739,8 @@ internal fun PilgrimageSelectionScreen(
                                 .background(MaterialTheme.colorScheme.outlineVariant),
                         )
                         PilgrimageMapPane(
-                            contentKey = state.mapContentKey,
-                            points = data.points,
+                            contentKey = "${state.mapContentKey}:${mapProvider?.name}",
+                            points = mapPoints,
                             selectedPointIds = state.selectedPointIds,
                             onPointToggle = onTogglePoint,
                             onVisibleBoundsChanged = onBoundsChanged,
@@ -711,15 +753,15 @@ internal fun PilgrimageSelectionScreen(
                                 .fillMaxHeight(),
                         )
                     }
-                    state.showList || forceListMode || availableMapProvider == null -> PointList(
+                    showList -> PointList(
                         points = data.points,
                         selectedPointIds = state.selectedPointIds,
                         onTogglePoint = onTogglePoint,
                         modifier = Modifier.weight(1f),
                     )
                     else -> PilgrimageMapPane(
-                        contentKey = state.mapContentKey,
-                        points = data.points,
+                        contentKey = "${state.mapContentKey}:${mapProvider?.name}",
+                        points = mapPoints,
                         selectedPointIds = state.selectedPointIds,
                         onPointToggle = onTogglePoint,
                         onVisibleBoundsChanged = onBoundsChanged,
@@ -733,7 +775,7 @@ internal fun PilgrimageSelectionScreen(
 
                 SelectionFooter(
                     selectedCount = state.selectedPointIds.size,
-                    showList = state.showList,
+                    showList = showList,
                     useDualPane = useDualPane,
                     onShowList = onShowList,
                     onClear = onClearSelection,
@@ -781,7 +823,7 @@ private fun PilgrimageMapPane(
     amapRegionDataReady: Boolean,
     modifier: Modifier = Modifier,
 ) {
-    Box(modifier = modifier) {
+    Box(modifier = modifier.testTag("selection-map")) {
         PilgrimageMap(
             contentKey = contentKey,
             points = points,
@@ -820,12 +862,33 @@ private fun PilgrimageMapPane(
 internal fun resolveSearchMapProvider(
     points: List<PilgrimagePoint>,
     classifyTerritory: (GeoPoint) -> TerritoryRegion?,
-): MapProvider? {
-    if (points.isEmpty()) return null
-    val providers = points.mapTo(mutableSetOf()) { point ->
-        classifyTerritory(point.coordinate)?.mapProvider ?: return null
-    }
-    return providers.singleOrNull()
+): MapProvider? = resolveSearchMapContent(points, classifyTerritory, null).provider
+
+internal data class SearchMapContent(
+    val provider: MapProvider?,
+    val points: List<PilgrimagePoint>,
+    val providerChoices: Set<MapProvider>,
+)
+
+internal fun resolveSearchMapContent(
+    points: List<PilgrimagePoint>,
+    classifyTerritory: (GeoPoint) -> TerritoryRegion?,
+    selectedProvider: MapProvider?,
+): SearchMapContent {
+    val groups = points.groupBy { classifyTerritory(it.coordinate)?.mapProvider }
+    val providers = groups.keys.filterNotNull().toSet()
+    val provider = selectedProvider?.takeIf { it in providers }
+        ?: providers.singleOrNull()?.takeIf { null !in groups }
+    return SearchMapContent(
+        provider = provider,
+        points = if (provider == null) emptyList() else groups[provider].orEmpty(),
+        providerChoices = if (groups.size > 1) providers else emptySet(),
+    )
+}
+
+internal fun MapProvider.searchMapLabel(): String = when (this) {
+    MapProvider.GOOGLE -> "Google 地图"
+    MapProvider.AMAP -> "高德地图"
 }
 
 @Composable

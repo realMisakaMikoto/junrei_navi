@@ -4,9 +4,11 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.requiredSize
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.v2.createComposeRule
@@ -19,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.NavigationProgress
 import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.PilgrimagePoint
@@ -151,6 +154,73 @@ class UiRedesignContractTest {
         composeRule.runOnIdle { assertEquals("7::p1", toggledPointId) }
         composeRule.onNodeWithText("规划路线").assertIsEnabled().performClick()
         composeRule.runOnIdle { assertTrue(planned) }
+    }
+
+    @Test
+    fun pointSelection_mapUnavailableShowsListAsSelected() {
+        val data = pilgrimageData()
+        composeRule.setContent {
+            AnitabiTheme {
+                PilgrimageSelectionScreen(
+                    state = SearchUiState(selectedAnimeData = mapOf(data.anime.subjectId to data)),
+                    mapProvider = null,
+                    onBack = {}, onTogglePoint = {}, onBoundsChanged = {},
+                    onSelectVisible = {}, onClearSelection = {}, onShowList = {},
+                    onMapUnavailable = {}, onPlan = {},
+                )
+            }
+        }
+        composeRule.onNodeWithText("列表").assertIsSelected()
+        composeRule.onNodeWithTag("selection-map").assertDoesNotExist()
+        composeRule.onNodeWithText("名场面一").assertIsDisplayed()
+    }
+
+    @Test
+    fun pointSelection_landscapeHonorsListFallbackEvenWhenProviderIsAvailable() {
+        val data = pilgrimageData()
+        composeRule.setContent {
+            AnitabiTheme {
+                Box(Modifier.requiredSize(900.dp, 600.dp)) {
+                    PilgrimageSelectionScreen(
+                        state = SearchUiState(
+                            selectedAnimeData = mapOf(data.anime.subjectId to data),
+                            showList = true,
+                        ),
+                        mapProvider = MapProvider.GOOGLE,
+                        onBack = {}, onTogglePoint = {}, onBoundsChanged = {},
+                        onSelectVisible = {}, onClearSelection = {}, onShowList = {},
+                        onMapUnavailable = {}, onPlan = {},
+                    )
+                }
+            }
+        }
+        composeRule.onNodeWithTag("selection-map").assertDoesNotExist()
+        composeRule.onNodeWithText("列表").assertIsSelected()
+    }
+
+    @Test
+    fun pointSelection_mixedResultsExposeExplicitProviderChoiceAndKeepSelection() {
+        val data = pilgrimageData()
+        var selectedProvider: MapProvider? = null
+        composeRule.setContent {
+            AnitabiTheme {
+                PilgrimageSelectionScreen(
+                    state = SearchUiState(
+                        selectedAnimeData = mapOf(data.anime.subjectId to data),
+                        selectedPointIds = setOf("7::p1", "7::p2"),
+                    ),
+                    mapProviderChoices = setOf(MapProvider.GOOGLE, MapProvider.AMAP),
+                    onMapProviderSelected = { selectedProvider = it },
+                    onBack = {}, onTogglePoint = {}, onBoundsChanged = {},
+                    onSelectVisible = {}, onClearSelection = {}, onShowList = {},
+                    onMapUnavailable = {}, onPlan = {},
+                )
+            }
+        }
+        composeRule.onNodeWithTag("search-provider-AMAP").performClick()
+        composeRule.runOnIdle { assertEquals(MapProvider.AMAP, selectedProvider) }
+        composeRule.onNodeWithText("已选 2 个地点").assertIsDisplayed()
+        composeRule.onNodeWithText("规划路线").assertIsEnabled()
     }
 
     @Test

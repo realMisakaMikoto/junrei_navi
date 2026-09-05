@@ -116,7 +116,7 @@ class BackendApiTest {
     }
 
     @Test
-    fun `bare HTTP 404 is a service failure rather than no transit route`() {
+    fun `bare HTTP 404 is a backend failure rather than a provider failure or no transit route`() {
         server.enqueue(MockResponse().setResponseCode(404).setBody("not a backend error envelope"))
 
         val exception = runCatching {
@@ -129,7 +129,7 @@ class BackendApiTest {
             }
         }.exceptionOrNull()
 
-        assertTrue(exception is ApiException.UpstreamUnavailable)
+        assertTrue(exception is ApiException.BackendUnavailable)
     }
 
     @Test

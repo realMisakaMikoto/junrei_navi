@@ -135,17 +135,16 @@ jobs:
           install -d -m 700 candidate/app/src/main/assets/approved_regions
           install -m 600 "$asset" candidate/app/src/main/assets/approved_regions/territory_regions_v1.json
 
-      - name: Verify the protected test backend URL
+      - name: Check backend compatibility before signing the test APK
+        working-directory: candidate
         env:
           TEST_BACKEND_BASE_URL: ${{ vars.ANITABI_V025_TEST_BACKEND_BASE_URL }}
         run: |
           set -euo pipefail
-          node -e '
-            const raw = process.argv[1];
-            const url = new URL(raw);
-            if (!raw.startsWith("https://") || url.protocol !== "https:" || !url.hostname ||
-                url.username || url.password || url.search || url.hash || url.port) process.exit(1);
-          ' "$TEST_BACKEND_BASE_URL"
+          python3 scripts/check-backend-compatibility-test.py
+          python3 scripts/check-backend-compatibility.py \
+            --region-asset app/src/main/assets/approved_regions/territory_regions_v1.json \
+            --app-gradle app/build.gradle.kts
 
       - name: Restore Firebase configuration and release keystore
         env:

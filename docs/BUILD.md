@@ -27,7 +27,7 @@ ANITABI_AMAP_API_KEY=your-local-android-key
 
 从 Firebase 项目下载 Android 配置到不提交的 `app/google-services.json`。应用包名必须为 `cn.anitabi.navigator`，并启用 Firebase Anonymous Auth。
 
-Firebase 项目 ID 必须与应用所连接的后端相匹配，否则匿名 Token 会被拒绝。第三方自行构建时，若要使用完整路线功能，需要部署自己的配套后端、将 [`BackendApi.BASE_URL`](../app/src/main/java/cn/anitabi/navigator/data/network/backend/BackendApi.kt) 改为该后端地址，并按 [`backend/README.md`](../backend/README.md) 配置同一个 Firebase/Google 项目。官方生产后端不接受任意自建 Firebase 项目签发的 Token。
+Firebase 项目 ID 必须与应用所连接的后端相匹配，否则匿名 Token 会被拒绝。第三方自行构建时，若要使用完整路线功能，需要部署自己的配套 v2 后端，通过 Gradle 属性或环境变量 `ANITABI_BACKEND_BASE_URL` 设置 HTTPS 地址，并按 [`backend/README.md`](../backend/README.md) 配置同一个 Firebase/Google 项目。官方生产后端不接受任意自建 Firebase 项目签发的 Token。
 
 Navigation SDK Key 必须限制为：
 
@@ -50,6 +50,14 @@ v0.2.5 Release 还要求把经过许可、地图审核和双人复核的地区�
 ```
 
 生成的 APK 位于 `app\build\outputs\apk\debug\app-debug.apk`。
+
+## 内部联调 APK
+
+`v0.2.5 Internal Test` 的 `build-signed-apk` 操作使用受保护变量 `ANITABI_V025_TEST_BACKEND_BASE_URL`。必须先部署可访问的 v2 测试后端，再构建手机测试包；仅有 `/v1/health` 返回 200 不表示 0.2.5 路线可用。
+
+工作流在恢复签名材料之前执行 `scripts/check-backend-compatibility.py`，以无鉴权 GET 检查 `/v2/policy`、`/v2/health`：地区版本必须与 APK 资产一致、最低应用版本兼容、两家提供方均已启用且数据库与地区数据就绪。接口不存在、重定向或不匹配时停止构建。检查不会发送坐标、令牌或消耗路线额度；它只验证接口和配置，真实路线仍需另做联调。
+
+该流程不创建正式 Release。普通 CI 的 Debug 产物用于自动化测试；缺少地图 Key、生产地区资产或配套后端时，不能把“构建成功”当成可供真实路线测试的交付结果。
 
 ## 正式签名
 

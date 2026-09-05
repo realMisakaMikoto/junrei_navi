@@ -57,6 +57,8 @@ jobs:
         run: sdkmanager "platforms;android-37.0" "build-tools;37.0.0"
       - name: Audit tracked source for credentials
         run: bash .github/scripts/audit-source-secrets.sh
+      - name: Test internal APK backend compatibility checks
+        run: python3 scripts/check-backend-compatibility-test.py
       - name: Restore Firebase Android configuration
         env:
           ANITABI_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANITABI_GOOGLE_SERVICES_JSON_BASE64 }}
@@ -170,6 +172,14 @@ jobs:
           grep -q "ONBOARDING_SERVICE_GUIDE_SHOWN" smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_COMPLETED_TO_SEARCH" smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_RESTARTED_IN_SEARCH" smoke-output/onboarding-smoke.txt
+      - name: Verify map selection and list fallback
+        run: |
+          set -o pipefail
+          adb shell am instrument -w \
+            -e class 'cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_mapUnavailableShowsListAsSelected,cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_landscapeHonorsListFallbackEvenWhenProviderIsAvailable,cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_mixedResultsExposeExplicitProviderChoiceAndKeepSelection' \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
+            2>&1 | tee smoke-output/map-list-fallback.txt
+          grep -q "OK (3 tests)" smoke-output/map-list-fallback.txt
       - name: Reset Android 8 after permission-system smoke
         if: matrix.label == 'android-8-api-26'
         run: |
