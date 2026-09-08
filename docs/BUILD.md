@@ -61,6 +61,12 @@ v0.2.5 Release 还要求把经过许可、地图审核和双人复核的地区�
 
 ## 正式签名
 
+高德 3D 地图的原生库会按固定类名和方法签名访问 Java 代码。必须保留 `app/proguard-rules.pro` 中对应地图、`com.autonavi`、轨迹及合包定位/搜索的完整规则，不能只保留 `MapsInitializer` 或 `native` 方法声明。规则依据为[高德开发注意事项](https://lbs.amap.com/api/android-sdk/guide/create-project/dev-attention)。缺失 `ClassTools.getClassLoader()` 会在地图首次渲染时触发 JNI abort，普通 JVM 测试和仅启动主界面无法发现。
+
+CI、内部签名构建和正式发布都会执行 `.github/scripts/audit-amap-r8.py`，检查 R8 mapping、seeds、usage 中的 7 个关键类与 24 个 JNI 回调方法/字段；签名构建还检查最终 APK 的 DEX 类定义。APK 中只有同名字符串不算通过。固定合包引用但未提供的 `GnssSoftLocator`、`FastMath` 只在未使用的高德定位/APS 路径上采用精确 `dontwarn`；若将来接入这些功能，必须先补齐依赖，不能扩大警告忽略范围。
+
+修改或升级 SDK 后，除这些静态检查外，还应在正式签名包中实际打开高德地图，核对底图、点位与持续渲染，不能把启动成功当作地图验收。
+
 本项目的官方发布 APK 必须沿用公开版本的 RSA-4096 固定签名。第三方构建可以使用自己的签名，但不能覆盖安装官方版本。私钥和密码只能位于工作区外或 GitHub Actions 加密 Secrets 中。Gradle 会拒绝缺少完整签名参数、任一 Android 地图 Key 或已批准地区资产的 Release 构建。
 
 GitHub Actions 使用以下加密 Secrets：
