@@ -18,5 +18,18 @@
 -keepclasseswithmembers class * extends com.google.android.libraries.geo.mapcore.renderer.ej {
     <init>();
 }
-# AMap is loaded only after the explicit privacy gate has prepared the SDK.
--keep class com.amap.api.maps.MapsInitializer { public *; }
+# AMap's native renderer resolves Java classes, callbacks and fields by name.
+# Follow the vendor's 3D map (5.0+) and bundled location/search SDK rules:
+# https://lbs.amap.com/api/android-sdk/guide/create-project/dev-attention
+-keep class com.amap.api.maps.** { *; }
+-keep class com.autonavi.** { *; }
+-keep class com.amap.api.trace.** { *; }
+-keep class com.amap.api.location.** { *; }
+-keep class com.amap.api.fence.** { *; }
+-keep class com.amap.api.services.** { *; }
+
+# The pinned combined JAR references these absent optional GNSS/APS helpers.
+# This app uses AndroidLocationProvider, not AMap location/soft-RTK APIs.
+# Keep the exclusions exact; enabling those APIs requires their dependencies.
+-dontwarn com.amap.ams.gnss.GnssSoftLocator
+-dontwarn net.jafama.FastMath

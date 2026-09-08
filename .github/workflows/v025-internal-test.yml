@@ -240,6 +240,7 @@ jobs:
           set -euo pipefail
           apk="app/build/outputs/apk/release/app-release.apk"
           bash .github/scripts/audit-navigation-r8.sh
+          python3 .github/scripts/audit-amap-r8.py --apk "$apk"
           bash .github/scripts/audit-apk.sh "$apk" a625c9511afe2d38389347b9e497b231e31f262930e9c5c45cedb201b23c1806
           bash .github/scripts/audit-apk-signature.sh "$apk" "$ANDROID_HOME/build-tools/37.0.0/apksigner"
           install -d -m 700 "$RUNNER_TEMP/test-payload"

@@ -59,6 +59,8 @@ jobs:
         run: bash .github/scripts/audit-source-secrets.sh
       - name: Test internal APK backend compatibility checks
         run: python3 scripts/check-backend-compatibility-test.py
+      - name: Test the AMap JNI release guard
+        run: python3 .github/scripts/test-audit-amap-r8.py
       - name: Restore Firebase Android configuration
         env:
           ANITABI_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANITABI_GOOGLE_SERVICES_JSON_BASE64 }}
@@ -69,6 +71,9 @@ jobs:
         run: |
           ./gradlew :app:minifyReleaseWithR8 -x :app:uploadCrashlyticsMappingFileRelease --stacktrace
           bash .github/scripts/audit-navigation-r8.sh \
+            app/build/outputs/mapping/release \
+            app/build/intermediates/mapping/release/minifyReleaseWithR8/mapping.txt
+          python3 .github/scripts/audit-amap-r8.py \
             app/build/outputs/mapping/release \
             app/build/intermediates/mapping/release/minifyReleaseWithR8/mapping.txt
       - name: Audit debug APK contents

@@ -236,7 +236,9 @@ jobs:
 
       - name: Verify release R8 map reflection contract
         working-directory: candidate
-        run: bash .github/scripts/audit-navigation-r8.sh
+        run: |
+          bash .github/scripts/audit-navigation-r8.sh
+          python3 .github/scripts/audit-amap-r8.py --apk app/build/outputs/apk/release/app-release.apk
 
       - name: Audit release APK contents and approved region asset
         working-directory: candidate
