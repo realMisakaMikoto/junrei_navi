@@ -64,6 +64,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
@@ -258,7 +260,7 @@ internal fun SearchScreen(
                     }
                 }
                 when {
-                    state.isLoading -> item { LoadingState("正在加载搜索结果…") }
+                    state.isLoading -> item { LoadingState("正在搜索 Bangumi…") }
                     state.searchResults.isEmpty() -> item {
                         EmptySearchState(
                             hasQuery = state.query.isNotBlank(),
@@ -267,6 +269,7 @@ internal fun SearchScreen(
                     }
                     else -> animeResults(
                         results = state.searchResults,
+                        previousQuery = state.bangumiQuery != null && state.bangumiQuery != state.query.trim(),
                         selectedAnimeIds = state.selectedAnimeData.keys,
                         loadingAnimeIds = state.loadingAnimeIds,
                         onAnimeToggle = onAnimeToggle,
@@ -292,6 +295,8 @@ private fun SearchForm(
     onSearch: () -> Unit,
     includesLocalSearch: Boolean,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -325,7 +330,9 @@ private fun SearchForm(
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+            keyboardActions = KeyboardActions(onSearch = {
+                if (includesLocalSearch) { focusManager.clearFocus(); keyboard?.hide() } else onSearch()
+            }),
             shape = RoundedCornerShape(10.dp),
             colors = OutlinedTextFieldDefaults.colors(
                 focusedBorderColor = MaterialTheme.colorScheme.primary,
@@ -454,13 +461,14 @@ private fun SelectedAnimeStrip(
 
 private fun LazyListScope.animeResults(
     results: List<Anime>,
+    previousQuery: Boolean,
     selectedAnimeIds: Set<Long>,
     loadingAnimeIds: Set<Long>,
     onAnimeToggle: (Anime) -> Unit,
 ) {
     item {
         Text(
-            text = "搜索结果 · ${results.size} 部",
+            text = "${if (previousQuery) "上次 Bangumi 搜索结果" else "Bangumi 搜索结果"} · ${results.size} 部",
             style = MaterialTheme.typography.labelLarge,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),

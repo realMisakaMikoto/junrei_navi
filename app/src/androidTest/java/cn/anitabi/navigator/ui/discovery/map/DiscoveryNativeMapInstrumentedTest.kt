@@ -1,6 +1,7 @@
 package cn.anitabi.navigator.ui.discovery.map
 
 import android.graphics.Bitmap
+import android.animation.ValueAnimator
 import android.graphics.Color
 import android.graphics.Rect
 import android.view.View
@@ -24,6 +25,9 @@ import cn.anitabi.navigator.TestAnitabiApplication
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
+import cn.anitabi.navigator.ui.map.NavigationMapView
+import cn.anitabi.navigator.ui.map.animateCameraRespectingMotion
+import cn.anitabi.navigator.security.AppAppearance
 import cn.anitabi.navigator.ui.theme.AnitabiTheme
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -33,8 +37,11 @@ import coil3.decode.DataSource
 import coil3.intercept.Interceptor
 import coil3.request.ImageResult
 import coil3.request.SuccessResult
+import coil3.request.ErrorResult
 import com.amap.api.maps.MapView as AmapNativeView
 import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.CameraUpdateFactory
+import com.google.android.gms.maps.model.CameraPosition
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.gms.maps.model.MapColorScheme
 import com.google.android.libraries.navigation.NavigationView
@@ -42,6 +49,7 @@ import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.roundToInt
+import kotlinx.coroutines.CompletableDeferred
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -63,6 +71,8 @@ class DiscoveryNativeMapInstrumentedTest {
     private lateinit var previousLoader: ImageLoader
     private lateinit var fixtureLoader: ImageLoader
     private val imageRequests = AtomicInteger()
+    @Volatile private var imageGate: CompletableDeferred<Unit>? = null
+    @Volatile private var failImage = false
     private var privacyWasReady = false
 
     @Before
@@ -74,6 +84,8 @@ class DiscoveryNativeMapInstrumentedTest {
                 override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
                     check(chain.request.data == SYNTHETIC_IMAGE_URL) { "Unexpected fixture image request" }
                     imageRequests.incrementAndGet()
+                    imageGate?.await()
+                    if (failImage) return ErrorResult(image = null, request = chain.request, throwable = IllegalStateException("Synthetic image failure"))
                     val image = Bitmap.createBitmap(120, 90, Bitmap.Config.ARGB_8888).apply { eraseColor(IMAGE_COLOR) }
                     return SuccessResult(image = image.asImage(), request = chain.request, dataSource = DataSource.MEMORY)
                 }
@@ -84,6 +96,7 @@ class DiscoveryNativeMapInstrumentedTest {
 
     @After
     fun restoreImageLoaderAndPrivacy() {
+        imageGate?.cancel()
         SingletonImageLoader.setUnsafe(previousLoader)
         fixtureLoader.shutdown()
         if (!privacyWasReady) {
@@ -93,6 +106,228 @@ class DiscoveryNativeMapInstrumentedTest {
 
     @Test
     fun googleProjectionAndBitmapAnchorSurvivePresentationChanges() = verifyProvider(MapProvider.GOOGLE)
+
+    @Test
+    fun googleFitAllIncludesDateLineMembersAndDistantOutlierInsidePadding() {
+        // Authored geometry only: three neighbours straddle the date line and one point is far away.
+        val points = listOf(
+            DiscoveryMapPoint("synthetic::date-east", 901L, GeoPoint(3.125000000000004, 179.25000000000003),
+                MapProvider.GOOGLE, "", POINT_COLOR),
+            DiscoveryMapPoint("synthetic::date-west", 901L, GeoPoint(4.250000000000008, -179.12500000000003),
+                MapProvider.GOOGLE, "", POINT_COLOR),
+            DiscoveryMapPoint("synthetic::date-near", 901L, GeoPoint(5.375000000000012, 178.75000000000006),
+                MapProvider.GOOGLE, "", POINT_COLOR),
+            DiscoveryMapPoint(POINT_ID, 901L, GeoPoint(-28.625000000000004, 145.37500000000003),
+                MapProvider.GOOGLE, "", POINT_COLOR),
+        )
+        val sourceBits = points.map { it.coordinate.latitude.toRawBits() to it.coordinate.longitude.toRawBits() }
+        val dateLineIds = points.dropLast(1).mapTo(hashSetOf()) { it.id }
+        val allIds = points.mapTo(hashSetOf()) { it.id }
+        val harness = Harness(MapProvider.GOOGLE).apply {
+            this.points = points
+            imagesEnabled = false
+            cameraCommand = DiscoveryCameraCommand.FitAll(1L, dateLineIds)
+        }
+        show(harness)
+        composeRule.waitUntil(30_000) {
+            check(!harness.unavailable) { "Native map unavailable during date-line fit" }
+            harness.applied == listOf(1L) && harness.visible == dateLineIds
+        }
+        val view = nativeView(harness) as NavigationView
+        var readyMap: GoogleMap? = null
+        composeRule.runOnIdle { view.getMapAsync { readyMap = it } }
+        composeRule.waitUntil(10_000) { readyMap != null }
+        val sdk = requireNotNull(readyMap)
+        val outlier = points.last().coordinate.let { LatLng(it.latitude, it.longitude) }
+        val nearZoom = composeRule.runOnIdle {
+            val bounds = sdk.projection.visibleRegion.latLngBounds
+            assertTrue("The tight date-line viewport must cross the antimeridian",
+                bounds.southwest.longitude > bounds.northeast.longitude)
+            assertFalse("The distant outlier must start outside the tight viewport", bounds.contains(outlier))
+            sdk.cameraPosition.zoom
+        }
+        composeRule.runOnIdle {
+            harness.padding = DiscoveryMapPadding(left = (view.width * .18f).roundToInt(),
+                top = (view.height * .12f).roundToInt(), right = (view.width * .08f).roundToInt(),
+                bottom = (view.height * .30f).roundToInt())
+            harness.cameraCommand = DiscoveryCameraCommand.FitAll(2L)
+        }
+        composeRule.waitUntil(30_000) {
+            check(!harness.unavailable) { "Native map unavailable during full fit" }
+            harness.applied == listOf(1L, 2L) && harness.visible == allIds &&
+                harness.visibleIdleCount == harness.cameraIdleCount
+        }
+        val outlierAnchor = composeRule.runOnIdle {
+            val content = harness.padding.content(view.width, view.height)
+            val projection = sdk.projection
+            val bounds = projection.visibleRegion.latLngBounds
+            assertTrue("FitAll must zoom out to include the distant outlier", sdk.cameraPosition.zoom < nearZoom)
+            assertTrue("Full framing must retain the date-line crossing", bounds.southwest.longitude > bounds.northeast.longitude)
+            points.forEach { point ->
+                val position = LatLng(point.coordinate.latitude, point.coordinate.longitude)
+                val screen = projection.toScreenLocation(position)
+                assertTrue("Every original member must be inside the SDK visible bounds", bounds.contains(position))
+                assertTrue("Every original member must fit inside measured panel padding",
+                    content.contains(ScreenPoint(screen.x.toFloat(), screen.y.toFloat())))
+            }
+            assertTrue("FitAll must preserve every source Double bit",
+                sourceBits == harness.points.map { it.coordinate.latitude.toRawBits() to it.coordinate.longitude.toRawBits() })
+            assertSame(view, nativeViews(harness.root).single())
+            projection.toScreenLocation(outlier).let { ScreenPoint(it.x.toFloat(), it.y.toFloat()) }
+        }
+        awaitColor(harness, view, outlierAnchor, POINT_COLOR, "fit-all-outlier-dot")
+        clickAnchor(harness, outlierAnchor)
+    }
+
+    @Test
+    fun googleFailedImageRetainsSelectableMarkerWithoutRepeatedRequests() {
+        failImage = true
+        val harness = Harness(MapProvider.GOOGLE)
+        harness.points = harness.points.map { it.copy(imageUrl = SYNTHETIC_IMAGE_URL) }
+        show(harness)
+        awaitPoint(harness)
+        composeRule.waitUntil(10_000) { imageRequests.get() == 1 }
+        val view = nativeView(harness)
+        val project = projection(harness, view)
+        val anchor = composeRule.runOnIdle { project() }
+        awaitColor(harness, view, anchor, POINT_COLOR, "failed-image-dot")
+        clickAnchor(harness, anchor)
+        composeRule.runOnIdle { harness.selected = setOf(POINT_ID); harness.dark = true; harness.presentationRevision++ }
+        awaitPresentation(harness)
+        awaitTheme(harness, view, true)
+        awaitColor(harness, view, anchor, POINT_COLOR, "failed-image-selected-dot")
+        composeRule.runOnIdle {
+            assertEquals("A failed image must retain its indexed member", setOf(POINT_ID), harness.visible)
+            assertEquals("Presentation changes must respect the failure cache", 1, imageRequests.get())
+            assertSame(view, nativeViews(harness.root).single())
+        }
+        clickAnchor(harness, anchor)
+    }
+
+    @Test
+    fun googleBrowsingThemeChangesInPlaceAndDisabledMotionMovesImmediately() {
+        var dark by mutableStateOf(false)
+        var sdk: GoogleMap? = null
+        var root: View? = null
+        var unavailable = false
+        composeRule.setContent {
+            val currentRoot = LocalView.current.rootView
+            SideEffect { root = currentRoot }
+            AnitabiTheme(if (dark) AppAppearance.DARK else AppAppearance.LIGHT) {
+                NavigationMapView(
+                    onMapReady = { sdk = it },
+                    onUnavailable = { unavailable = true }, modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        composeRule.waitUntil(30_000) {
+            check(!unavailable) { "Native browsing map unavailable" }
+            sdk != null
+        }
+        val view = composeRule.runOnIdle { nativeViews(requireNotNull(root)).single() as NavigationView }
+        composeRule.runOnIdle { dark = true }
+        composeRule.waitUntil(10_000) {
+            composeRule.runOnIdle { sdk!!.mapColorScheme == MapColorScheme.DARK }
+        }
+        composeRule.runOnIdle { dark = false }
+        composeRule.waitUntil(10_000) {
+            composeRule.runOnIdle { sdk!!.mapColorScheme == MapColorScheme.LIGHT }
+        }
+        composeRule.runOnIdle {
+            assertSame("Appearance changes must retain the active browsing view", view, nativeViews(requireNotNull(root)).single())
+            assertFalse("Run the reduced-motion case with emulator animations disabled", ValueAnimator.areAnimatorsEnabled())
+            val map = requireNotNull(sdk)
+            val zoom = (map.cameraPosition.zoom + 1f).coerceAtMost(map.maxZoomLevel)
+            map.animateCameraRespectingMotion(CameraUpdateFactory.zoomTo(zoom))
+            assertEquals("Disabled motion must update synchronously", zoom, map.cameraPosition.zoom, .001f)
+        }
+    }
+
+    @Test
+    fun googleGestureSurvivesLateImageAndMeasuredPanelPadding() {
+        val harness = Harness(MapProvider.GOOGLE)
+        show(harness)
+        awaitPoint(harness)
+        val view = nativeView(harness)
+        val project = projection(harness, view)
+        val sdk = requireNotNull(harness.googleMap)
+        val sourceCoordinates = harness.points.associate { it.id to it.coordinate }
+        val initialAnchor = composeRule.runOnIdle { project() }
+        val initialCamera = composeRule.runOnIdle { sdk.cameraPosition }
+        val density = view.resources.displayMetrics.density
+        awaitColor(harness, view, initialAnchor, POINT_COLOR, "gesture-initial-dot")
+        val idleBeforeDrag = harness.cameraIdleCount
+        val movesBeforeDrag = harness.manualMoves
+        composeRule.onNodeWithTag(MAP_TAG).performTouchInput {
+            val start = Offset(width * .25f, height * .7f)
+            val end = Offset(width * .39f, start.y)
+            down(start)
+            repeat(12) { step -> moveTo(start + (end - start) * ((step + 1) / 12f), 40L) }
+            // End with a stationary event, so the regression observes a completed drag instead of a fling.
+            moveTo(end, 300L)
+            up()
+        }
+        composeRule.waitUntil(15_000) {
+            check(!harness.unavailable) { "Native map unavailable after drag" }
+            harness.manualMoves > movesBeforeDrag && harness.cameraIdleCount > idleBeforeDrag &&
+                harness.cameraIdleCount > harness.idleAtLastManualMove &&
+                harness.visibleIdleCount == harness.cameraIdleCount && harness.visible == setOf(POINT_ID)
+        }
+        val draggedCamera = composeRule.runOnIdle { sdk.cameraPosition }
+        val draggedAnchor = composeRule.runOnIdle { project() }
+        val draggedMoves = harness.manualMoves
+        composeRule.runOnIdle {
+            assertTrue("The injected native drag must visibly change map framing",
+                abs(draggedAnchor.x - initialAnchor.x) > 24f * density)
+            assertEquals("A one-finger drag must retain zoom", initialCamera.zoom, draggedCamera.zoom, .001f)
+        }
+        awaitColor(harness, view, draggedAnchor, POINT_COLOR, "gesture-dragged-dot")
+
+        val gate = CompletableDeferred<Unit>()
+        imageGate = gate
+        val requestsBeforeMetadata = imageRequests.get()
+        composeRule.runOnIdle {
+            harness.points = harness.points.map { it.copy(title = "Synthetic delayed metadata", imageUrl = SYNTHETIC_IMAGE_URL) }
+            harness.presentationRevision++
+        }
+        awaitPresentation(harness)
+        composeRule.waitUntil(10_000) { imageRequests.get() > requestsBeforeMetadata }
+        assertFalse("The fixture image must still be pending while the panel changes", gate.isCompleted)
+        composeRule.runOnIdle {
+            assertGoogleCameraRetained(sdk, draggedCamera)
+            assertTrue("Metadata must retain the dragged geographic anchor", near(draggedAnchor, project()))
+            harness.padding = PADDING.copy(bottom = (view.height * .3f).roundToInt())
+            harness.presentationRevision++
+        }
+        awaitPresentation(harness)
+        val paddedAnchor = composeRule.runOnIdle { project() }
+        val paddedCamera = composeRule.runOnIdle { sdk.cameraPosition }
+        composeRule.runOnIdle {
+            val originalCentre = PADDING.content(view.width, view.height).center
+            val paddedCentre = harness.padding.content(view.width, view.height).center
+            assertEquals("Measured panel padding must not refit or reset zoom", draggedCamera.zoom, paddedCamera.zoom, .001f)
+            assertEquals(draggedCamera.bearing, paddedCamera.bearing, .001f)
+            assertEquals(draggedCamera.tilt, paddedCamera.tilt, .001f)
+            // Only bottom padding changes. Permit its vertical translation without losing the horizontal drag.
+            assertEquals("Panel padding must preserve the user's horizontal framing",
+                draggedAnchor.x - originalCentre.x, paddedAnchor.x - paddedCentre.x, 3f)
+            assertTrue("Panel changes must not return the marker to its initial framing",
+                abs(paddedAnchor.x - paddedCentre.x) > 24f * density)
+        }
+        gate.complete(Unit)
+        awaitColor(harness, view, ScreenPoint(paddedAnchor.x, paddedAnchor.y - 35f * density), IMAGE_COLOR, "gesture-late-image")
+        awaitColor(harness, view, paddedAnchor, POINT_COLOR, "gesture-padded-dot")
+        composeRule.runOnIdle {
+            assertGoogleCameraRetained(sdk, paddedCamera)
+            assertTrue("The completed image must retain the padded geographic anchor", near(paddedAnchor, project()))
+            assertSame(view, nativeViews(harness.root).single())
+            assertEquals("Automatic focus must not be applied again", listOf(1L), harness.applied)
+            assertEquals("Presentation updates must not synthesize gestures", draggedMoves, harness.manualMoves)
+            assertTrue("Source coordinates must survive gesture and presentation changes unchanged",
+                sourceCoordinates == harness.points.associate { it.id to it.coordinate })
+        }
+        clickAnchor(harness, paddedAnchor)
+    }
 
     @Test
     fun amapProjectionAndBitmapAnchorSurvivePresentationChanges() = verifyProvider(MapProvider.AMAP)
@@ -202,17 +437,21 @@ class DiscoveryNativeMapInstrumentedTest {
             val root = LocalView.current.rootView
             val presentationRevision = harness.presentationRevision
             SideEffect { harness.root = root }
-            AnitabiTheme {
+            AnitabiTheme(if (harness.dark) AppAppearance.DARK else AppAppearance.LIGHT) {
                 if (harness.showMap) DiscoveryMap(
                     dataVersion = "synthetic-native-${harness.provider}", points = harness.points,
                     provider = harness.provider, privacyReady = true,
                     selectedIds = harness.selected, focusedPointId = harness.focused,
                     imagesEnabled = harness.imagesEnabled, darkTheme = harness.dark,
-                    padding = PADDING, cameraCommand = DiscoveryCameraCommand.Focus(1L, POINT_ID),
-                    onVisibleIdsChanged = { harness.visible = it; harness.visibleRevision = presentationRevision },
+                    padding = harness.padding, cameraCommand = harness.cameraCommand,
+                    onVisibleIdsChanged = {
+                        harness.visible = it; harness.visibleRevision = presentationRevision
+                        harness.visibleIdleCount = harness.cameraIdleCount
+                    },
                     onPointClick = { harness.clicks += it },
-                    onOverlapClick = { error("Unexpected synthetic overlap") }, onCameraChanged = {},
-                    onManualMove = {}, onUnavailable = { harness.unavailable = true },
+                    onOverlapClick = { error("Unexpected synthetic overlap") }, onCameraChanged = { harness.cameraIdleCount++ },
+                    onManualMove = { harness.idleAtLastManualMove = harness.cameraIdleCount; harness.manualMoves++ },
+                    onUnavailable = { harness.unavailable = true },
                     onCameraCommandApplied = { sequence, _ -> harness.applied += sequence },
                     modifier = Modifier.fillMaxSize().testTag(MAP_TAG),
                 )
@@ -281,6 +520,18 @@ class DiscoveryNativeMapInstrumentedTest {
             assertEquals(listOf(1L), harness.applied)
             assertEquals(setOf(POINT_ID), harness.visible)
         }
+    }
+
+    /** Called on Main; compare target displacement in SDK pixels without logging geographic values. */
+    private fun assertGoogleCameraRetained(sdk: GoogleMap, expected: CameraPosition) {
+        val actual = sdk.cameraPosition
+        val before = sdk.projection.toScreenLocation(expected.target)
+        val after = sdk.projection.toScreenLocation(actual.target)
+        assertTrue("Metadata/image completion must retain the camera target",
+            abs(before.x - after.x) <= 3 && abs(before.y - after.y) <= 3)
+        assertEquals("Metadata/image completion must retain zoom", expected.zoom, actual.zoom, .001f)
+        assertEquals(expected.bearing, actual.bearing, .001f)
+        assertEquals(expected.tilt, actual.tilt, .001f)
     }
 
     private fun clickAnchor(harness: Harness, anchor: ScreenPoint) {
@@ -371,6 +622,8 @@ class DiscoveryNativeMapInstrumentedTest {
         var imagesEnabled by mutableStateOf(true)
         var dark by mutableStateOf(false)
         var showMap by mutableStateOf(true)
+        var padding by mutableStateOf(PADDING)
+        var cameraCommand by mutableStateOf<DiscoveryCameraCommand>(DiscoveryCameraCommand.Focus(1L, POINT_ID))
         var presentationRevision by mutableStateOf(0)
         var googleMap: GoogleMap? = null
         @Volatile var visible = emptySet<String>()
@@ -378,6 +631,10 @@ class DiscoveryNativeMapInstrumentedTest {
         @Volatile var applied = emptyList<Long>()
         @Volatile var unavailable = false
         @Volatile var visibleRevision = -1
+        @Volatile var manualMoves = 0
+        @Volatile var idleAtLastManualMove = -1
+        @Volatile var cameraIdleCount = 0
+        @Volatile var visibleIdleCount = -1
     }
 
     private companion object {

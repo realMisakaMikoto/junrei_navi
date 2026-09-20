@@ -30,6 +30,7 @@ class SearchViewModel(
     val state: StateFlow<SearchUiState> = mutableState.asStateFlow()
     private var selectionTouched = false
     private val animeLoads = mutableMapOf<Long, Job>()
+    private var searchJob: Job? = null
 
     init {
         viewModelScope.launch {
@@ -62,12 +63,13 @@ class SearchViewModel(
             mutableState.update { it.copy(errorMessage = "请输入动漫名称") }
             return
         }
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             mutableState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching { bangumiApi.searchAnime(keyword) }
                 .onSuccess { results ->
                     mutableState.update {
-                        it.copy(searchResults = results, isLoading = false)
+                        it.copy(searchResults = results, bangumiQuery = keyword, isLoading = false)
                     }
                 }
                 .onFailure(::handleFailure)
@@ -337,6 +339,7 @@ internal fun restoreSearchSelection(
 
 data class SearchUiState(
     val query: String = "",
+    val bangumiQuery: String? = null,
     val searchResults: List<Anime> = emptyList(),
     val selectedAnimeData: Map<Long, PilgrimageData> = emptyMap(),
     val loadingAnimeIds: Set<Long> = emptySet(),

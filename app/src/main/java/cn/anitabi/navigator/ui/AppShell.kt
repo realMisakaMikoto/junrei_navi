@@ -145,6 +145,7 @@ fun AppShell(
                             localSearchItems = {
                                 localResults(
                                     query = selection.query, results = searchResults,
+                                    detailsLoaded = discovery.data.detailsComplete,
                                     selectedIds = selection.selectedPointIds,
                                     onSubject = { discoveryViewModel.openSubject(it); goTop(AppDestination.MAP) },
                                     onPoint = { discoveryViewModel.openPoint(it.id); goTop(AppDestination.MAP) },
@@ -234,7 +235,7 @@ private fun DestinationIcon(destination: AppDestination) = Icon(when (destinatio
 }, null)
 
 private fun LazyListScope.localResults(
-    query: String, results: DiscoverySearchResults, selectedIds: Set<String>,
+    query: String, results: DiscoverySearchResults, detailsLoaded: Boolean, selectedIds: Set<String>,
     onSubject: (Long) -> Unit,
     onPoint: (cn.anitabi.navigator.data.discovery.DiscoveryPoint) -> Unit,
     onToggle: (cn.anitabi.navigator.data.discovery.DiscoveryPoint) -> Unit,
@@ -243,7 +244,11 @@ private fun LazyListScope.localResults(
     if (query.isBlank()) return
     item("local-scope") {
         JournalSectionHeading("地图内搜索", Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
-            if (results.complete) "搜索已加载的作品、地点与城市" else "部分地点详情尚未加载，当前搜索范围仍不完整")
+            when {
+                results.complete -> "搜索已加载的作品、地点与城市"
+                detailsLoaded -> "地点详情已加载，本轮更新仍待核对"
+                else -> "部分地点详情尚未加载，当前搜索范围仍不完整"
+            })
     }
     if (results.isEmpty) item("local-empty") {
         Text(if (results.complete) "已加载地图数据中没有匹配结果" else "已加载的数据中暂无匹配，详情补齐后结果可能增加", Modifier.padding(20.dp), style = MaterialTheme.typography.bodyMedium)

@@ -164,6 +164,7 @@ internal fun DiscoveryScreen(
             var panelWidth by remember { mutableIntStateOf(0) }
             var panelHeight by remember { mutableIntStateOf(0) }
             var measuredPanelKey by remember { mutableStateOf<String?>(null) }
+            var minimumPanelHeight by remember(state.panel.current.key, density.fontScale, maxWidth) { mutableIntStateOf(0) }
             val filteredMapPoints = remember(state.mapPoints, state.filters, state.provider) {
                 state.mapPoints.filter { it.provider == state.provider && (state.filters.isEmpty() || it.subjectId in state.filters) }
             }
@@ -198,13 +199,13 @@ internal fun DiscoveryScreen(
                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         if (!state.data.initialized || state.data.refreshing) CircularProgressIndicator()
                         Text(if (state.data.refreshing || !state.data.initialized) "正在准备巡礼地图" else "暂时没有可用的地图数据")
+                        state.data.error?.let { Text(discoveryErrorMessage(it), Modifier.padding(horizontal = 24.dp), style = MaterialTheme.typography.bodyMedium) }
                         TextButton(onClick = onRefresh) { Text("重新加载") }
                     }
                 }
             }
             var displayMenu by remember { mutableStateOf(false) }
-            val inlineControls = state.listMode || (!wide && (state.panel.presentation.detent == PanelDetent.EXPANDED ||
-                density.fontScale > 1.2f && state.panel.presentation.detent == PanelDetent.HALF))
+            val inlineControls = state.listMode || (!wide && state.panel.presentation.detent != PanelDetent.COLLAPSED)
             val controls: @Composable (Modifier, Boolean) -> Unit = { controlModifier, horizontal ->
                 FlowRow(controlModifier, maxItemsInEachRow = if (horizontal) 3 else 1,
                     horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -291,7 +292,7 @@ internal fun DiscoveryScreen(
             val detent = if (state.listMode || wide) PanelDetent.EXPANDED else state.panel.presentation.detent
             val maxPanelHeight = when (detent) {
                 PanelDetent.COLLAPSED -> availableHeight
-                PanelDetent.HALF -> availableHeight * (0.58f * density.fontScale.coerceAtLeast(1f)).coerceAtMost(0.9f)
+                PanelDetent.HALF -> maxOf(availableHeight * 0.58f, with(density) { minimumPanelHeight.toDp() }).coerceAtMost(availableHeight)
                 PanelDetent.EXPANDED -> availableHeight
             }
             val panelStateHolder = rememberSaveableStateHolder()
@@ -307,6 +308,7 @@ internal fun DiscoveryScreen(
                 modifier = panelModifier.heightIn(max = maxPanelHeight),
                 canChangeDetent = !wide && !state.listMode,
                 onRetryDetails = onRetryDetails,
+                onMinimumHeight = { minimumPanelHeight = maxOf(minimumPanelHeight, it) },
             )
             }
         }
@@ -341,6 +343,7 @@ private fun DiscoveryPanelContent(
     modifier: Modifier,
     canChangeDetent: Boolean,
     onRetryDetails: (Long) -> Unit,
+    onMinimumHeight: (Int) -> Unit,
 ) {
     val panel = state.panel.current
     val subjects = remember(state.data.snapshot?.subjects) { state.data.snapshot?.subjects.orEmpty().associateBy { it.id } }
@@ -360,6 +363,20 @@ private fun DiscoveryPanelContent(
         DiscoveryPanel.Overview -> if (state.nearby) "附近地点" else if (state.listMode) "巡礼地点" else "视野内 ${visiblePoints.size} 个地点"
     }
     val listState = remember(panel.key) { LazyListState(state.panel.presentation.firstVisibleItem, state.panel.presentation.scrollOffset) }
+    var headerHeight by remember { mutableIntStateOf(0) }
+    var footerHeight by remember { mutableIntStateOf(0) }
+    val currentPoints by rememberUpdatedState(state.pointsById)
+    val currentMinimumHeight by rememberUpdatedState(onMinimumHeight)
+    LaunchedEffect(listState) {
+        snapshotFlow {
+            val row = listState.layoutInfo.visibleItemsInfo.firstOrNull {
+                val key = it.key as? String
+                key != null && (key in currentPoints || key.startsWith("work:"))
+            }
+            if (row != null && headerHeight > 0 && footerHeight > 0)
+                headerHeight + footerHeight + maxOf(row.size, row.offset + row.size) + listState.layoutInfo.afterContentPadding else 0
+        }.distinctUntilChanged().collect { if (it > 0) currentMinimumHeight(it) }
+    }
     val currentPresentation by rememberUpdatedState(state.panel.presentation)
     val currentOnPresentation by rememberUpdatedState(onPresentation)
     LaunchedEffect(listState) {
@@ -377,7 +394,7 @@ private fun DiscoveryPanelContent(
     ) {
         Column {
             Row(
-                Modifier.fillMaxWidth().heightIn(min = 64.dp).padding(start = 8.dp, end = 8.dp)
+                Modifier.fillMaxWidth().onSizeChanged { headerHeight = it.height }.heightIn(min = 64.dp).padding(start = 8.dp, end = 8.dp)
                     .then(if (canChangeDetent) Modifier.draggable(
                         orientation = Orientation.Vertical,
                         state = rememberDraggableState { drag += it },
@@ -413,14 +430,21 @@ private fun DiscoveryPanelContent(
                                     if (state.batchMode) FilterChip(selected = true, onClick = { onBatchMode(false) }, label = { Text("退出批量") })
                                 }
                             }
-                            if (state.data.error != null) item { TextButton(onClick = onRefresh, Modifier.padding(horizontal = 8.dp)) { Text("更新未完成，重试") } }
+                            state.data.error?.let { error -> item {
+                                PanelNotice(discoveryErrorMessage(error))
+                                TextButton(onClick = onRefresh, Modifier.padding(horizontal = 8.dp)) { Text("更新未完成，重试") }
+                            } }
                             if (state.batchMode) item {
                                 FlowRow(Modifier.padding(horizontal = 16.dp)) {
                                     TextButton(onClick = onSelectVisible, enabled = state.visibleIds.isNotEmpty()) { Text("视野全选") }
                                     TextButton(onClick = onClearSelection, enabled = selectedIds.isNotEmpty()) { Text("清空选择") }
                                 }
                             }
-                            if (visiblePoints.isEmpty()) item { PanelNotice(if (state.data.indexAvailable) "移动地图或调整作品筛选，发现更多地点" else "联网加载后即可浏览发现地图") }
+                            if (visiblePoints.isEmpty()) item { PanelNotice(when {
+                                !state.data.indexAvailable -> "联网加载后即可浏览发现地图"
+                                state.pointsById.isEmpty() -> "当前发现数据中没有可用地点"
+                                else -> "移动地图或调整作品筛选，发现更多地点"
+                            }) }
                             if (showWorks) {
                                 val counts = visiblePoints.groupingBy { it.subjectId }.eachCount()
                                 items(counts.keys.mapNotNull(subjects::get), key = { "work:${it.id}" }) { subject ->
@@ -472,6 +496,7 @@ private fun DiscoveryPanelContent(
                     }
                 }
             }
+            Box(Modifier.onSizeChanged { footerHeight = it.height }) {
             if (point != null) {
                 Button(onClick = { onTogglePoint(point) }, modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp).testTag("discovery-point-select")) {
                     Text(if (point.id in selectedIds) "移出行程" else "加入行程")
@@ -481,6 +506,7 @@ private fun DiscoveryPanelContent(
                     Text("已选 ${selectedIds.size} 个地点", Modifier.weight(1f), style = MaterialTheme.typography.bodyMedium)
                     Button(onClick = onPlan, enabled = selectedIds.size >= 2, modifier = Modifier.testTag("discovery-plan")) { Text("规划行程") }
                 }
+            }
             }
         }
     }
@@ -571,6 +597,13 @@ internal fun discoveryDataLabel(data: DiscoveryState): String = when {
     data.detailsCurrent -> "数据已更新"
     data.paused -> "详情更新已暂停"
     else -> "详情尚未全部加载"
+}
+
+private fun discoveryErrorMessage(error: DiscoveryError): String = when (error) {
+    DiscoveryError.NETWORK -> "网络或发现数据服务暂时不可用，请稍后重试"
+    DiscoveryError.INVALID_DATA -> "返回的发现数据无法读取，请稍后重试"
+    DiscoveryError.CACHE -> "本地发现缓存暂时无法读写，请检查存储空间后重试"
+    DiscoveryError.VERSION_CHANGED -> "发现数据版本已变化，请重新刷新完成核对"
 }
 
 private fun formatTimecode(seconds: Double): String = "%02d:%02d".format(Locale.ROOT, seconds.toLong() / 60, seconds.toLong() % 60)

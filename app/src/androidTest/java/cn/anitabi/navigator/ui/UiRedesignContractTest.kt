@@ -15,6 +15,8 @@ import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performImeAction
+import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.unit.dp
@@ -59,6 +61,25 @@ import org.junit.Test
 class UiRedesignContractTest {
     @get:Rule
     val composeRule = createComposeRule()
+
+    @Test
+    fun localSearchKeyboardActionDoesNotSendAnImplicitBangumiRequest() {
+        var remoteRequests = 0
+        composeRule.setContent {
+            AnitabiTheme {
+                SearchScreen(
+                    state = SearchUiState(query = "Synthetic query"),
+                    onQueryChange = {}, onSearch = { remoteRequests++ }, onAnimeToggle = {},
+                    onOpenSelection = {}, onOpenAbout = {},
+                    localSearchItems = { item { androidx.compose.material3.Text("Synthetic local results") } },
+                )
+            }
+        }
+        composeRule.onNode(hasSetTextAction()).performClick().performImeAction()
+        composeRule.runOnIdle { assertEquals(0, remoteRequests) }
+        composeRule.onNodeWithText("搜索 Bangumi").performScrollTo().performClick()
+        composeRule.runOnIdle { assertEquals(1, remoteRequests) }
+    }
 
     @Test
     fun searchScreen_keepsSearchActionAndSelectedWorkSummary() {

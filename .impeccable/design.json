@@ -1,22 +1,249 @@
 {
-  "version": 1,
-  "platform": "android",
-  "source": "app/src/main/java/cn/anitabi/navigator/ui/theme/Theme.kt",
-  "direction": "Neutral map and warm paper travel journal, as approved in the user brief",
-  "colors": {
-    "paper": "#F7F6F2", "ink": "#20231F", "primary": "#C93E4F",
-    "paperDark": "#1A1815", "inkDark": "#ECE1D6", "primaryDark": "#FFB4A6",
-    "mapSurface": "#FFFFFF", "mapSurfaceDark": "#202226"
+  "schemaVersion": 2,
+  "generatedAt": "2026-09-20T16:09:51.646Z",
+  "title": "Design System: Anitabi Navigator",
+  "extensions": {
+    "colorMeta": {
+      "vermilion": {
+        "role": "primary",
+        "displayName": "Journal vermilion"
+      },
+      "vermilion-dark": {
+        "role": "primary",
+        "displayName": "Dark journal vermilion"
+      },
+      "soft-vermilion": {
+        "role": "primary",
+        "displayName": "Soft selection surface"
+      },
+      "paper": {
+        "role": "neutral",
+        "displayName": "Warm paper"
+      },
+      "paper-dark": {
+        "role": "neutral",
+        "displayName": "Dark warm paper"
+      },
+      "ink": {
+        "role": "neutral",
+        "displayName": "Journal ink"
+      },
+      "ink-dark": {
+        "role": "neutral",
+        "displayName": "Dark journal ink"
+      },
+      "supporting-ink": {
+        "role": "neutral",
+        "displayName": "Supporting ink"
+      },
+      "supporting-ink-dark": {
+        "role": "neutral",
+        "displayName": "Dark supporting ink"
+      },
+      "paper-surface": {
+        "role": "neutral",
+        "displayName": "Observed light paper surface levels",
+        "tonalRamp": [
+          "#DEDDD8",
+          "#E6E5E0",
+          "#ECEBE6",
+          "#F2F1EC",
+          "#F8F7F3",
+          "#FDFCF8",
+          "#FFFFFF"
+        ]
+      },
+      "paper-surface-dark": {
+        "role": "neutral",
+        "displayName": "Observed dark paper surface levels",
+        "tonalRamp": [
+          "#14120F",
+          "#191612",
+          "#211E1A",
+          "#27231F",
+          "#322D27",
+          "#3D3730",
+          "#403A33"
+        ]
+      },
+      "map-surface": {
+        "role": "neutral",
+        "displayName": "Observed light map surface levels",
+        "tonalRamp": [
+          "#E2E5E8",
+          "#E9ECEF",
+          "#EFF1F3",
+          "#F8F9FA",
+          "#FFFFFF"
+        ]
+      },
+      "map-surface-dark": {
+        "role": "neutral",
+        "displayName": "Observed dark map surface levels",
+        "tonalRamp": [
+          "#202226",
+          "#25272B",
+          "#303236",
+          "#3A3C40"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Large heading",
+        "purpose": "Explicit displaySmall and headlineLarge roles in Theme.kt."
+      },
+      "headline": {
+        "displayName": "Page headline",
+        "purpose": "Explicit headlineMedium role."
+      },
+      "title": {
+        "displayName": "Toolbar title",
+        "purpose": "Explicit headlineSmall and titleLarge roles."
+      },
+      "section-title": {
+        "displayName": "Section and panel heading",
+        "purpose": "Explicit titleMedium role with heading semantics."
+      },
+      "row-title": {
+        "displayName": "Compact title",
+        "purpose": "Explicit titleSmall role."
+      },
+      "body": {
+        "displayName": "Reading body",
+        "purpose": "bodyLarge with system Chinese fallback and font scaling."
+      },
+      "supporting": {
+        "displayName": "Supporting text",
+        "purpose": "bodyMedium and bodySmall; loading, scope, source and secondary information."
+      },
+      "label": {
+        "displayName": "Action label",
+        "purpose": "labelLarge; labelMedium and labelSmall retain their implemented medium weight."
+      }
+    },
+    "shadows": [
+      {
+        "name": "native-map-floating-control",
+        "value": "2dp",
+        "purpose": "Compose Surface shadowElevation for discovery search and circular controls; not a CSS shadow."
+      },
+      {
+        "name": "native-discovery-panel",
+        "value": "3dp",
+        "purpose": "Compose Surface shadowElevation for the single discovery panel; not a CSS shadow."
+      }
+    ],
+    "motion": [
+      {
+        "name": "main-destination-transition",
+        "value": "EnterTransition.None / ExitTransition.None",
+        "purpose": "AppShell disables navigation and pop transitions."
+      },
+      {
+        "name": "material-control-motion",
+        "value": "Compose Material defaults",
+        "purpose": "Keep Android system animation scale behavior; no invented custom duration."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "native-navigation-rail",
+        "value": "WindowSizeClass.WIDTH_DP_MEDIUM_LOWER_BOUND"
+      },
+      {
+        "name": "native-discovery-side-panel",
+        "value": "available width >= 840dp or width > height"
+      }
+    ]
   },
-  "typography": {
-    "family": "system sans-serif",
-    "body": { "size": "16sp", "lineHeight": "24sp" },
-    "supporting": { "size": "14sp", "lineHeight": "20sp" },
-    "title": { "size": "20sp", "lineHeight": "26sp", "weight": 600 }
-  },
-  "radii": { "small": "8dp", "action": "12dp", "group": "16dp", "panel": "24dp" },
-  "interaction": { "minimumTouchTarget": "48dp", "dynamicWallpaperColor": false, "systemBack": true },
-  "appearance": { "default": "SYSTEM", "choices": ["SYSTEM", "LIGHT", "DARK"] },
-  "motion": { "implementation": "Compose standard components", "respectsSystemAnimationScale": true },
-  "depth": { "paper": "thin separators", "map": "opaque Material tonal surfaces" }
+  "components": [
+    {
+      "name": "Journal primary action",
+      "kind": "button",
+      "refersTo": "journal-primary-action",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. Filled journal action with the explicit 12 dp shape; not a global Material button override.",
+      "html": "<button class=\"ds-journal-action\">Continue</button>",
+      "css": ".ds-journal-action { min-height:48px; padding:12px 24px; border:0; border-radius:12px; background:#C93E4F; color:#FFFFFF; font:600 14px/20px system-ui,sans-serif; cursor:pointer; } .ds-journal-action:hover { filter:brightness(.96); } .ds-journal-action:active { filter:brightness(.9); } .ds-journal-action:focus-visible { outline:2px solid #C93E4F; outline-offset:3px; } .ds-journal-action:disabled { opacity:.38; cursor:default; }"
+    },
+    {
+      "name": "Dark journal primary action",
+      "kind": "button",
+      "refersTo": "journal-primary-action-dark",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. The separately defined dark primary and on-primary roles.",
+      "html": "<button class=\"ds-journal-action-dark\">Continue</button>",
+      "css": ".ds-journal-action-dark { min-height:48px; padding:12px 24px; border:0; border-radius:12px; background:#FFB4A6; color:#571C12; font:600 14px/20px system-ui,sans-serif; cursor:pointer; } .ds-journal-action-dark:hover { filter:brightness(.96); } .ds-journal-action-dark:active { filter:brightness(.9); } .ds-journal-action-dark:focus-visible { outline:2px solid #FFB4A6; outline-offset:3px; }"
+    },
+    {
+      "name": "Local search field",
+      "kind": "input",
+      "refersTo": "search-field",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. OutlinedTextField uses primary focus color; local keyboard search does not submit Bangumi.",
+      "html": "<label class=\"ds-search-label\">Works, places, cities<input class=\"ds-search-input\" placeholder=\"Search loaded map data\" type=\"search\"></label>",
+      "css": ".ds-search-label { display:grid; gap:8px; color:#5F625D; font:400 14px/20px system-ui,sans-serif; } .ds-search-input { min-height:56px; padding:0 16px; border:1px solid #C9C6BE; border-radius:10px; background:#FFFFFF; color:#20231F; font:400 16px/24px system-ui,sans-serif; } .ds-search-input:hover { border-color:#20231F; } .ds-search-input:focus-visible { outline:2px solid #C93E4F; outline-offset:0; }"
+    },
+    {
+      "name": "Primary navigation",
+      "kind": "nav",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. Material navigation bar changes to rail at the medium window-width class; labels and selected state remain visible.",
+      "html": "<nav class=\"ds-main-nav\" aria-label=\"Primary\"><button aria-current=\"page\">Map</button><button>Search</button><button>Trips</button></nav>",
+      "css": ".ds-main-nav { display:flex; gap:8px; padding:12px; background:#F2F1EC; } .ds-main-nav button { flex:1; min-height:48px; padding:8px 16px; border:0; border-radius:16px; background:transparent; color:#5F625D; font:500 14px/20px system-ui,sans-serif; cursor:pointer; } .ds-main-nav button[aria-current] { background:#E5E6E1; color:#292B28; } .ds-main-nav button:hover { text-decoration:underline; } .ds-main-nav button:active { opacity:.8; } .ds-main-nav button:focus-visible { outline:2px solid #C93E4F; outline-offset:2px; }"
+    },
+    {
+      "name": "Work filter",
+      "kind": "chip",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. Native FilterChip has a 48 dp minimum target; a selected filter is independent of trip selection.",
+      "html": "<button class=\"ds-work-filter\" aria-pressed=\"true\"><svg aria-hidden=\"true\" width=\"18\" height=\"18\" viewBox=\"0 0 24 24\"><path d=\"m5 12 4 4L19 6\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\"/></svg>Selected work</button>",
+      "css": ".ds-work-filter { display:inline-flex; align-items:center; gap:8px; min-height:48px; padding:8px 12px; border:1px solid #C9C6BE; border-radius:8px; background:#E5E6E1; color:#292B28; font:600 14px/20px system-ui,sans-serif; cursor:pointer; } .ds-work-filter:hover { filter:brightness(.97); } .ds-work-filter:active { filter:brightness(.92); } .ds-work-filter:focus-visible { outline:2px solid #C93E4F; outline-offset:2px; }"
+    },
+    {
+      "name": "Settings consent group",
+      "kind": "card",
+      "refersTo": "settings-group",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. Native privacy and telemetry surfaces use a thin outline and warm-journal roles. Switch behavior is owned by Material.",
+      "html": "<section class=\"ds-consent-group\"><h3>Privacy choice</h3><p>Explanation and independent controls remain readable.</p></section>",
+      "css": ".ds-consent-group { padding:16px; border:1px solid #E2DFD7; border-radius:16px; background:#FFFFFF; color:#20231F; font:400 16px/24px system-ui,sans-serif; } .ds-consent-group h3 { margin:0 0 4px; font:600 17px/24px system-ui,sans-serif; } .ds-consent-group p { margin:0; color:#5F625D; font:400 14px/20px system-ui,sans-serif; }"
+    },
+    {
+      "name": "Journal toolbar",
+      "kind": "custom",
+      "refersTo": "journal-toolbar",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. JournalTopBar has a 64 dp minimum row plus status-bar inset, optional actions, heading semantics and a fine rule.",
+      "html": "<header class=\"ds-journal-toolbar\"><h2>Page title</h2><p>Supporting context</p></header>",
+      "css": ".ds-journal-toolbar { min-height:64px; padding:6px 20px; border-bottom:1px solid #E2DFD7; background:#F7F6F2; color:#20231F; display:flex; flex-direction:column; justify-content:center; } .ds-journal-toolbar h2 { margin:0; font:600 20px/26px system-ui,sans-serif; } .ds-journal-toolbar p { margin:0; color:#5F625D; font:400 14px/20px system-ui,sans-serif; }"
+    },
+    {
+      "name": "Single discovery panel",
+      "kind": "custom",
+      "refersTo": "discovery-panel",
+      "description": "Schematic web token illustration only; Compose is authoritative and native verification remains separate. One measured native panel restores content-specific expansion and scroll state. This sample does not simulate map padding or panel gestures.",
+      "html": "<section class=\"ds-discovery-panel\"><header><h3>Visible places</h3><span>Loaded data status</span></header><p>Place details and source appear in the same panel.</p><footer>Trip selection remains available</footer></section>",
+      "css": ".ds-discovery-panel { border-radius:24px 24px 0 0; background:#FFFFFF; color:#202124; font:400 16px/24px system-ui,sans-serif; } .ds-discovery-panel header { min-height:64px; padding:8px 20px; border-bottom:1px solid #DDE1E5; } .ds-discovery-panel h3 { margin:0; font:600 17px/24px system-ui,sans-serif; } .ds-discovery-panel span { color:#53585F; font:400 14px/20px system-ui,sans-serif; } .ds-discovery-panel p { margin:0; padding:16px 20px; } .ds-discovery-panel footer { padding:8px 20px; color:#53585F; font:400 14px/20px system-ui,sans-serif; }"
+    }
+  ],
+  "narrative": {
+    "northStar": "Neutral map and warm paper travel journal",
+    "overview": "The approved direction pairs a quiet map with warm paper, ink and vermilion on lists and forms. Places and guidance carry the map experience; typography, spacing and fine separators organize the journal. Android Material 3 supplies controls and interaction, including system Back, readable states and touch feedback.\n\nThis is a record of the implemented design and the approved constraints. The implementation source is [Theme.kt](app/src/main/java/cn/anitabi/navigator/ui/theme/Theme.kt), with shared journal components, the app shell and discovery panel described below. All redesign screenshot fixtures use synthetic content; they do not prove real provider behavior. Final AMap and provider verification remains pending, and this document does not declare full acceptance. Evidence belongs in [the acceptance record](docs/FRONTEND_REDESIGN_ACCEPTANCE.md).",
+    "keyCharacteristics": [
+      "Neutral map surfaces and separately designed warm light/dark journal surfaces.",
+      "System Chinese-capable typography, semantic Material colors and native controls.",
+      "One measured discovery panel with restored content, expansion and scroll context.",
+      "Clear selection, source and loading states without concealing valid places."
+    ],
+    "rules": [],
+    "dos": [
+      "Do keep neutral map chrome and warm journal surfaces within the shared Material type and control system.",
+      "Do preserve system Chinese font scaling, 48 dp touch targets, visible state cues and TalkBack semantics.",
+      "Do measure panel and inset space, restore each content's view context and keep essential actions reachable.",
+      "Do show source attribution and distinguish partial data, image failure, map failure and route failure.",
+      "Do retain the one-map, privacy, provider and saved-trip boundaries while changing presentation."
+    ],
+    "donts": [
+      "Don't enable wallpaper-derived branding or broad glass effects under this brief.",
+      "Don't hide valid places for visual density or performance, or change coordinates to fit a panel.",
+      "Don't make local keyboard search silently issue a Bangumi request.",
+      "Don't invent provider metrics or treat synthetic screenshots as real maps, routes, voice or device acceptance.",
+      "Don't declare the redesign fully accepted while real AMap and provider verification remains pending."
+    ]
+  }
 }

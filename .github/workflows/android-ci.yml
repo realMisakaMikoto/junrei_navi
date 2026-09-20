@@ -184,7 +184,7 @@ jobs:
           adb shell pm revoke cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
           adb shell am instrument -w \
             -e captureFrontendReview true \
-            -e class 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest' \
+            -e class 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest,cn.anitabi.navigator.ui.FrontendRemainingFlowsTest,cn.anitabi.navigator.ui.DiscoveryStartupInstrumentedTest' \
             cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/map-list-fallback.txt
           grep -Eq '^OK \([1-9][0-9]* tests\)' smoke-output/map-list-fallback.txt

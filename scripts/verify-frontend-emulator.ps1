@@ -30,7 +30,7 @@ if ($LASTEXITCODE -ne 0) { throw 'Test installation failed.' }
 # This UI-only suite must never request an emulator location fix.
 & adb -s $Serial shell pm revoke cn.anitabi.navigator android.permission.ACCESS_FINE_LOCATION
 & adb -s $Serial shell pm revoke cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
-$classes = 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest'
+$classes = 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest,cn.anitabi.navigator.ui.FrontendRemainingFlowsTest,cn.anitabi.navigator.ui.DiscoveryStartupInstrumentedTest'
 $testLog = Join-Path $resultDir 'instrumentation.txt'
 & adb -s $Serial shell am instrument -w -e captureFrontendReview true -e class $classes cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner 2>&1 | Set-Content -LiteralPath $testLog -Encoding UTF8
 $result = Get-Content -LiteralPath $testLog -Raw

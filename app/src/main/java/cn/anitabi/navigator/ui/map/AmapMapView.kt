@@ -23,6 +23,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -49,6 +50,7 @@ internal fun AmapMapView(
     val currentOnMapReady = rememberUpdatedState(onMapReady)
     val currentOnUnavailable = rememberUpdatedState(onUnavailable)
     val currentOnViewportSizeChanged = rememberUpdatedState(onViewportSizeChanged)
+    val darkTheme = MaterialTheme.colorScheme.background.luminance() < .5f
     var attempt by remember { mutableIntStateOf(0) }
     var runtimeFailure by remember(attempt) { mutableStateOf(false) }
     var savedMapState by rememberSaveable { mutableStateOf<Bundle?>(null) }
@@ -101,6 +103,18 @@ internal fun AmapMapView(
     }
     requireNotNull(lease)
     requireNotNull(mapView)
+    var readyMap by remember(mapView) { mutableStateOf<AMap?>(null) }
+
+    LaunchedEffect(readyMap, darkTheme) {
+        val map = readyMap ?: return@LaunchedEffect
+        if (lease.isDestroyed) return@LaunchedEffect
+        runCatching {
+            map.mapType = if (darkTheme) AMap.MAP_TYPE_NIGHT else AMap.MAP_TYPE_NORMAL
+        }.onFailure { error ->
+            logAmapFailure("THEME", error)
+            runtimeFailure = true
+        }
+    }
 
     AndroidView(
         factory = { mapView },
@@ -139,7 +153,10 @@ internal fun AmapMapView(
             if (!resumed) resumed = failSafely("ON_RESUME", mapView::onResume)
             if (!resumed || mapDelivered) return
             mapDelivered = failSafely("GET_MAP") {
-                if (!disposed) currentOnMapReady.value(mapView.map)
+                if (!disposed) {
+                    readyMap = mapView.map
+                    currentOnMapReady.value(mapView.map)
+                }
             }
         }
 

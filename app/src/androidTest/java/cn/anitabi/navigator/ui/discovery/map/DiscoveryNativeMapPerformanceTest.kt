@@ -28,68 +28,43 @@ import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.ui.theme.AnitabiTheme
+import coil3.ImageLoader
+import coil3.SingletonImageLoader
+import coil3.annotation.DelicateCoilApi
+import coil3.asImage
+import coil3.decode.DataSource
+import coil3.intercept.Interceptor
+import coil3.request.ImageResult
+import coil3.request.SuccessResult
+import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.navigation.NavigationView
 import java.io.File
+import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.ceil
 import kotlin.math.hypot
 import kotlin.math.roundToInt
 import org.json.JSONArray
 import org.json.JSONObject
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 
-/** Real native projection and nine overlap clusters; this is a rebuild workload, not a tile/FPS benchmark. */
+/** Real native projection and pixels; workload reports do not certify tile authentication or SDK surface FPS. */
+@OptIn(DelicateCoilApi::class)
 class DiscoveryNativeMapPerformanceTest {
     @get:Rule val composeRule = createComposeRule()
 
     @Test
     fun googleDenseMembershipAndNativePixelsReportWindowMetrics() {
         val harness = Harness()
-        composeRule.setContent {
-            val context = LocalContext.current
-            val root = LocalView.current.rootView
-            val version = harness.version
-            SideEffect { harness.root = root; harness.window = activity(context).window }
-            AnitabiTheme {
-                DiscoveryMap(
-                    dataVersion = "synthetic-dense-$version", points = harness.points,
-                    provider = MapProvider.GOOGLE, privacyReady = true,
-                    selectedIds = emptySet(), focusedPointId = null, imagesEnabled = false, darkTheme = false,
-                    padding = PADDING,
-                    cameraCommand = DiscoveryCameraCommand.Restore(1L, DiscoveryCameraPosition(GeoPoint(0.0, 0.0), 15f)),
-                    onVisibleIdsChanged = {
-                        harness.visible = it; harness.visibleAtNs = System.nanoTime(); harness.visibleVersion = version
-                    },
-                    onPointClick = {}, onOverlapClick = {}, onCameraChanged = {}, onManualMove = {},
-                    onUnavailable = { harness.unavailable = true },
-                    onCameraCommandApplied = { _, _ -> harness.cameraReady = true },
-                    modifier = Modifier.fillMaxSize(),
-                )
-            }
-        }
-        composeRule.waitUntil(30_000) {
-            check(!harness.unavailable) { "Google native map unavailable" }
-            harness.cameraReady && harness.visibleVersion == 0
-        }
-        val view = composeRule.runOnIdle { nativeViews(harness.root).single() }
-        var sdk: GoogleMap? = null
-        composeRule.runOnIdle { view.getMapAsync { sdk = it } }
-        composeRule.waitUntil(10_000) { sdk != null }
+        val (view, sdk) = show(harness)
         val density = view.resources.displayMetrics.density
-        // This screen-authored grid is converted only in memory; no source or device locations are used.
-        val groups = composeRule.runOnIdle {
-            val content = PADDING.content(view.width, view.height)
-            val projection = requireNotNull(sdk).projection
-            (0..2).flatMap { row -> (0..2).map { column ->
-                val screen = Point((content.left + (content.right - content.left) * (.2f + .3f * column)).roundToInt(),
-                    (content.top + (content.bottom - content.top) * (.2f + .3f * row)).roundToInt())
-                val source = requireNotNull(projection.fromScreenLocation(screen)) { "Authored grid must intersect the map plane" }
-                GeoPoint(source.latitude, source.longitude) to projection.toScreenLocation(source)
-            } }
-        }
+        val groups = authoredGroups(view, sdk)
         val anchors = groups.map { it.second }
         assertTrue("Fixture clusters must have independent native pixel samples", anchors.indices.all { a ->
             (a + 1 until anchors.size).all { b ->
@@ -164,6 +139,217 @@ class DiscoveryNativeMapPerformanceTest {
         }
     }
 
+    @Test
+    fun googleViewportUpdatesConserveMembershipAndReuseImages() {
+        val context = InstrumentationRegistry.getInstrumentation().targetContext
+        val previousLoader = SingletonImageLoader.get(context)
+        val imageRequests = AtomicInteger()
+        val fixtureLoader = ImageLoader.Builder(context).components {
+            add(object : Interceptor {
+                override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
+                    check(chain.request.data == IMAGE_URL) { "Unexpected viewport fixture image request" }
+                    imageRequests.incrementAndGet()
+                    val bitmap = Bitmap.createBitmap(120, 90, Bitmap.Config.ARGB_8888).apply { eraseColor(IMAGE_COLOR) }
+                    return SuccessResult(image = bitmap.asImage(), request = chain.request, dataSource = DataSource.MEMORY)
+                }
+            })
+        }.build()
+        SingletonImageLoader.setUnsafe(fixtureLoader)
+        try { verifyViewportUpdates(imageRequests) }
+        finally { SingletonImageLoader.setUnsafe(previousLoader); fixtureLoader.shutdown() }
+    }
+
+    private fun verifyViewportUpdates(imageRequests: AtomicInteger) {
+        val harness = Harness().apply { imagesEnabled = true }
+        val (view, sdk) = show(harness)
+        val density = view.resources.displayMetrics.density
+        val groups = authoredGroups(view, sdk)
+        val imageGroup = 4
+        val denseGroups = groups.indices.filter { it != imageGroup }
+        val source = groups[imageGroup].first
+        val origin = composeRule.runOnIdle { sdk.cameraPosition }
+        val content = PADDING.content(view.width, view.height)
+        val directory = File(requireNotNull(InstrumentationRegistry.getInstrumentation().targetContext.getExternalFilesDir(null)),
+            "frontend-review").apply { check(isDirectory || mkdirs()) }
+        val results = JSONArray()
+        val report = JSONObject().put("api", Build.VERSION.SDK_INT).put("results", results)
+            .put("workload", "three SDK viewport moves per unchanged data version; eight overlap groups and one image point")
+            .put("timingScope", "SDK camera update through idle/projection/clustering; pixel timing includes fixture validation and screenshot polling")
+            .put("memoryScope", "sampled whole-process Java/native heaps including fixtures; excludes GPU memory")
+            .put("frameScope", "application Window reports, not SDK surface FPS; sparse samples do not certify smooth scrolling")
+            .put("requestScope", "fixture ImageLoader executions; no network; asserts reuse of the unchanged decoded image")
+            .put("markerScope", "observable viewport membership and pixels, not internal SDK marker identity or method-call counts")
+        val frameThread = HandlerThread("native-viewport-frame-metrics").apply { start() }
+        val frames = WindowFrames()
+        composeRule.runOnIdle { harness.window.addOnFrameMetricsAvailableListener(frames, Handler(frameThread.looper)) }
+        try {
+            for (size in listOf(1_000, 10_000, 100_000)) {
+                val pointGroups = List(size) { index -> if (index == 0) imageGroup else denseGroups[(index - 1) % denseGroups.size] }
+                val points = List(size) { index ->
+                    DiscoveryMapPoint("synthetic::viewport-$size-$index", 901L, groups[pointGroups[index]].first,
+                        MapProvider.GOOGLE, "", Color.MAGENTA, imageUrl = IMAGE_URL.takeIf { index == 0 })
+                }
+                val allIds = points.mapTo(HashSet(size)) { it.id }
+                composeRule.runOnIdle { harness.points = points; harness.version++ }
+                composeRule.waitUntil(LOAD_TIMEOUT_MS) {
+                    check(!harness.unavailable) { "Google map unavailable while preparing viewport fixture" }
+                    harness.visibleVersion == harness.version && harness.visible == allIds
+                }
+                awaitClusters(view, denseGroups.map { groups[it].second }, density, true, 15_000).recycle()
+                awaitImage(view, groups[imageGroup].second, density, true, 15_000).recycle()
+                val requestBaseline = imageRequests.get()
+                assertEquals("The decoded image should be requested only once", 1, requestBaseline)
+                val version = harness.version
+                for (stage in listOf("partial", "inside-padding", "restore")) {
+                    val heap = HeapSamples()
+                    val result = JSONObject().put("pointCount", size).put("stage", stage)
+                        .put("imageRequestsBefore", requestBaseline).put("testWatchdogMs", LOAD_TIMEOUT_MS)
+                    var startedNs = System.nanoTime()
+                    var idleBefore = harness.idleCount
+                    var complete = false
+                    var screenshot: Bitmap? = null
+                    var visibleMs = -1.0
+                    var pixelsMs = -1.0
+                    try {
+                        composeRule.runOnIdle {
+                            idleBefore = harness.idleCount
+                            startedNs = System.nanoTime()
+                            frames.begin(startedNs)
+                            val update = when (stage) {
+                                "partial" -> CameraUpdateFactory.scrollBy((content.right - content.left) * .25f, 0f)
+                                "inside-padding" -> {
+                                    val probe = sdk.projection.toScreenLocation(LatLng(source.latitude, source.longitude))
+                                    val targetY = content.bottom + (view.height - content.bottom) / 2
+                                    CameraUpdateFactory.scrollBy(0f, probe.y - targetY)
+                                }
+                                else -> CameraUpdateFactory.newCameraPosition(origin)
+                            }
+                            sdk.moveCamera(update)
+                        }
+                        val projected = composeRule.runOnIdle { groups.map {
+                            sdk.projection.toScreenLocation(LatLng(it.first.latitude, it.first.longitude))
+                        } }
+                        val visibleGroups = projected.indices.filterTo(hashSetOf()) {
+                            content.contains(ScreenPoint(projected[it].x.toFloat(), projected[it].y.toFloat()))
+                        }
+                        val expectedIds = points.indices.filter { pointGroups[it] in visibleGroups }.mapTo(HashSet(size)) { points[it].id }
+                        val imageVisible = imageGroup in visibleGroups
+                        when (stage) {
+                            "partial" -> assertTrue("Partial viewport must retain the image and a strict member subset",
+                                imageVisible && expectedIds.isNotEmpty() && expectedIds.size < size)
+                            "inside-padding" -> assertTrue("The hidden image must remain physically onscreen in measured padding",
+                                !imageVisible && projected[imageGroup].x in 0 until view.width &&
+                                    projected[imageGroup].y in content.bottom.roundToInt() until view.height)
+                            else -> assertTrue("Restored viewport must recover every member", expectedIds == allIds)
+                        }
+                        result.put("expectedVisibleMembers", expectedIds.size).put("expectedVisibleImage", imageVisible)
+                        composeRule.waitUntil(remainingMs(startedNs)) {
+                            heap.sample()
+                            check(!harness.unavailable) { "Google map unavailable during viewport update" }
+                            harness.idleCount > idleBefore && harness.visibleIdleCount == harness.idleCount &&
+                                harness.visibleAtNs >= startedNs && harness.visibleVersion == version && harness.visible == expectedIds
+                        }
+                        visibleMs = (harness.visibleAtNs - startedNs) / 1_000_000.0
+                        val visibleClusters = denseGroups.filter { it in visibleGroups }.map { projected[it] }
+                        assertTrue("Viewport fixture must retain native cluster evidence", visibleClusters.isNotEmpty())
+                        awaitClusters(view, visibleClusters, density, true, remainingMs(startedNs), heap::sample).recycle()
+                        screenshot = awaitImage(view, projected[imageGroup], density, imageVisible, remainingMs(startedNs), heap::sample)
+                        pixelsMs = (System.nanoTime() - startedNs) / 1_000_000.0
+                        assertTrue("Viewport fixture exceeded its test watchdog", pixelsMs <= LOAD_TIMEOUT_MS)
+                        assertEquals("Unchanged images must not be requested again after viewport updates", requestBaseline, imageRequests.get())
+                        composeRule.runOnIdle {
+                            assertSame(view, nativeViews(harness.root).single())
+                            assertSame("Viewport changes must retain the indexed point list", points, harness.points)
+                            assertEquals("Viewport changes must not rebuild the data version", version, harness.version)
+                        }
+                        complete = true
+                    } finally {
+                        heap.sample()
+                        result.put("completeMembershipAndPixels", complete).put("visibleMemberCount", harness.visible.size)
+                            .put("cameraUpdateToVisibleMs", visibleMs).put("cameraUpdateToPixelsMs", pixelsMs)
+                            .put("imageRequestsAfter", imageRequests.get()).put("heap", heap.summary()).put("windowFrames", frames.finish())
+                        results.put(result)
+                        File(directory, "native-google-viewport-metrics-api${Build.VERSION.SDK_INT}.json").writeText(report.toString(2))
+                        screenshot?.let {
+                            try { saveMapCrop(it, view, File(directory, "native-google-viewport-$size-$stage-api${Build.VERSION.SDK_INT}.png")) }
+                            finally { it.recycle() }
+                        }
+                    }
+                }
+            }
+        } finally {
+            composeRule.runOnIdle { harness.window.removeOnFrameMetricsAvailableListener(frames) }
+            frameThread.quitSafely()
+        }
+    }
+
+    private fun awaitImage(view: View, anchor: Point, density: Float, present: Boolean, timeoutMs: Long,
+        sample: () -> Unit = {}): Bitmap {
+        val location = IntArray(2)
+        var latest: Bitmap? = null
+        try {
+            composeRule.waitUntil(timeoutMs) {
+                sample()
+                composeRule.runOnIdle { view.getLocationOnScreen(location) }
+                val screenshot = InstrumentationRegistry.getInstrumentation().uiAutomation.takeScreenshot() ?: return@waitUntil false
+                latest?.recycle(); latest = screenshot
+                val x = location[0] + anchor.x
+                val y = location[1] + anchor.y
+                val image = pixelNear(screenshot, x, y - (35f * density).roundToInt(), IMAGE_COLOR)
+                val dot = pixelNear(screenshot, x, y, Color.MAGENTA)
+                if (present) image && dot else !image && !dot
+            }
+            return requireNotNull(latest)
+        } catch (error: Throwable) { latest?.recycle(); throw error }
+    }
+
+    private fun show(harness: Harness): Pair<NavigationView, GoogleMap> {
+        composeRule.setContent {
+            val context = LocalContext.current
+            val root = LocalView.current.rootView
+            val version = harness.version
+            SideEffect { harness.root = root; harness.window = activity(context).window }
+            AnitabiTheme {
+                DiscoveryMap(
+                    dataVersion = "synthetic-dense-$version", points = harness.points,
+                    provider = MapProvider.GOOGLE, privacyReady = true,
+                    selectedIds = emptySet(), focusedPointId = null, imagesEnabled = harness.imagesEnabled, darkTheme = false,
+                    padding = PADDING,
+                    cameraCommand = DiscoveryCameraCommand.Restore(1L, DiscoveryCameraPosition(GeoPoint(0.0, 0.0), 15f)),
+                    onVisibleIdsChanged = {
+                        harness.visible = it; harness.visibleAtNs = System.nanoTime(); harness.visibleVersion = version
+                        harness.visibleIdleCount = harness.idleCount
+                    },
+                    onPointClick = {}, onOverlapClick = {}, onCameraChanged = { harness.idleCount++ }, onManualMove = {},
+                    onUnavailable = { harness.unavailable = true },
+                    onCameraCommandApplied = { _, _ -> harness.cameraReady = true },
+                    modifier = Modifier.fillMaxSize(),
+                )
+            }
+        }
+        composeRule.waitUntil(30_000) {
+            check(!harness.unavailable) { "Google native map unavailable" }
+            harness.cameraReady && harness.visibleVersion == 0
+        }
+        val view = composeRule.runOnIdle { nativeViews(harness.root).single() }
+        var sdk: GoogleMap? = null
+        composeRule.runOnIdle { view.getMapAsync { sdk = it } }
+        composeRule.waitUntil(10_000) { sdk != null }
+        return view to requireNotNull(sdk)
+    }
+
+    private fun authoredGroups(view: View, sdk: GoogleMap): List<Pair<GeoPoint, Point>> = composeRule.runOnIdle {
+        // This screen-authored grid is converted only in memory; no source or device locations are used.
+        val content = PADDING.content(view.width, view.height)
+        val projection = sdk.projection
+        (0..2).flatMap { row -> (0..2).map { column ->
+            val screen = Point((content.left + (content.right - content.left) * (.2f + .3f * column)).roundToInt(),
+                (content.top + (content.bottom - content.top) * (.2f + .3f * row)).roundToInt())
+            val source = requireNotNull(projection.fromScreenLocation(screen)) { "Authored grid must intersect the map plane" }
+            GeoPoint(source.latitude, source.longitude) to projection.toScreenLocation(source)
+        } }
+    }
+
     private fun awaitClusters(view: View, anchors: List<Point>, density: Float, present: Boolean, timeoutMs: Long,
         sample: () -> Unit = {}): Bitmap {
         var latest: Bitmap? = null
@@ -212,11 +398,14 @@ class DiscoveryNativeMapPerformanceTest {
         lateinit var window: Window
         var points by mutableStateOf(emptyList<DiscoveryMapPoint>())
         var version by mutableStateOf(0)
+        var imagesEnabled by mutableStateOf(false)
         @Volatile var visible = emptySet<String>()
         @Volatile var visibleVersion = -1
         @Volatile var visibleAtNs = 0L
         @Volatile var cameraReady = false
         @Volatile var unavailable = false
+        @Volatile var idleCount = 0
+        @Volatile var visibleIdleCount = -1
     }
 
     private class HeapSamples {
@@ -278,6 +467,8 @@ class DiscoveryNativeMapPerformanceTest {
 
     private companion object {
         const val LOAD_TIMEOUT_MS = 120_000L
+        const val IMAGE_URL = "https://image.anitabi.cn/synthetic-viewport-only.png"
+        val IMAGE_COLOR = Color.rgb(0, 204, 208)
         val PADDING = DiscoveryMapPadding(left = 24, top = 48, right = 12, bottom = 120)
         fun remainingMs(startedNs: Long) = (LOAD_TIMEOUT_MS - (System.nanoTime() - startedNs) / 1_000_000).coerceAtLeast(1)
         fun activity(context: Context): Activity = when (context) {
