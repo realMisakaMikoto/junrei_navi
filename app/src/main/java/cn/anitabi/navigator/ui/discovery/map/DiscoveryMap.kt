@@ -66,7 +66,8 @@ fun DiscoveryMap(
     onCameraCommandApplied: (Long, DiscoveryCameraPosition) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
-    val density = LocalDensity.current.density
+    val fontDensity = LocalDensity.current
+    val density = fontDensity.density
     val currentPoints = rememberUpdatedState(points)
     val currentPointClick = rememberUpdatedState(onPointClick)
     val currentOverlapClick = rememberUpdatedState(onOverlapClick)
@@ -87,7 +88,7 @@ fun DiscoveryMap(
     var clusterToken by remember(provider) { mutableStateOf<DiscoveryCalculationToken?>(null) }
     var clusterInputs by remember(provider) { mutableStateOf<Any?>(null) }
     val calculationInputs = remember(adapter, dataVersion, cameraRevision, points, selectedIds,
-        focusedPointId, padding, imagesEnabled, width, height, density) { Any() }
+        focusedPointId, padding, imagesEnabled, width, height, fontDensity) { Any() }
     val currentCalculationInputs = rememberUpdatedState(calculationInputs)
     val currentClusters = rememberUpdatedState(clusters)
     val currentDisplayPoints = rememberUpdatedState(displayPoints)
@@ -253,7 +254,11 @@ fun DiscoveryMap(
             val result = withContext(Dispatchers.Default) {
                 val workerContext = coroutineContext
                 clusterDiscoveryPoints(projected, pointMetadata, selectedIds, focusedPointId, content,
-                    (if (camera.zoom >= 18f) 28f else 48f) * density, camera.zoom, imagesEnabled, density) { workerContext.ensureActive() }
+                    (if (camera.zoom >= 18f) 28f else 48f) * density, camera.zoom, imagesEnabled, density,
+                    markerBounds = { cluster, decoration ->
+                        discoveryMarkerLayout(cluster.copy(decoration = decoration), fontDensity,
+                            imageAvailable = decoration == DiscoveryMarkerDecoration.IMAGE).bounds
+                    }) { workerContext.ensureActive() }
             }
             if (generation.accepts(token) && calculationInputs === currentCalculationInputs.value) {
                 clusters = result
@@ -312,9 +317,9 @@ fun DiscoveryMap(
                 val coordinate = displayPoints[cluster.anchorId] ?: return@forEachCooperatively
                 val image = cluster.imageUrl?.let(images::get).takeIf { cluster.decoration == DiscoveryMarkerDecoration.IMAGE }
                 val appearance = MarkerAppearance(cluster.memberIds, cluster.anchorId, coordinate, cluster.selected,
-                    cluster.decoration, point.colorArgb, point.title, image, darkTheme, density)
+                    cluster.decoration, point.colorArgb, point.title, image, darkTheme, density, fontDensity.fontScale)
                 if (appliedMarkers[cluster.id] != appearance) {
-                    val artwork = discoveryMarkerArtwork(cluster, point, image, density, darkTheme)
+                    val artwork = discoveryMarkerArtwork(cluster, point, image, fontDensity, darkTheme)
                     val title = if (cluster.memberIds.size > 1) "${cluster.memberIds.size} \u4e2a\u5730\u70b9\uff0c${point.title}" else point.title
                     map.upsert(cluster.id, coordinate, title, artwork, cluster.selected)
                     appliedMarkers[cluster.id] = appearance
@@ -327,7 +332,8 @@ fun DiscoveryMap(
 
 private data class MarkerAppearance(
     val members: List<String>, val anchorId: String, val coordinate: GeoPoint, val selected: Boolean,
-    val decoration: DiscoveryMarkerDecoration, val color: Int, val title: String, val image: Bitmap?, val dark: Boolean, val density: Float,
+    val decoration: DiscoveryMarkerDecoration, val color: Int, val title: String, val image: Bitmap?, val dark: Boolean,
+    val density: Float, val fontScale: Float,
 )
 
 private fun allowedDiscoveryImage(url: String): Boolean = runCatching {

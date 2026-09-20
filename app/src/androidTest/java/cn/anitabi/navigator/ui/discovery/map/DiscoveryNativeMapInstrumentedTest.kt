@@ -7,6 +7,7 @@ import android.graphics.Rect
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -14,11 +15,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalView
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.junit4.v2.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.test.click
+import androidx.compose.ui.unit.Density
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.TestAnitabiApplication
@@ -558,6 +561,28 @@ class DiscoveryNativeMapInstrumentedTest {
         awaitColor(harness, view, anchor, POINT_COLOR, "label-dot")
         assertStable(harness, view, projection, anchor, originalSource)
         clickAnchor(harness, anchor)
+
+        // The SDK must receive real touches across the label's 48dp-high target, not just its dot.
+        clickAnchor(harness, ScreenPoint(anchor.x + 20f * density, anchor.y - 22f * density))
+        composeRule.runOnIdle {
+            harness.selected = emptySet(); harness.focused = null; harness.presentationRevision++
+        }
+        awaitPresentation(harness)
+        val enlargedLayout = discoveryMarkerLayout(
+            DiscoveryCluster("fixture-label", listOf(POINT_ID), POINT_ID, anchor, false, DiscoveryMarkerDecoration.LABEL),
+            Density(density, 2f), imageAvailable = false,
+        )
+        val enlargedBorder = ScreenPoint(anchor.x + enlargedLayout.width / 2f - 2f * density, anchor.y - 22f * density)
+        awaitColor(harness, view, enlargedBorder, POINT_COLOR, "before-enlarged-label", matches = false)
+        composeRule.runOnIdle { harness.fontScale = 2f; harness.presentationRevision++ }
+        awaitPresentation(harness)
+        awaitColor(harness, view, enlargedBorder, POINT_COLOR, "enlarged-label-border")
+        awaitColor(harness, view, anchor, POINT_COLOR, "enlarged-label-dot")
+        assertStable(harness, view, projection, anchor, originalSource)
+        clickAnchor(harness, ScreenPoint(anchor.x - 20f * density, anchor.y - 22f * density))
+        composeRule.runOnIdle {
+            assertEquals("Font changes must reuse the already loaded image", 1, imageRequests.get())
+        }
     }
 
     private fun prepareAmap() {
@@ -572,7 +597,8 @@ class DiscoveryNativeMapInstrumentedTest {
             val root = LocalView.current.rootView
             val presentationRevision = harness.presentationRevision
             SideEffect { harness.root = root }
-            AnitabiTheme(if (harness.dark) AppAppearance.DARK else AppAppearance.LIGHT) {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, harness.fontScale)) {
+              AnitabiTheme(if (harness.dark) AppAppearance.DARK else AppAppearance.LIGHT) {
                 if (harness.showMap) DiscoveryMap(
                     dataVersion = "synthetic-native-${harness.provider}", points = harness.points,
                     provider = harness.provider, privacyReady = true,
@@ -590,6 +616,7 @@ class DiscoveryNativeMapInstrumentedTest {
                     onCameraCommandApplied = { sequence, _ -> harness.applied += sequence },
                     modifier = Modifier.fillMaxSize().testTag(MAP_TAG),
                 )
+              }
             }
         }
     }
@@ -756,6 +783,7 @@ class DiscoveryNativeMapInstrumentedTest {
         var focused by mutableStateOf<String?>(null)
         var imagesEnabled by mutableStateOf(true)
         var dark by mutableStateOf(false)
+        var fontScale by mutableStateOf(1f)
         var showMap by mutableStateOf(true)
         var padding by mutableStateOf(PADDING)
         var cameraCommand by mutableStateOf<DiscoveryCameraCommand>(DiscoveryCameraCommand.Focus(1L, POINT_ID))

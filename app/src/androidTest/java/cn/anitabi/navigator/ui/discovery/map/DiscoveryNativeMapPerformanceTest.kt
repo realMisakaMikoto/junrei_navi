@@ -22,8 +22,10 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.test.junit4.v2.createComposeRule
+import androidx.compose.ui.unit.Density
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
@@ -41,6 +43,7 @@ import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.navigation.NavigationView
 import java.io.File
+import java.util.Collections
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.math.abs
 import kotlin.math.ceil
@@ -63,9 +66,11 @@ class DiscoveryNativeMapPerformanceTest {
     fun googleDenseMembershipAndNativePixelsReportWindowMetrics() {
         val harness = Harness()
         val (view, sdk) = show(harness)
-        val density = view.resources.displayMetrics.density
+        val fontDensity = composeRule.runOnIdle { harness.fontDensity }
+        val density = fontDensity.density
         val groups = authoredGroups(view, sdk)
         val anchors = groups.map { it.second }
+        var previousCounts = List(groups.size) { 0 }
         assertTrue("Fixture clusters must have independent native pixel samples", anchors.indices.all { a ->
             (a + 1 until anchors.size).all { b ->
                 hypot((anchors[a].x - anchors[b].x).toDouble(), (anchors[a].y - anchors[b].y).toDouble()) > 64 * density
@@ -88,7 +93,8 @@ class DiscoveryNativeMapPerformanceTest {
             for (size in listOf(1_000, 10_000, 100_000)) {
                 composeRule.runOnIdle { harness.points = emptyList(); harness.version++ }
                 composeRule.waitUntil(30_000) { harness.visibleVersion == harness.version && harness.visible.isEmpty() }
-                awaitClusters(view, anchors, density, present = false, timeoutMs = 15_000).recycle()
+                awaitClusters(view, anchors, previousCounts, fontDensity, present = false, timeoutMs = 15_000).recycle()
+                val memberCounts = List(groups.size) { group -> size / groups.size + if (group < size % groups.size) 1 else 0 }
                 val points = List(size) { index ->
                     DiscoveryMapPoint("synthetic::dense-$size-$index", 901L, groups[index % groups.size].first,
                         MapProvider.GOOGLE, "", Color.MAGENTA)
@@ -114,7 +120,8 @@ class DiscoveryNativeMapPerformanceTest {
                         harness.visibleVersion == harness.version && harness.visible == expectedIds
                     }
                     visibleMs = (harness.visibleAtNs - startedNs) / 1_000_000.0
-                    screenshot = awaitClusters(view, anchors, density, true, remainingMs(startedNs), heap::sample)
+                    screenshot = awaitClusters(view, anchors, memberCounts, fontDensity, true, remainingMs(startedNs), heap::sample)
+                    previousCounts = memberCounts
                     pixelsMs = (System.nanoTime() - startedNs) / 1_000_000.0
                     assertTrue("Dense native fixture exceeded its test watchdog", pixelsMs <= LOAD_TIMEOUT_MS)
                     complete = true
@@ -162,7 +169,8 @@ class DiscoveryNativeMapPerformanceTest {
     private fun verifyViewportUpdates(imageRequests: AtomicInteger) {
         val harness = Harness().apply { imagesEnabled = true }
         val (view, sdk) = show(harness)
-        val density = view.resources.displayMetrics.density
+        val fontDensity = composeRule.runOnIdle { harness.fontDensity }
+        val density = fontDensity.density
         val groups = authoredGroups(view, sdk)
         val imageGroup = 4
         val denseGroups = groups.indices.filter { it != imageGroup }
@@ -185,6 +193,7 @@ class DiscoveryNativeMapPerformanceTest {
         try {
             for (size in listOf(1_000, 10_000, 100_000)) {
                 val pointGroups = List(size) { index -> if (index == 0) imageGroup else denseGroups[(index - 1) % denseGroups.size] }
+                val memberCounts = IntArray(groups.size).also { counts -> pointGroups.forEach { counts[it]++ } }
                 val points = List(size) { index ->
                     DiscoveryMapPoint("synthetic::viewport-$size-$index", 901L, groups[pointGroups[index]].first,
                         MapProvider.GOOGLE, "", Color.MAGENTA, imageUrl = IMAGE_URL.takeIf { index == 0 })
@@ -195,7 +204,8 @@ class DiscoveryNativeMapPerformanceTest {
                     check(!harness.unavailable) { "Google map unavailable while preparing viewport fixture" }
                     harness.visibleVersion == harness.version && harness.visible == allIds
                 }
-                awaitClusters(view, denseGroups.map { groups[it].second }, density, true, 15_000).recycle()
+                awaitClusters(view, denseGroups.map { groups[it].second }, denseGroups.map { memberCounts[it] },
+                    fontDensity, true, 15_000).recycle()
                 awaitImage(view, groups[imageGroup].second, density, true, 15_000).recycle()
                 val requestBaseline = imageRequests.get()
                 assertEquals("The decoded image should be requested only once", 1, requestBaseline)
@@ -250,9 +260,11 @@ class DiscoveryNativeMapPerformanceTest {
                                 harness.visibleAtNs >= startedNs && harness.visibleVersion == version && harness.visible == expectedIds
                         }
                         visibleMs = (harness.visibleAtNs - startedNs) / 1_000_000.0
-                        val visibleClusters = denseGroups.filter { it in visibleGroups }.map { projected[it] }
+                        val visibleDenseGroups = denseGroups.filter { it in visibleGroups }
+                        val visibleClusters = visibleDenseGroups.map { projected[it] }
                         assertTrue("Viewport fixture must retain native cluster evidence", visibleClusters.isNotEmpty())
-                        awaitClusters(view, visibleClusters, density, true, remainingMs(startedNs), heap::sample).recycle()
+                        awaitClusters(view, visibleClusters, visibleDenseGroups.map { memberCounts[it] },
+                            fontDensity, true, remainingMs(startedNs), heap::sample).recycle()
                         screenshot = awaitImage(view, projected[imageGroup], density, imageVisible, remainingMs(startedNs), heap::sample)
                         pixelsMs = (System.nanoTime() - startedNs) / 1_000_000.0
                         assertTrue("Viewport fixture exceeded its test watchdog", pixelsMs <= LOAD_TIMEOUT_MS)
@@ -307,8 +319,9 @@ class DiscoveryNativeMapPerformanceTest {
         composeRule.setContent {
             val context = LocalContext.current
             val root = LocalView.current.rootView
+            val fontDensity = LocalDensity.current
             val version = harness.version
-            SideEffect { harness.root = root; harness.window = activity(context).window }
+            SideEffect { harness.root = root; harness.window = activity(context).window; harness.fontDensity = fontDensity }
             AnitabiTheme {
                 DiscoveryMap(
                     dataVersion = "synthetic-dense-$version", points = harness.points,
@@ -350,8 +363,17 @@ class DiscoveryNativeMapPerformanceTest {
         } }
     }
 
-    private fun awaitClusters(view: View, anchors: List<Point>, density: Float, present: Boolean, timeoutMs: Long,
+    private fun awaitClusters(view: View, anchors: List<Point>, memberCounts: List<Int>, fontDensity: Density,
+        present: Boolean, timeoutMs: Long,
         sample: () -> Unit = {}): Bitmap {
+        require(anchors.size == memberCounts.size && memberCounts.all { it >= if (present) 2 else 0 })
+        val density = fontDensity.density
+        val ringOffsets = memberCounts.map { count ->
+            val cluster = DiscoveryCluster("sample", Collections.nCopies(count, "sample-member"), "sample-member",
+                ScreenPoint(0f, 0f), selected = false)
+            // Sample the middle of the 2 dp white ring at this count's actual scalable radius.
+            discoveryMarkerLayout(cluster, fontDensity, imageAvailable = false).radius + density
+        }
         var latest: Bitmap? = null
         val location = IntArray(2)
         try {
@@ -362,14 +384,14 @@ class DiscoveryNativeMapPerformanceTest {
                     ?: return@waitUntil false
                 latest?.recycle()
                 latest = screenshot
-                val observed = anchors.map { anchor ->
+                val observed = anchors.mapIndexed { index, anchor ->
                     // Sample below the count glyphs and in the outer ring to identify an actual native circle.
                     val interior = listOf(-9f to 13f, 9f to 13f).map { (dx, dy) ->
                         pixelNear(screenshot, location[0] + anchor.x + (dx * density).roundToInt(),
                             location[1] + anchor.y + (dy * density).roundToInt(), Color.rgb(36, 36, 38))
                     }
                     val ring = pixelNear(screenshot, location[0] + anchor.x,
-                        location[1] + anchor.y + (20f * density).roundToInt(), Color.WHITE)
+                        location[1] + anchor.y + ringOffsets[index].roundToInt(), Color.WHITE)
                     (interior.all { it } && ring) to interior.any { it }
                 }
                 // A missing ring alone cannot certify removal of an old native marker.
@@ -396,6 +418,7 @@ class DiscoveryNativeMapPerformanceTest {
     private class Harness {
         lateinit var root: View
         lateinit var window: Window
+        lateinit var fontDensity: Density
         var points by mutableStateOf(emptyList<DiscoveryMapPoint>())
         var version by mutableStateOf(0)
         var imagesEnabled by mutableStateOf(false)

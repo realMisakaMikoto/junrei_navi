@@ -27,6 +27,7 @@ fun clusterDiscoveryPoints(
     zoom: Float,
     imagesEnabled: Boolean,
     density: Float = 1f,
+    markerBounds: ((DiscoveryCluster, DiscoveryMarkerDecoration) -> ScreenRect)? = null,
     checkActive: () -> Unit = {},
 ): List<DiscoveryCluster> {
     require(cellSizePx > 0)
@@ -51,10 +52,18 @@ fun clusterDiscoveryPoints(
             selected = ids.any { it in selectedIds || it == focusedId },
         )
     }.sortedWith(compareByDescending<DiscoveryCluster> { focusedId in it.memberIds }.thenByDescending { it.selected }.thenBy { it.id })
+    fun bounds(cluster: DiscoveryCluster, decoration: DiscoveryMarkerDecoration): ScreenRect {
+        val relative = markerBounds?.invoke(cluster, decoration) ?: when (decoration) {
+            DiscoveryMarkerDecoration.DOT -> ScreenRect(-24f * density, -24f * density, 24f * density, 24f * density)
+            DiscoveryMarkerDecoration.LABEL -> ScreenRect(-70f * density, -40f * density, 70f * density, 8f * density)
+            DiscoveryMarkerDecoration.IMAGE -> ScreenRect(-44f * density, -72f * density, 44f * density, 8f * density)
+        }
+        return ScreenRect(cluster.screen.x + relative.left, cluster.screen.y + relative.top,
+            cluster.screen.x + relative.right, cluster.screen.y + relative.bottom)
+    }
     val occupied = DecorationOccupancy(96f * density)
     clusters.forEach { cluster ->
-        val halfSize = (if (cluster.memberIds.size > 1) 21f else 10f) * density
-        occupied.add(ScreenRect(cluster.screen.x - halfSize, cluster.screen.y - halfSize, cluster.screen.x + halfSize, cluster.screen.y + halfSize), cluster.id)
+        occupied.add(bounds(cluster, DiscoveryMarkerDecoration.DOT), cluster.id)
     }
     val visibleCovers = hashSetOf<Long>()
     return clusters.map { cluster ->
@@ -68,13 +77,12 @@ fun clusterDiscoveryPoints(
         val canImage = imagesEnabled && imageUrl != null && cluster.memberIds.size == 1
         val canLabel = zoom >= 15f && point.title.isNotBlank() && cluster.memberIds.size == 1
         if (!canImage && !canLabel) return@map cluster
-        val width = (if (canImage) 88f else 140f) * density
-        val height = (if (canImage) 76f else 34f) * density
-        val box = ScreenRect(cluster.screen.x - width / 2, cluster.screen.y - height, cluster.screen.x + width / 2, cluster.screen.y)
+        val decoration = if (canImage) DiscoveryMarkerDecoration.IMAGE else DiscoveryMarkerDecoration.LABEL
+        val box = bounds(cluster, decoration)
         if (box.left < content.left || box.right > content.right || box.top < content.top || box.bottom > content.bottom || occupied.collides(box, cluster.id)) return@map cluster
         occupied.add(box, cluster.id)
         if (canImage && zoom < 10f) visibleCovers.add(point.subjectId)
-        cluster.copy(decoration = if (canImage) DiscoveryMarkerDecoration.IMAGE else DiscoveryMarkerDecoration.LABEL, imageUrl = imageUrl)
+        cluster.copy(decoration = decoration, imageUrl = imageUrl)
     }
 }
 

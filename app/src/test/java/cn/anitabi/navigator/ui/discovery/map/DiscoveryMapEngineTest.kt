@@ -126,6 +126,27 @@ class DiscoveryMapEngineTest {
         assertTrue(cluster.anchorId in metadata)
     }
 
+    @Test fun expandedArtworkBoundsPreventDecorationsFromCoveringAdjacentMarkers() {
+        val metadata = List(2) { point(it) }.associateBy { it.id }
+        val projected = listOf(
+            ProjectedDiscoveryPoint("subject::0", ScreenPoint(180f, 200f)),
+            ProjectedDiscoveryPoint("subject::1", ScreenPoint(290f, 200f)),
+        )
+        val normal = clusterDiscoveryPoints(projected, metadata, emptySet(), null,
+            ScreenRect(0f, 0f, 600f, 400f), 28f, 19f, false)
+        assertTrue(normal.any { it.decoration == DiscoveryMarkerDecoration.LABEL })
+        val expanded = clusterDiscoveryPoints(projected, metadata, emptySet(), null,
+            ScreenRect(0f, 0f, 600f, 400f), 28f, 19f, false,
+            markerBounds = { _, decoration ->
+                if (decoration == DiscoveryMarkerDecoration.DOT) ScreenRect(-24f, -24f, 24f, 24f)
+                else ScreenRect(-140f, -72f, 140f, 7f)
+            })
+        assertTrue(expanded.all { it.decoration == DiscoveryMarkerDecoration.DOT })
+        assertEquals(normal.map { it.memberIds }, expanded.map { it.memberIds })
+        assertEquals(normal.map { it.screen }, expanded.map { it.screen })
+        assertEquals(normal.map { it.anchorId }, expanded.map { it.anchorId })
+    }
+
     @Test fun selectionAndDecorationsKeepStableMarkerIdentity() {
         val metadata = List(2) { point(it) }.associateBy { it.id }
         val projected = metadata.keys.map { ProjectedDiscoveryPoint(it, ScreenPoint(200f, 200f)) }
