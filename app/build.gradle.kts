@@ -62,6 +62,10 @@ val releaseSigningValues = listOf(
     releaseKeyPassword,
 )
 val releaseSigningReady = releaseSigningValues.all { it != null }
+val signInternalTestApks = signingValue("ANITABI_SIGN_INTERNAL_TEST_APKS") == "true"
+if (signInternalTestApks && !releaseSigningReady) {
+    throw GradleException("Internal signed tests require the complete existing release signing configuration")
+}
 if (releaseSigningValues.any { it != null } && !releaseSigningReady) {
     throw GradleException("Release signing requires all four ANITABI_* signing values")
 }
@@ -102,6 +106,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            if (signInternalTestApks) signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true

@@ -27,6 +27,9 @@ if ($LASTEXITCODE -ne 0) { throw 'Test installation failed.' }
 & adb -s $Serial shell settings put global window_animation_scale 0
 & adb -s $Serial shell settings put global transition_animation_scale 0
 & adb -s $Serial shell settings put global animator_duration_scale 0
+# This UI-only suite must never request an emulator location fix.
+& adb -s $Serial shell pm revoke cn.anitabi.navigator android.permission.ACCESS_FINE_LOCATION
+& adb -s $Serial shell pm revoke cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
 $classes = 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest'
 $testLog = Join-Path $resultDir 'instrumentation.txt'
 & adb -s $Serial shell am instrument -w -e captureFrontendReview true -e class $classes cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner 2>&1 | Set-Content -LiteralPath $testLog -Encoding UTF8

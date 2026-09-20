@@ -88,6 +88,7 @@ class DiscoveryUiContractTest {
         show(harness)
         composeRule.onNodeWithContentDescription(EXPAND).performClick()
         composeRule.onNodeWithContentDescription(EXPAND).performClick()
+        composeRule.onNodeWithText("\u4f5c\u54c1").performClick()
         composeRule.onNodeWithTag("discovery-panel-list").performScrollToNode(hasText("Synthetic Subject 101"))
         composeRule.onAllNodes(hasText("Synthetic Subject 101") and hasAnyAncestor(hasTestTag("discovery-panel-list")))
             .onFirst().performClick()

@@ -32,11 +32,26 @@ import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.MainActivity
 import cn.anitabi.navigator.SyntheticDiscoveryFixture
+import cn.anitabi.navigator.TEST_REGION_DATA_VERSION
 import cn.anitabi.navigator.TestAnitabiApplication
+import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.core.model.NavigationProgress
+import cn.anitabi.navigator.core.model.NavigationState
+import cn.anitabi.navigator.core.model.RouteObjective
+import cn.anitabi.navigator.core.model.TourLeg
+import cn.anitabi.navigator.core.model.TourPlan
+import cn.anitabi.navigator.core.model.TransitExecutionStrategy
+import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.core.routing.EXTERNAL_AMAP_SOURCE
+import cn.anitabi.navigator.navigation.ActiveNavigationStore
+import cn.anitabi.navigator.navigation.AndroidLocationProvider
+import cn.anitabi.navigator.navigation.NavigationRuntime
+import cn.anitabi.navigator.navigation.NavigationRuntimeState
 import cn.anitabi.navigator.security.AppAppearance
 import cn.anitabi.navigator.security.AppSettingsStore
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
@@ -61,18 +76,23 @@ class AppShellInstrumentedTest {
     private val settings get() = application.container.appSettingsStore
     private var originalOnboarding = false
     private var originalConsent = false
+    private var originalAmapReady = false
     private var originalAppearance = AppAppearance.SYSTEM
     private var originalCamera: DiscoveryCameraPosition? = null
 
     @Before
     fun prepareSyntheticApp() {
         originalOnboarding = settings.hasCompletedOnboarding()
-        originalConsent = settings.hasCurrentAmapPrivacyConsent()
         originalAppearance = settings.appearance()
         originalCamera = application.container.discoveryPreferences.lastCamera()
         settings.markOnboardingComplete()
         settings.setAppearance(AppAppearance.LIGHT)
-        settings.setAmapPrivacyConsent(false)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            originalConsent = settings.hasCurrentAmapPrivacyConsent()
+            originalAmapReady = application.container.amapPrivacyGate.isReady
+            settings.setAmapPrivacyConsent(false)
+            application.container.amapPrivacyGate.revoke()
+        }
         // A saved Amap view without consent takes the real list fallback before any map is usable.
         application.container.discoveryPreferences.saveCamera(
             DiscoveryCameraPosition(GeoPoint(0.0, 0.0), 5f, 0f, 0f, MapProvider.AMAP),
@@ -82,13 +102,18 @@ class AppShellInstrumentedTest {
     @After
     fun restoreSettings() {
         settings.setAppearance(originalAppearance)
-        settings.setAmapPrivacyConsent(originalConsent)
         application.getSharedPreferences(AppSettingsStore.PREFERENCES_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(AppSettingsStore.PREFERENCE_ONBOARDING_COMPLETE, originalOnboarding).commit()
         val camera = originalCamera
         if (camera == null) {
             application.getSharedPreferences("discovery_view", Context.MODE_PRIVATE).edit().clear().commit()
         } else application.container.discoveryPreferences.saveCamera(camera)
+        InstrumentationRegistry.getInstrumentation().runOnMainSync {
+            settings.setAmapPrivacyConsent(originalConsent)
+            if (originalAmapReady) application.container.amapPrivacyGate.prepareIfAllowed(originalConsent)
+            else application.container.amapPrivacyGate.revoke()
+        }
+        assertEquals(originalAmapReady, application.container.amapPrivacyGate.isReady)
     }
 
     @Test
@@ -146,6 +171,7 @@ class AppShellInstrumentedTest {
     fun systemBackReturnsPointToSubjectThenOverviewWithoutLeavingHome() {
         ActivityScenario.launch(MainActivity::class.java).use {
             awaitListHome()
+            composeRule.onNodeWithText("\u4f5c\u54c1").performClick()
             composeRule.onNodeWithTag("discovery-panel-list")
                 .performScrollToNode(hasText(SyntheticDiscoveryFixture.SUBJECT_NAME))
             composeRule.onAllNodes(
@@ -165,6 +191,85 @@ class AppShellInstrumentedTest {
             composeRule.onNodeWithText(ONE_SELECTED).assertIsDisplayed()
             composeRule.onNodeWithContentDescription("\u8fd4\u56de\u4e0a\u4e00\u5c42").assertDoesNotExist()
             destination(MAP).assertIsSelected()
+        }
+    }
+
+    @Test
+    fun returningHomeKeepsActiveNavigationAndTripsReopensIt() {
+        // No service is started: the running state only exercises the real navigation UI.
+        assertFalse(application.container.amapPrivacyGate.isReady)
+        assertFalse(AndroidLocationProvider.hasLocationPermission(application))
+        val originalRuntime = NavigationRuntime.state.value
+        val originalActiveTourId = ActiveNavigationStore.get(application)
+        val fixture = SyntheticDiscoveryFixture.snapshot()
+        val points = fixture.points.map { it.toPilgrimagePoint() }
+        val plan = TourPlan(
+            id = "synthetic-app-shell-active-tour",
+            anime = fixture.subjects.single().anime,
+            selectedPoints = points,
+            orderedPoints = points,
+            legs = listOf(TourLeg(
+                from = points.first().coordinate, to = points.last().coordinate,
+                mode = TravelMode.WALK, geometry = emptyList(), steps = emptyList(),
+                distanceMeters = 0.0, durationSeconds = 0.0, source = EXTERNAL_AMAP_SOURCE,
+                provider = MapProvider.AMAP, destinationPointId = points.last().id,
+            )),
+            mode = TravelMode.WALK,
+            objective = RouteObjective.FASTEST,
+            endPolicy = EndPolicy.OPEN,
+            estimatedDurationSeconds = 0.0,
+            attribution = emptyList(),
+            initialStart = points.first().coordinate,
+            state = NavigationState.NAVIGATING,
+            executionStrategy = TransitExecutionStrategy.EXTERNAL_AMAP_MAINLAND,
+            mapProvider = MapProvider.AMAP,
+            regionDataVersion = TEST_REGION_DATA_VERSION,
+            externalRouteFallback = true,
+        )
+        val runtime = NavigationRuntimeState(
+            plan = plan,
+            progress = NavigationProgress(
+                tourId = plan.id, completedPointIds = setOf(points.first().id),
+                state = NavigationState.NAVIGATING,
+            ),
+            instruction = "Synthetic active navigation",
+            isRunning = true,
+            errorMessage = "Synthetic recoverable navigation state",
+        )
+        fun assertRuntimePreserved() {
+            assertEquals(runtime, NavigationRuntime.state.value)
+            assertEquals(plan.id, ActiveNavigationStore.get(application))
+        }
+        fun assertNavigationVisible() {
+            composeRule.waitUntil(timeoutMillis = 15_000) {
+                composeRule.onAllNodesWithTag("navigation-control-panel").fetchSemanticsNodes().isNotEmpty()
+            }
+            composeRule.onNodeWithTag("navigation-control-panel").assertIsDisplayed()
+            composeRule.onNodeWithText("\u9ad8\u5fb7\u5730\u56fe\u6682\u65f6\u65e0\u6cd5\u52a0\u8f7d").assertIsDisplayed()
+            composeRule.onNodeWithText(SyntheticDiscoveryFixture.SUBJECT_NAME).assertIsDisplayed()
+            composeRule.onNodeWithTag("main-navigation").assertDoesNotExist()
+            assertRuntimePreserved()
+        }
+        try {
+            NavigationRuntime.set(runtime)
+            ActivityScenario.launch(MainActivity::class.java).use {
+                assertNavigationVisible()
+                composeRule.onNodeWithContentDescription("\u8fd4\u56de").performClick()
+                awaitListHome()
+                destination(MAP).assertIsSelected()
+                composeRule.onNodeWithTag("navigation-control-panel").assertDoesNotExist()
+                assertRuntimePreserved()
+
+                destination(TRIPS).performClick().assertIsSelected()
+                composeRule.onNodeWithTag("trips-screen").assertIsDisplayed()
+                composeRule.onNodeWithText("1 / 2 \u4e2a\u5730\u70b9\u5df2\u5b8c\u6210").assertIsDisplayed()
+                composeRule.onNodeWithText("\u8fd4\u56de\u5bfc\u822a").performClick()
+                assertNavigationVisible()
+            }
+        } finally {
+            NavigationRuntime.set(originalRuntime)
+            if (originalActiveTourId == null) ActiveNavigationStore.clear(application)
+            else ActiveNavigationStore.set(application, originalActiveTourId)
         }
     }
 
@@ -228,6 +333,7 @@ class AppShellInstrumentedTest {
     }
 
     private fun awaitSelectedSearchPoint() {
+        composeRule.onNodeWithTag("search-content").performScrollToNode(hasText("\u5730\u56fe\u5185\u641c\u7d22"))
         composeRule.waitUntil(timeoutMillis = 10_000) {
             composeRule.onAllNodesWithContentDescription(REMOVE_FROM_TRIP).fetchSemanticsNodes().isNotEmpty()
         }

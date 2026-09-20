@@ -252,8 +252,18 @@ internal fun DiscoveryScreen(
                     items(chips, key = { it.id }) { subject ->
                         FilterChip(
                             selected = subject.id in state.filters, onClick = { onFilter(subject.id) },
-                            label = { Text("${subject.name} · ${counts[subject.id] ?: 0}", maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 180.dp)) },
-                            leadingIcon = { DiscoveryThumbnail(subject.anime.imageUrl, Modifier.size(28.dp)) },
+                            label = {
+                                Row(Modifier.widthIn(max = 180.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(subject.name, Modifier.weight(1f, fill = false), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                    Text(" · ${counts[subject.id] ?: 0}")
+                                }
+                            },
+                            leadingIcon = {
+                                Box(Modifier.size(28.dp)) {
+                                    DiscoveryThumbnail(subject.anime.imageUrl, Modifier.fillMaxSize())
+                                    if (subject.id in state.filters) Icon(Icons.Rounded.CheckCircle, null, Modifier.size(14.dp).align(Alignment.BottomEnd), tint = MaterialTheme.colorScheme.primary)
+                                }
+                            },
                             colors = FilterChipDefaults.filterChipColors(containerColor = MaterialTheme.colorScheme.surface),
                             modifier = Modifier.heightIn(min = 48.dp).testTag("subject-filter-${subject.id}"),
                         )
@@ -337,6 +347,7 @@ private fun DiscoveryPanelContent(
     val point = (panel as? DiscoveryPanel.Point)?.pointId?.let(state.pointsById::get)
     val subject = (panel as? DiscoveryPanel.Subject)?.subjectId?.let(subjects::get)
     var collapsedGroups by rememberSaveable { mutableStateOf(listOf<String>()) }
+    var showWorks by rememberSaveable { mutableStateOf(false) }
     val visiblePoints = remember(state.pointsById, state.visibleIds, state.filters, state.listMode, state.nearby, state.location) {
         val source = if (state.listMode || state.nearby) state.pointsById.values else state.visibleIds.mapNotNull(state.pointsById::get)
         val filtered = source.filter { state.filters.isEmpty() || it.subjectId in state.filters }
@@ -396,9 +407,10 @@ private fun DiscoveryPanelContent(
                         DiscoveryPanel.Overview -> {
                             item {
                                 FlowRow(Modifier.padding(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                                    FilterChip(selected = !state.nearby, onClick = { onNearby(false) }, label = { Text(if (state.listMode) "全部地点" else "视野内地点") })
-                                    if (state.location != null) FilterChip(selected = state.nearby, onClick = { onNearby(true) }, label = { Text("附近 · 直线距离") })
-                                    FilterChip(selected = state.batchMode, onClick = { onBatchMode(!state.batchMode) }, label = { Text("批量选点") })
+                                    FilterChip(selected = !state.nearby && !showWorks, onClick = { showWorks = false; onNearby(false) }, label = { Text(if (state.listMode) "全部地点" else "视野内地点") })
+                                    FilterChip(selected = showWorks, onClick = { showWorks = true; onNearby(false) }, label = { Text("作品") })
+                                    if (state.location != null) FilterChip(selected = state.nearby, onClick = { showWorks = false; onNearby(true) }, label = { Text("附近") })
+                                    if (state.batchMode) FilterChip(selected = true, onClick = { onBatchMode(false) }, label = { Text("退出批量") })
                                 }
                             }
                             if (state.data.error != null) item { TextButton(onClick = onRefresh, Modifier.padding(horizontal = 8.dp)) { Text("更新未完成，重试") } }
@@ -409,15 +421,17 @@ private fun DiscoveryPanelContent(
                                 }
                             }
                             if (visiblePoints.isEmpty()) item { PanelNotice(if (state.data.indexAvailable) "移动地图或调整作品筛选，发现更多地点" else "联网加载后即可浏览发现地图") }
-                            val visibleSubjects = visiblePoints.mapTo(linkedSetOf()) { it.subjectId }
-                            item {
-                                LazyRow(contentPadding = PaddingValues(horizontal = 16.dp), horizontalArrangement = Arrangement.spacedBy(12.dp)) {
-                                    items(visibleSubjects.mapNotNull(subjects::get), key = { it.id }) { subject ->
-                                        TextButton(onClick = { onSubject(subject.id) }) { Text(subject.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.widthIn(max = 200.dp)) }
-                                    }
+                            if (showWorks) {
+                                val counts = visiblePoints.groupingBy { it.subjectId }.eachCount()
+                                items(counts.keys.mapNotNull(subjects::get), key = { "work:${it.id}" }) { subject ->
+                                    ListItem(
+                                        modifier = Modifier.clickable { onSubject(subject.id) }.heightIn(min = 80.dp),
+                                        headlineContent = { Text(subject.name) },
+                                        supportingContent = { Text("${counts[subject.id]} 个地点") },
+                                        leadingContent = { DiscoveryThumbnail(subject.anime.imageUrl, Modifier.size(56.dp)) },
+                                    )
                                 }
-                            }
-                            items(visiblePoints, key = { it.id }) { entry ->
+                            } else items(visiblePoints, key = { it.id }) { entry ->
                                 DiscoveryPointRow(entry, subjects[entry.subjectId]?.name, entry.id in selectedIds,
                                     onOpen = { onPoint(entry) }, onToggle = { onTogglePoint(entry) },
                                     distance = if (state.nearby) state.location?.let { straightLineDistance(TourOptimizer.haversineMeters(it, entry.coordinate)) } else null)
