@@ -14,6 +14,7 @@ import cn.anitabi.navigator.data.repository.PilgrimageRepository
 import cn.anitabi.navigator.data.repository.TourRepository
 import cn.anitabi.navigator.data.repository.mergePilgrimageData
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -27,6 +28,8 @@ class SearchViewModel(
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = mutableState.asStateFlow()
+    private var selectionTouched = false
+    private val animeLoads = mutableMapOf<Long, Job>()
 
     init {
         viewModelScope.launch {
@@ -37,7 +40,7 @@ class SearchViewModel(
             }
             val restored = restoreSearchSelection(stored, cached) ?: return@launch
             mutableState.update { current ->
-                if (current.selectedAnimeData.isNotEmpty() || current.selectedPointIds.isNotEmpty()) {
+                if (selectionTouched || current.selectedAnimeData.isNotEmpty() || current.selectedPointIds.isNotEmpty()) {
                     current
                 } else {
                     current.copy(
@@ -72,8 +75,10 @@ class SearchViewModel(
     }
 
     fun toggleAnime(anime: Anime) {
+        selectionTouched = true
         val current = state.value
         if (anime.subjectId in current.selectedAnimeData) {
+            animeLoads.remove(anime.subjectId)?.cancel()
             mutableState.update { value ->
                 val remainingData = value.selectedAnimeData - anime.subjectId
                 val remainingPointIds = mergePilgrimageData(remainingData.values)
@@ -83,13 +88,14 @@ class SearchViewModel(
                 value.copy(
                     selectedAnimeData = remainingData,
                     selectedPointIds = value.selectedPointIds.intersect(remainingPointIds),
+                    loadingAnimeIds = value.loadingAnimeIds - anime.subjectId,
                     errorMessage = null,
                 )
             }
             return
         }
         if (anime.subjectId in current.loadingAnimeIds) return
-        viewModelScope.launch {
+        animeLoads[anime.subjectId] = viewModelScope.launch {
             mutableState.update {
                 it.copy(loadingAnimeIds = it.loadingAnimeIds + anime.subjectId, errorMessage = null)
             }
@@ -97,12 +103,13 @@ class SearchViewModel(
                 .onSuccess { data ->
                     mutableState.update {
                         it.copy(
-                            selectedAnimeData = it.selectedAnimeData + (anime.subjectId to data),
+                            selectedAnimeData = it.selectedAnimeData + (anime.subjectId to mergeLoadedSubject(it.selectedAnimeData[anime.subjectId], data)),
                             loadingAnimeIds = it.loadingAnimeIds - anime.subjectId,
                         )
                     }
                 }
                 .onFailure { throwable ->
+                    if (throwable is CancellationException) throw throwable
                     mutableState.update { it.copy(loadingAnimeIds = it.loadingAnimeIds - anime.subjectId) }
                     handleFailure(throwable)
                 }
@@ -124,6 +131,7 @@ class SearchViewModel(
     }
 
     fun togglePoint(pointId: String) {
+        selectionTouched = true
         mutableState.update { current ->
             val selected = current.selectedPointIds
             when {
@@ -152,7 +160,32 @@ class SearchViewModel(
     }
 
     fun clearSelection() {
+        selectionTouched = true
         mutableState.update { it.copy(selectedPointIds = emptySet(), errorMessage = null) }
+    }
+
+    /** Discovery supplies raw point IDs; the shared selection owns a coordinate snapshot. */
+    fun selectDiscoveryPoints(anime: Anime, points: List<PilgrimagePoint>) {
+        selectionTouched = true
+        mutableState.update { current -> current.withDiscoveryPoints(anime, points) }
+    }
+
+    fun toggleDiscoveredAnime(data: PilgrimageData) {
+        if (data.anime.subjectId in state.value.selectedAnimeData) {
+            toggleAnime(data.anime)
+            return
+        }
+        selectionTouched = true
+        mutableState.update { current -> current.copy(
+            selectedAnimeData = current.selectedAnimeData + (data.anime.subjectId to data),
+            errorMessage = null,
+        ) }
+    }
+
+    fun toggleDiscoveryPoint(anime: Anime, point: PilgrimagePoint) {
+        val scopedId = "${anime.subjectId}::${point.id}"
+        if (scopedId in state.value.selectedPointIds) togglePoint(scopedId)
+        else selectDiscoveryPoints(anime, listOf(point))
     }
 
     fun setShowList(showList: Boolean) {
@@ -239,6 +272,29 @@ class SearchViewModel(
     }
 }
 
+internal fun mergeLoadedSubject(existing: PilgrimageData?, loaded: PilgrimageData): PilgrimageData {
+    if (existing == null) return loaded
+    val points = loaded.points.associateBy(PilgrimagePoint::id) + existing.points.associateBy(PilgrimagePoint::id)
+    return loaded.copy(points = points.values.toList(), expectedPointCount = maxOf(loaded.expectedPointCount, points.size))
+}
+
+internal fun SearchUiState.withDiscoveryPoints(anime: Anime, points: List<PilgrimagePoint>): SearchUiState {
+    val existing = selectedAnimeData[anime.subjectId]
+    val combined = points.associateBy(PilgrimagePoint::id) +
+        existing?.points.orEmpty().associateBy(PilgrimagePoint::id)
+    val data = PilgrimageData(
+        anime = existing?.anime ?: anime,
+        points = combined.values.toList(),
+        expectedPointCount = maxOf(existing?.expectedPointCount ?: 0, combined.size),
+        warnings = existing?.warnings.orEmpty(),
+    )
+    return copy(
+        selectedAnimeData = selectedAnimeData + (anime.subjectId to data),
+        selectedPointIds = selectedPointIds + points.map { "${anime.subjectId}::${it.id}" },
+        errorMessage = null,
+    )
+}
+
 internal data class RestoredSearchSelection(
     val animeData: Map<Long, PilgrimageData>,
     val selectedPointIds: Set<String>,
@@ -250,15 +306,29 @@ internal fun restoreSearchSelection(
 ): RestoredSearchSelection? {
     val selectedAnimeIds = stored.selectedAnimes.mapTo(linkedSetOf(), Anime::subjectId)
     if (selectedAnimeIds.isEmpty()) return null
-    val animeData = cached
-        .filter { it.anime.subjectId in selectedAnimeIds }
-        .associateBy { it.anime.subjectId }
-    if (animeData.keys != selectedAnimeIds) return null
+    val cachedById = cached.associateBy { it.anime.subjectId }
+    val animeData = stored.selectedAnimes.associate { anime ->
+        val cache = cachedById[anime.subjectId]
+        val prefix = "${anime.subjectId}::"
+        val savedPoints = stored.selectedPoints.mapNotNull { point ->
+            val rawId = when {
+                point.id.startsWith(prefix) -> point.id.removePrefix(prefix)
+                selectedAnimeIds.size == 1 && "::" !in point.id -> point.id
+                else -> return@mapNotNull null
+            }
+            point.copy(id = rawId, name = point.name.removePrefix("《${anime.nameCn ?: anime.name}》· "))
+        }
+        // User-owned coordinates win over refreshed public cache, including missing source points.
+        val points = cache?.points.orEmpty().associateBy(PilgrimagePoint::id) + savedPoints.associateBy(PilgrimagePoint::id)
+        anime.subjectId to PilgrimageData(anime, points.values.toList(), maxOf(cache?.expectedPointCount ?: 0, points.size), cache?.warnings.orEmpty())
+    }
     val availablePointIds = mergePilgrimageData(animeData.values)
         ?.points
         .orEmpty()
         .mapTo(mutableSetOf(), PilgrimagePoint::id)
-    val storedPointIds = stored.selectedPoints.mapTo(mutableSetOf(), PilgrimagePoint::id)
+    val storedPointIds = stored.selectedPoints.mapNotNullTo(mutableSetOf()) { point ->
+        if ("::" in point.id) point.id else stored.selectedAnimes.singleOrNull()?.let { "${it.subjectId}::${point.id}" }
+    }
     return RestoredSearchSelection(
         animeData = animeData,
         selectedPointIds = storedPointIds.intersect(availablePointIds),

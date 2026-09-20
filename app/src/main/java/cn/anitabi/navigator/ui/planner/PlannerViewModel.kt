@@ -7,6 +7,7 @@ import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TourPlan
@@ -31,6 +32,8 @@ import cn.anitabi.navigator.core.region.JourneyProviderResolutionException
 import cn.anitabi.navigator.core.region.TerritoryRegionDataException
 import cn.anitabi.navigator.data.network.ApiException
 import cn.anitabi.navigator.data.repository.TourRepository
+import cn.anitabi.navigator.data.repository.ConcurrentTourUpdateException
+import cn.anitabi.navigator.data.repository.SavedTour
 import cn.anitabi.navigator.navigation.CurrentLocationProvider
 import cn.anitabi.navigator.navigation.LocationUnavailableException
 import cn.anitabi.navigator.navigation.MissingLocationPermissionException
@@ -38,6 +41,7 @@ import java.time.Clock
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.LocalTime
+import java.time.OffsetDateTime
 import java.time.ZonedDateTime
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.CancellationException
@@ -59,10 +63,12 @@ class PlannerViewModel(
     private var planningJob: Job? = null
     private var planningGeneration = 0L
     private var pendingAmapExternalFallback: AmapExternalFallbackRequest? = null
+    private var restoredTour: SavedTour? = null
 
     fun configure(anime: Anime, points: List<PilgrimagePoint>) {
         require(points.size >= 2)
         cancelPlanning()
+        restoredTour = null
         pendingAmapExternalFallback = null
         val now = ZonedDateTime.now(clock).withSecond(0).withNano(0)
         mutableState.value = PlannerUiState(
@@ -74,6 +80,85 @@ class PlannerViewModel(
             transitTime = now.toLocalTime(),
             transitZoneId = clock.zone.id,
         )
+    }
+
+    fun configureSaved(saved: SavedTour) {
+        cancelPlanning()
+        restoredTour = saved
+        val stored = saved.storedTour
+        val unresolved = stored.toUnresolvedPlan(
+            resolvedExecutionStrategy = saved.plan.executionStrategy,
+            resolvedMapProvider = saved.plan.mapProvider,
+            resolvedRegionDataVersion = saved.plan.regionDataVersion,
+        )
+        val anchor = unresolved.transitAnchorTime?.let {
+            runCatching { OffsetDateTime.parse(it).atZoneSameInstant(clock.zone) }.getOrNull()
+        } ?: ZonedDateTime.now(clock).withSecond(0).withNano(0)
+        val progress = saved.progress ?: stored.toNavigationProgress(saved.plan.executionStrategy)
+        mutableState.value = PlannerUiState(
+            anime = stored.displayAnime,
+            selectedPoints = stored.selectedPoints,
+            mode = stored.mode,
+            objective = stored.objective,
+            endPolicy = stored.endPolicy,
+            startPointId = stored.startPointId,
+            fixedEndPointId = stored.fixedEndPointId,
+            transitTimeMode = unresolved.transitTimeMode,
+            transitDate = anchor.toLocalDate(),
+            transitTime = anchor.toLocalTime(),
+            transitZoneId = clock.zone.id,
+            transitRoutingPreference = stored.transitRoutingPreference,
+            transitTravelModes = stored.transitTravelModes,
+            transitExecutionStrategy = unresolved.executionStrategy,
+            dwellMinutesInput = stored.dwellMinutes.toString(),
+            draftOrder = unresolved.orderedPoints,
+            restoredTourId = stored.id,
+            restoredNavigationState = progress.state,
+        )
+        if (saved.routingError != null) {
+            mutableState.update {
+                it.copy(errorMessage = "当前地区资料无法安全恢复这份行程，请更新应用后重试")
+            }
+            return
+        }
+        if (progress.state !in setOf(NavigationState.PLANNED, NavigationState.COMPLETED, NavigationState.ENDED)) {
+            mutableState.update {
+                it.copy(errorMessage = "行程已有导航进度，请返回行程页继续导航；恢复时会安全刷新剩余路线")
+            }
+            return
+        }
+        mutableState.update { it.copy(isLoading = true) }
+        val generation = ++planningGeneration
+        planningJob = viewModelScope.launch {
+            try {
+                val planForRebuild = if (
+                    unresolved.mode == TravelMode.TRANSIT && unresolved.transitTimeMode == TransitTimeMode.NOW
+                ) {
+                    unresolved.copy(
+                        departureTime = formatTransitDepartureTime(currentTransitPlanningTime(clock).toOffsetDateTime()),
+                    )
+                } else {
+                    unresolved
+                }
+                val refreshed = planner.rebuild(planForRebuild, unresolved.orderedPoints)
+                if (generation != planningGeneration) return@launch
+                val savedCurrent = repository.publishRefreshedRouteIfCurrent(
+                    expected = saved,
+                    refreshedPlan = refreshed,
+                )
+                if (generation != planningGeneration) return@launch
+                if (!savedCurrent) throw ConcurrentTourUpdateException()
+                restoredTour = saved.copy(plan = refreshed, progress = progress, routeNeedsRefresh = false)
+                mutableState.update {
+                    it.copy(plan = refreshed, draftOrder = refreshed.orderedPoints, isLoading = false)
+                }
+            } catch (exception: Exception) {
+                if (generation == planningGeneration) handleFailure(exception)
+                else if (exception is CancellationException) throw exception
+            } finally {
+                if (generation == planningGeneration) planningJob = null
+            }
+        }
     }
 
     fun setMode(mode: TravelMode) {
@@ -236,6 +321,10 @@ class PlannerViewModel(
     fun generate() {
         val current = state.value
         if (current.isLoading) return
+        restoredTour?.let {
+            configureSaved(it)
+            return
+        }
         val anime = current.anime ?: return
         if (current.mode == TravelMode.TRANSIT && current.transitRegionError != null) {
             mutableState.update { it.copy(errorMessage = current.transitRegionError) }
@@ -379,7 +468,7 @@ class PlannerViewModel(
 
     fun moveDraft(fromIndex: Int, toIndex: Int) {
         mutableState.update { current ->
-            if (current.isLoading) return@update current
+            if (current.isLoading || current.restoredTourId != null) return@update current
             val order = current.draftOrder.toMutableList()
             if (!current.canMove(fromIndex, toIndex)) return@update current
             order.add(toIndex, order.removeAt(fromIndex))
@@ -394,7 +483,7 @@ class PlannerViewModel(
 
     fun applyManualOrder() {
         val current = state.value
-        if (current.isLoading) return
+        if (current.isLoading || current.restoredTourId != null) return
         val plan = current.plan ?: return
         pendingAmapExternalFallback = null
         mutableState.update {
@@ -704,6 +793,8 @@ data class PlannerUiState(
     val transitRegionError: String? = null,
     val dwellMinutesInput: String = "15",
     val plan: TourPlan? = null,
+    val restoredTourId: String? = null,
+    val restoredNavigationState: NavigationState? = null,
     val draftOrder: List<PilgrimagePoint> = emptyList(),
     val orderChanged: Boolean = false,
     val isLoading: Boolean = false,

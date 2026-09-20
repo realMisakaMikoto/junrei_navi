@@ -33,7 +33,6 @@ import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
@@ -42,7 +41,6 @@ import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.DirectionsBike
 import androidx.compose.material.icons.automirrored.rounded.DirectionsWalk
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
@@ -68,6 +66,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -135,11 +134,10 @@ import cn.anitabi.navigator.core.model.TransitTravelMode
 import cn.anitabi.navigator.core.model.TravelMode
 import cn.anitabi.navigator.core.model.isExternalMapNavigation
 import cn.anitabi.navigator.core.routing.isAmapExternalFallback
-import cn.anitabi.navigator.ui.theme.Ink
-import cn.anitabi.navigator.ui.theme.MutedInk
 import cn.anitabi.navigator.ui.theme.NumericTextStyle
-import cn.anitabi.navigator.ui.theme.Sand
-import cn.anitabi.navigator.ui.theme.Vermilion
+import cn.anitabi.navigator.ui.theme.MapSurfaceTheme
+import cn.anitabi.navigator.ui.components.JournalTopBar
+import cn.anitabi.navigator.ui.components.JournalSectionHeading
 import kotlin.math.abs
 import java.time.Instant
 import java.time.LocalDate
@@ -247,7 +245,21 @@ fun PlannerRoute(
         }
     }
     val plan = state.plan
-    if (plan == null) {
+    if (plan == null && state.restoredTourId != null) {
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
+            Column(Modifier.fillMaxSize()) {
+                cn.anitabi.navigator.ui.components.JournalTopBar("恢复保存的行程", onBack)
+                Column(Modifier.verticalScroll(rememberScrollState()).padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                    Text(state.anime?.nameCn ?: state.anime?.name.orEmpty(), style = MaterialTheme.typography.titleLarge)
+                    Text("保留原有地点、顺序与规划设置，重新获取路线。")
+                    if (state.isLoading) LinearProgressIndicator(Modifier.fillMaxWidth())
+                    state.errorMessage?.let { Text(it, color = MaterialTheme.colorScheme.error) }
+                    if (!state.isLoading) Button(onClick = viewModel::generate) { Text("重试刷新") }
+                    TextButton(onClick = onBack) { Text("返回行程记录") }
+                }
+            }
+        }
+    } else if (plan == null) {
         PlannerSettingsScreen(
             state = state,
             onBack = onBack,
@@ -276,7 +288,7 @@ fun PlannerRoute(
         RoutePreviewScreen(
             state = state,
             plan = plan,
-            onBack = viewModel::clearPlan,
+            onBack = if (state.restoredTourId != null) onBack else viewModel::clearPlan,
             onMove = viewModel::moveDraft,
             onApplyOrder = viewModel::applyManualOrder,
             onUseAmapExternalFallback = viewModel::useAmapExternalFallback,
@@ -617,7 +629,7 @@ internal fun PlannerSettingsScreen(
                 Text("选择公交时间", style = MaterialTheme.typography.titleLarge)
                 Text(
                     "查询会按每个巡礼点的到达时间和停留时间继续衔接。",
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 TransitSheetChoice(
@@ -680,7 +692,7 @@ internal fun PlannerSettingsScreen(
                     } else {
                         "路线服务会尽量遵循这些偏好，必要时仍可能返回其他交通方式。"
                     },
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 Text(
@@ -709,7 +721,7 @@ internal fun PlannerSettingsScreen(
                 }
                 Text(
                     "至少保留一种交通方式。四项全选等同于不限制。",
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                 )
                 Text(
@@ -740,7 +752,7 @@ internal fun PlannerSettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(top = 6.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 ) {
                     Text("完成")
                 }
@@ -1078,18 +1090,7 @@ private fun SettingsSection(
     content: @Composable androidx.compose.foundation.layout.ColumnScope.() -> Unit,
 ) {
     Column {
-        Text(
-            title,
-            color = MaterialTheme.colorScheme.onBackground,
-            style = MaterialTheme.typography.titleMedium,
-            fontWeight = FontWeight.SemiBold,
-        )
-        Text(
-            subtitle,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodyMedium,
-            modifier = Modifier.padding(top = 2.dp, bottom = 10.dp),
-        )
+        JournalSectionHeading(title, Modifier.padding(bottom = 12.dp), subtitle)
         Surface(
             color = MaterialTheme.colorScheme.surface,
             shape = RoundedCornerShape(16.dp),
@@ -1381,7 +1382,7 @@ private fun TransitSheetChoice(
         colors = CardDefaults.cardColors(
             containerColor = if (selected) MaterialTheme.colorScheme.surfaceVariant else MaterialTheme.colorScheme.surface,
         ),
-        border = BorderStroke(1.dp, if (selected) Vermilion else Sand),
+        border = BorderStroke(1.dp, if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant),
         shape = RoundedCornerShape(10.dp),
     ) {
         Row(
@@ -1391,11 +1392,11 @@ private fun TransitSheetChoice(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             Column(modifier = Modifier.weight(1f)) {
-                Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, color = MutedInk, style = MaterialTheme.typography.bodyMedium)
+                Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
             if (selected) {
-                Icon(Icons.Rounded.Check, contentDescription = "已选择", tint = Vermilion)
+                Icon(Icons.Rounded.Check, contentDescription = "已选择", tint = MaterialTheme.colorScheme.primary)
             }
         }
     }
@@ -1482,6 +1483,7 @@ private fun RoutePreviewScreen(
     onStartNavigation: () -> Unit,
 ) {
     val transitSections = remember(plan.legs) { groupTransitJourneySections(plan.legs) }
+    MapSurfaceTheme {
     Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             PlannerTopBar(title = "路线预览", onBack = onBack)
@@ -1523,7 +1525,7 @@ private fun RoutePreviewScreen(
                             plan = plan,
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(if (availableHeight < 640.dp) 190.dp else 238.dp),
+                                .height((availableHeight * 0.42f).coerceIn(120.dp, 300.dp)),
                         )
                         RoutePreviewDetails(
                             state = state,
@@ -1541,6 +1543,7 @@ private fun RoutePreviewScreen(
                 }
             }
         }
+    }
     }
 }
 
@@ -1722,8 +1725,13 @@ internal fun RoutePreviewDetails(
         }
         PlannerBottomAction(
             onClick = if (state.orderChanged) onApplyOrder else onStartNavigation,
-            enabled = !state.isLoading,
+            enabled = !state.isLoading && state.restoredNavigationState !in setOf(
+                cn.anitabi.navigator.core.model.NavigationState.COMPLETED,
+                cn.anitabi.navigator.core.model.NavigationState.ENDED,
+            ),
             label = when {
+                state.restoredNavigationState == cn.anitabi.navigator.core.model.NavigationState.COMPLETED -> "这次巡礼已完成"
+                state.restoredNavigationState == cn.anitabi.navigator.core.model.NavigationState.ENDED -> "这次巡礼已结束"
                 state.isLoading && amapExternalFallback -> "正在更新分段顺序"
                 state.isLoading -> "正在重新生成路线"
                 state.orderChanged && amapExternalFallback -> "按此顺序更新分段"
@@ -1962,7 +1970,8 @@ private fun UnavailableRouteEndpointDetails(
 
 private fun formatCoordinate(value: Double): String = String.format(Locale.ROOT, "%.6f", value)
 
-private val RouteDetailsLinkBlue = Color(0xFF0B57D0)
+private val RouteDetailsLinkBlue: Color
+    @Composable get() = MaterialTheme.colorScheme.primary
 
 @Composable
 private fun PlannerBottomAction(
@@ -2554,30 +2563,7 @@ private fun LightSummaryValue(
 
 @Composable
 private fun PlannerTopBar(title: String, onBack: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        contentColor = MaterialTheme.colorScheme.onSurface,
-        tonalElevation = 1.dp,
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .heightIn(min = 56.dp)
-                .padding(horizontal = 4.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-            }
-            Text(
-                title,
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.SemiBold,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
-    }
+    JournalTopBar(title = title, onBack = onBack)
 }
 
 @Composable

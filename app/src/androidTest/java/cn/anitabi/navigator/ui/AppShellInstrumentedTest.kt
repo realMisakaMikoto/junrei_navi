@@ -1,0 +1,260 @@
+package cn.anitabi.navigator.ui
+
+import android.content.Context
+import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.toPixelMap
+import androidx.compose.ui.semantics.SemanticsProperties
+import androidx.compose.ui.test.SemanticsMatcher
+import androidx.compose.ui.test.assert
+import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.assertIsSelected
+import androidx.compose.ui.test.assertTextContains
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescription
+import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
+import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
+import androidx.compose.ui.test.onAllNodesWithContentDescription
+import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onFirst
+import androidx.compose.ui.test.onNodeWithContentDescription
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.onRoot
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollToNode
+import androidx.compose.ui.test.performTextReplacement
+import androidx.core.view.WindowCompat
+import androidx.test.core.app.ActivityScenario
+import androidx.test.core.app.ApplicationProvider
+import androidx.test.espresso.Espresso
+import androidx.test.ext.junit.runners.AndroidJUnit4
+import cn.anitabi.navigator.MainActivity
+import cn.anitabi.navigator.SyntheticDiscoveryFixture
+import cn.anitabi.navigator.TestAnitabiApplication
+import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.security.AppAppearance
+import cn.anitabi.navigator.security.AppSettingsStore
+import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
+import org.junit.After
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
+import org.junit.Assert.assertTrue
+import org.junit.Before
+import org.junit.Rule
+import org.junit.Test
+import org.junit.runner.RunWith
+
+/** Real activity/navigation tests with synthetic discovery data and the production list fallback. */
+@RunWith(AndroidJUnit4::class)
+class AppShellInstrumentedTest {
+    @get:Rule
+    val composeRule = createEmptyComposeRule()
+
+    private val application: TestAnitabiApplication
+        get() = ApplicationProvider.getApplicationContext()
+    private val settings get() = application.container.appSettingsStore
+    private var originalOnboarding = false
+    private var originalConsent = false
+    private var originalAppearance = AppAppearance.SYSTEM
+    private var originalCamera: DiscoveryCameraPosition? = null
+
+    @Before
+    fun prepareSyntheticApp() {
+        originalOnboarding = settings.hasCompletedOnboarding()
+        originalConsent = settings.hasCurrentAmapPrivacyConsent()
+        originalAppearance = settings.appearance()
+        originalCamera = application.container.discoveryPreferences.lastCamera()
+        settings.markOnboardingComplete()
+        settings.setAppearance(AppAppearance.LIGHT)
+        settings.setAmapPrivacyConsent(false)
+        // A saved Amap view without consent takes the real list fallback before any map is usable.
+        application.container.discoveryPreferences.saveCamera(
+            DiscoveryCameraPosition(GeoPoint(0.0, 0.0), 5f, 0f, 0f, MapProvider.AMAP),
+        )
+    }
+
+    @After
+    fun restoreSettings() {
+        settings.setAppearance(originalAppearance)
+        settings.setAmapPrivacyConsent(originalConsent)
+        application.getSharedPreferences(AppSettingsStore.PREFERENCES_NAME, Context.MODE_PRIVATE)
+            .edit().putBoolean(AppSettingsStore.PREFERENCE_ONBOARDING_COMPLETE, originalOnboarding).commit()
+        val camera = originalCamera
+        if (camera == null) {
+            application.getSharedPreferences("discovery_view", Context.MODE_PRIVATE).edit().clear().commit()
+        } else application.container.discoveryPreferences.saveCamera(camera)
+    }
+
+    @Test
+    fun completedOnboardingOpensDiscoveryOnEachFreshActivityLaunch() {
+        repeat(2) {
+            ActivityScenario.launch(MainActivity::class.java).use {
+                awaitListHome()
+                destination(MAP).assertIsSelected()
+                composeRule.onNodeWithTag("onboarding-start").assertDoesNotExist()
+                composeRule.onNodeWithTag("discovery-map").assertDoesNotExist()
+                composeRule.onRoot().captureFrontendReview("app-home-list")
+            }
+        }
+        assertTrue(settings.hasCompletedOnboarding())
+    }
+
+    @Test
+    fun destinationsPreserveQueryPointPanelAndSharedSelection() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            awaitListHome()
+            openPoint(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
+            composeRule.onNodeWithTag("discovery-point-select").performClick()
+            composeRule.onNodeWithText(REMOVE_FROM_TRIP).assertIsDisplayed()
+
+            destination(SEARCH).performClick().assertIsSelected()
+            composeRule.onNodeWithTag("search-screen").assertIsDisplayed()
+            composeRule.onNode(hasSetTextAction()).performTextReplacement(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
+            Espresso.closeSoftKeyboard()
+            awaitSelectedSearchPoint()
+            composeRule.onNodeWithText(ONE_SELECTED).assertIsDisplayed()
+
+            destination(TRIPS).performClick().assertIsSelected()
+            composeRule.onNodeWithTag("trips-screen").assertIsDisplayed()
+            composeRule.onNodeWithText("1 \u90e8\u4f5c\u54c1 \u00b7 1 \u4e2a\u5df2\u9009\u5730\u70b9").assertIsDisplayed()
+            composeRule.onRoot().captureFrontendReview("app-trips-selected")
+
+            destination(MAP).performClick().assertIsSelected()
+            assertPanel(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
+            composeRule.onNodeWithText(REMOVE_FROM_TRIP).assertIsDisplayed()
+
+            destination(SEARCH).performClick()
+            composeRule.onNode(hasSetTextAction()).assertTextContains(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
+            awaitSelectedSearchPoint()
+            composeRule.onNodeWithTag("search-content").performScrollToNode(hasContentDescription(REMOVE_FROM_TRIP))
+            composeRule.onNodeWithContentDescription(REMOVE_FROM_TRIP).performClick()
+            composeRule.onNodeWithText(ZERO_SELECTED).assertIsDisplayed()
+
+            destination(MAP).performClick()
+            assertPanel(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
+            composeRule.onNodeWithText(ADD_TO_TRIP).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun systemBackReturnsPointToSubjectThenOverviewWithoutLeavingHome() {
+        ActivityScenario.launch(MainActivity::class.java).use {
+            awaitListHome()
+            composeRule.onNodeWithTag("discovery-panel-list")
+                .performScrollToNode(hasText(SyntheticDiscoveryFixture.SUBJECT_NAME))
+            composeRule.onAllNodes(
+                hasText(SyntheticDiscoveryFixture.SUBJECT_NAME) and hasAnyAncestor(hasTestTag("discovery-panel-list")),
+            ).onFirst().performClick()
+            assertPanel(SyntheticDiscoveryFixture.SUBJECT_NAME)
+            openPoint(SyntheticDiscoveryFixture.SECOND_POINT_NAME)
+            composeRule.onNodeWithTag("discovery-point-select").performClick()
+
+            Espresso.pressBack()
+            assertPanel(SyntheticDiscoveryFixture.SUBJECT_NAME)
+            composeRule.onNodeWithText(ONE_SELECTED).assertIsDisplayed()
+            composeRule.onNodeWithTag("discovery-point-select").assertDoesNotExist()
+
+            Espresso.pressBack()
+            assertPanel("\u5de1\u793c\u5730\u70b9")
+            composeRule.onNodeWithText(ONE_SELECTED).assertIsDisplayed()
+            composeRule.onNodeWithContentDescription("\u8fd4\u56de\u4e0a\u4e00\u5c42").assertDoesNotExist()
+            destination(MAP).assertIsSelected()
+        }
+    }
+
+    @Test
+    fun appearanceChangesImmediatelyAndPersistsAcrossFreshLaunch() {
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            awaitListHome()
+            composeRule.onNodeWithContentDescription(SETTINGS).performClick()
+            composeRule.onNodeWithTag("about-screen").assertIsDisplayed()
+            var activityBeforeChange: MainActivity? = null
+            scenario.onActivity { activityBeforeChange = it }
+
+            chooseAppearance(DARK)
+            assertEquals(AppAppearance.DARK, settings.appearance())
+            assertTrue(backgroundLuminance() < 0.2f)
+            scenario.onActivity { activity ->
+                assertSame(activityBeforeChange, activity)
+                assertFalse(WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars)
+            }
+            composeRule.onNodeWithTag("about-screen").captureFrontendReview("app-settings-dark")
+
+            chooseAppearance(LIGHT)
+            assertEquals(AppAppearance.LIGHT, settings.appearance())
+            assertTrue(backgroundLuminance() > 0.7f)
+            scenario.onActivity { activity ->
+                assertSame(activityBeforeChange, activity)
+                assertTrue(WindowCompat.getInsetsController(activity.window, activity.window.decorView).isAppearanceLightStatusBars)
+            }
+            chooseAppearance(DARK)
+        }
+
+        ActivityScenario.launch(MainActivity::class.java).use {
+            awaitListHome()
+            composeRule.onNodeWithContentDescription(SETTINGS).performClick()
+            composeRule.onNodeWithTag("about-content").performScrollToNode(hasText(DARK))
+            composeRule.onNodeWithText(DARK).assertIsSelected()
+            assertTrue(backgroundLuminance() < 0.2f)
+        }
+    }
+
+    private fun awaitListHome() {
+        composeRule.waitUntil(timeoutMillis = 15_000) {
+            composeRule.onAllNodesWithTag("discovery-panel-list").fetchSemanticsNodes().isNotEmpty()
+        }
+        composeRule.onNodeWithTag("discovery-screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("discovery-map").assertDoesNotExist()
+        composeRule.onAllNodesWithTag("discovery-panel").assertCountEquals(1)
+    }
+
+    private fun openPoint(name: String) {
+        composeRule.onNodeWithTag("discovery-panel-list").performScrollToNode(hasText(name))
+        composeRule.onNodeWithText(name).performClick()
+        assertPanel(name)
+    }
+
+    private fun assertPanel(title: String) {
+        composeRule.onAllNodesWithTag("discovery-panel").assertCountEquals(1)
+        composeRule.onNodeWithTag("discovery-panel").assertIsDisplayed().assert(
+            SemanticsMatcher.expectValue(SemanticsProperties.PaneTitle, title),
+        )
+    }
+
+    private fun awaitSelectedSearchPoint() {
+        composeRule.waitUntil(timeoutMillis = 10_000) {
+            composeRule.onAllNodesWithContentDescription(REMOVE_FROM_TRIP).fetchSemanticsNodes().isNotEmpty()
+        }
+    }
+
+    private fun destination(label: String) = composeRule.onNode(
+        hasText(label) and SemanticsMatcher.keyIsDefined(SemanticsProperties.Selected),
+    )
+
+    private fun chooseAppearance(label: String) {
+        composeRule.onNodeWithTag("about-content").performScrollToNode(hasText(label))
+        composeRule.onNodeWithText(label).performClick().assertIsSelected()
+    }
+
+    private fun backgroundLuminance(): Float =
+        composeRule.onNodeWithTag("about-screen").captureToImage().toPixelMap()[0, 0].luminance()
+
+    private companion object {
+        const val MAP = "\u5730\u56fe"
+        const val SEARCH = "\u641c\u7d22"
+        const val TRIPS = "\u884c\u7a0b"
+        const val SETTINGS = "\u5173\u4e8e\u4e0e\u8bbe\u7f6e"
+        const val LIGHT = "\u6d45\u8272\u624b\u5e33"
+        const val DARK = "\u6df1\u8272\u624b\u5e33"
+        const val ADD_TO_TRIP = "\u52a0\u5165\u884c\u7a0b"
+        const val REMOVE_FROM_TRIP = "\u79fb\u51fa\u884c\u7a0b"
+        const val ONE_SELECTED = "\u5df2\u9009 1 \u4e2a\u5730\u70b9"
+        const val ZERO_SELECTED = "\u5df2\u9009 0 \u4e2a\u5730\u70b9"
+    }
+}

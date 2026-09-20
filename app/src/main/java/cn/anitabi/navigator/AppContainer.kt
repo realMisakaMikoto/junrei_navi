@@ -21,11 +21,22 @@ import cn.anitabi.navigator.telemetry.FirebaseTelemetryRuntime
 import cn.anitabi.navigator.telemetry.TelemetryConsentController
 import cn.anitabi.navigator.navigation.AndroidLocationProvider
 import cn.anitabi.navigator.ui.map.AmapPrivacyGate
+import cn.anitabi.navigator.data.discovery.DiscoveryRepository
+import cn.anitabi.navigator.data.discovery.DiscoveryCache
+import cn.anitabi.navigator.data.discovery.DiscoverySource
+import cn.anitabi.navigator.data.discovery.FileDiscoveryCache
+import cn.anitabi.navigator.data.discovery.HttpDiscoverySource
+import cn.anitabi.navigator.ui.discovery.DiscoveryPreferences
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 
 class AppContainer internal constructor(
     context: Context,
     classifyTerritoryOverride: ((GeoPoint) -> TerritoryRegion?)?,
     regionDataVersionOverride: (() -> String?)?,
+    discoverySourceOverride: DiscoverySource? = null,
+    discoveryCacheOverride: DiscoveryCache? = null,
 ) {
     constructor(context: Context) : this(
         context = context,
@@ -57,6 +68,12 @@ class AppContainer internal constructor(
     )
 
     val bangumiApi = BangumiApi(httpClient, json)
+    val discoveryPreferences = DiscoveryPreferences(appContext)
+    val discoveryRepository = DiscoveryRepository(
+        source = discoverySourceOverride ?: HttpDiscoverySource(createAppUserAgentInterceptor()),
+        cache = discoveryCacheOverride ?: FileDiscoveryCache(appContext.cacheDir),
+        scope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
+    )
     val pilgrimageRepository = PilgrimageRepository(
         api = AnitabiApi(httpClient),
         cacheDao = database.pilgrimageCacheDao(),

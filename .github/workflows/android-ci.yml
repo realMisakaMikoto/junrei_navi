@@ -175,16 +175,18 @@ jobs:
             2>&1 | tee smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_PERMISSION_DIALOG_SHOWN" smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_SERVICE_GUIDE_SHOWN" smoke-output/onboarding-smoke.txt
-          grep -q "ONBOARDING_COMPLETED_TO_SEARCH" smoke-output/onboarding-smoke.txt
-          grep -q "ONBOARDING_RESTARTED_IN_SEARCH" smoke-output/onboarding-smoke.txt
-      - name: Verify map selection and list fallback
+          grep -q "ONBOARDING_COMPLETED_TO_DISCOVERY" smoke-output/onboarding-smoke.txt
+          grep -q "ONBOARDING_RESTARTED_IN_DISCOVERY" smoke-output/onboarding-smoke.txt
+      - name: Verify discovery, shared navigation and existing UI contracts
         run: |
           set -o pipefail
           adb shell am instrument -w \
-            -e class 'cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_mapUnavailableShowsListAsSelected,cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_landscapeHonorsListFallbackEvenWhenProviderIsAvailable,cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_mixedResultsExposeExplicitProviderChoiceAndKeepSelection' \
+            -e captureFrontendReview true \
+            -e class 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest' \
             cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/map-list-fallback.txt
-          grep -q "OK (3 tests)" smoke-output/map-list-fallback.txt
+          grep -Eq '^OK \([1-9][0-9]* tests\)' smoke-output/map-list-fallback.txt
+          adb pull /sdcard/Android/data/cn.anitabi.navigator/files/frontend-review smoke-output/frontend-review
       - name: Reset Android 8 after permission-system smoke
         if: matrix.label == 'android-8-api-26'
         run: |

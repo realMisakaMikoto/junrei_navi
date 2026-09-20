@@ -83,6 +83,7 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("search-screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("search-screen").captureFrontendReview("paper-search")
         composeRule.onNodeWithText("已选作品").assertIsDisplayed()
         composeRule.onNodeWithText("搜索 Bangumi").performClick()
         composeRule.runOnIdle { assertTrue(searched) }
@@ -116,6 +117,7 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("search-selection-footer").assertIsDisplayed()
+        composeRule.onNodeWithTag("search-screen").captureFrontendReview("paper-search-short-height")
         composeRule.onNodeWithTag("search-content").performScrollToNode(hasText("Bangumi #7"))
         composeRule.onNodeWithText("Bangumi #7").assertIsDisplayed()
         composeRule.onNodeWithTag("search-selection-footer").assertIsDisplayed()
@@ -150,6 +152,7 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("point-selection-screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("point-selection-screen").captureFrontendReview("paper-point-selection")
         composeRule.onNodeWithText("名场面一").performClick()
         composeRule.runOnIdle { assertEquals("7::p1", toggledPointId) }
         composeRule.onNodeWithText("规划路线").assertIsEnabled().performClick()
@@ -254,6 +257,7 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("planner-settings-screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("planner-settings-screen").captureFrontendReview("paper-planner")
         composeRule.onNodeWithText("出行方式").assertIsDisplayed()
         val driveCardBounds = composeRule
             .onNodeWithTag("planner-mode-DRIVE")
@@ -366,7 +370,7 @@ class UiRedesignContractTest {
         composeRule.runOnIdle { assertEquals(unavailableSegment, openedSegment) }
         composeRule.onNodeWithTag("planner-google-maps-launch-error")
             .assertIsDisplayed()
-            .assertTextContains("无法打开 Google 地图或网页链接")
+            .assertTextContains("无法打开 Google 地图或网页链接", substring = true)
     }
 
     @Test
@@ -394,6 +398,7 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("route-preview-details").assertIsDisplayed()
+        composeRule.onNodeWithTag("route-preview-details").captureFrontendReview("paper-route-preview")
         composeRule.onNodeWithText("巡礼点顺序").assertIsDisplayed()
         composeRule.onNodeWithText("开始连续导航").performClick()
         composeRule.runOnIdle { assertTrue(started) }
@@ -412,6 +417,8 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("about-screen").assertIsDisplayed()
+        composeRule.onNodeWithTag("about-screen").captureFrontendReview("paper-about")
+        composeRule.onNodeWithTag("about-content").performScrollToNode(hasText("匿名使用分析"))
         composeRule.onNodeWithText("匿名使用分析").performScrollTo().performClick()
         composeRule.runOnIdle {
             assertTrue(store.consent.analyticsEnabled)
@@ -456,6 +463,7 @@ class UiRedesignContractTest {
         }
 
         composeRule.onNodeWithTag("navigation-control-panel").assertIsDisplayed()
+        composeRule.onNodeWithTag("navigation-control-panel").captureFrontendReview("paper-navigation-controls")
         composeRule.onNodeWithText("确认到达").assertIsEnabled().performClick()
         composeRule.onNodeWithText("结束导航").performClick()
         composeRule.runOnIdle {

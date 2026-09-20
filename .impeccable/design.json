@@ -1,0 +1,22 @@
+{
+  "version": 1,
+  "platform": "android",
+  "source": "app/src/main/java/cn/anitabi/navigator/ui/theme/Theme.kt",
+  "direction": "Neutral map and warm paper travel journal, as approved in the user brief",
+  "colors": {
+    "paper": "#F7F6F2", "ink": "#20231F", "primary": "#C93E4F",
+    "paperDark": "#1A1815", "inkDark": "#ECE1D6", "primaryDark": "#FFB4A6",
+    "mapSurface": "#FFFFFF", "mapSurfaceDark": "#202226"
+  },
+  "typography": {
+    "family": "system sans-serif",
+    "body": { "size": "16sp", "lineHeight": "24sp" },
+    "supporting": { "size": "14sp", "lineHeight": "20sp" },
+    "title": { "size": "20sp", "lineHeight": "26sp", "weight": 600 }
+  },
+  "radii": { "small": "8dp", "action": "12dp", "group": "16dp", "panel": "24dp" },
+  "interaction": { "minimumTouchTarget": "48dp", "dynamicWallpaperColor": false, "systemBack": true },
+  "appearance": { "default": "SYSTEM", "choices": ["SYSTEM", "LIGHT", "DARK"] },
+  "motion": { "implementation": "Compose standard components", "respectsSystemAnimationScale": true },
+  "depth": { "paper": "thin separators", "map": "opaque Material tonal surfaces" }
+}
