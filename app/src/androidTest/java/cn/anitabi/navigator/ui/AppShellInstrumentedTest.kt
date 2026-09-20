@@ -1,6 +1,8 @@
 package cn.anitabi.navigator.ui
 
 import android.content.Context
+import android.content.pm.ActivityInfo
+import android.content.res.Configuration
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toPixelMap
 import androidx.compose.ui.semantics.SemanticsProperties
@@ -28,6 +30,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollToNode
 import androidx.compose.ui.test.performTextReplacement
 import androidx.core.view.WindowCompat
+import androidx.lifecycle.ViewModelProvider
 import androidx.test.core.app.ActivityScenario
 import androidx.test.core.app.ApplicationProvider
 import androidx.test.espresso.Espresso
@@ -55,6 +58,7 @@ import cn.anitabi.navigator.navigation.NavigationRuntimeState
 import cn.anitabi.navigator.security.AppAppearance
 import cn.anitabi.navigator.security.AppSettingsStore
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
+import cn.anitabi.navigator.ui.search.SearchViewModel
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -164,6 +168,69 @@ class AppShellInstrumentedTest {
             destination(MAP).performClick()
             assertPanel(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
             composeRule.onNodeWithText(ADD_TO_TRIP).assertIsDisplayed()
+        }
+    }
+
+    @Test
+    fun selectedSourceCoordinatesSurviveRotationAndLateSameIdDiscoveryUpdate() {
+        assertFalse(AndroidLocationProvider.hasLocationPermission(application))
+        val fixture = SyntheticDiscoveryFixture.snapshot()
+        val source = fixture.points.single { it.displayName == SyntheticDiscoveryFixture.FIRST_POINT_NAME }
+        val changedCoordinate = fixture.points.single { it.displayName == SyntheticDiscoveryFixture.SECOND_POINT_NAME }.coordinate
+        assertTrue("The authored update must challenge coordinate retention", source.coordinate != changedCoordinate)
+        val expectedIds = setOf(source.id)
+        val expectedCoordinates = mapOf(source.id to source.coordinate)
+        ActivityScenario.launch(MainActivity::class.java).use { scenario ->
+            var originalOrientation = ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
+            scenario.onActivity { originalOrientation = it.requestedOrientation }
+            fun rotate(requested: Int, configuration: Int) {
+                scenario.onActivity { it.requestedOrientation = requested }
+                composeRule.waitUntil(timeoutMillis = 15_000) {
+                    var ready = false
+                    scenario.onActivity { activity ->
+                        val decor = activity.window.decorView
+                        ready = activity.resources.configuration.orientation == configuration &&
+                            if (configuration == Configuration.ORIENTATION_LANDSCAPE) decor.width > decor.height
+                            else decor.height > decor.width
+                    }
+                    ready
+                }
+                awaitListHome()
+            }
+            try {
+                rotate(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, Configuration.ORIENTATION_PORTRAIT)
+                openPoint(SyntheticDiscoveryFixture.FIRST_POINT_NAME)
+                composeRule.onNodeWithTag("discovery-point-select").performClick()
+                composeRule.onNodeWithText(REMOVE_FROM_TRIP).assertIsDisplayed()
+                var selectedOwner: SearchViewModel? = null
+                scenario.onActivity { selectedOwner = ViewModelProvider(it)[SearchViewModel::class.java] }
+                fun assertSelectedSnapshot() {
+                    scenario.onActivity { activity ->
+                        val viewModel = ViewModelProvider(activity)[SearchViewModel::class.java]
+                        assertSame("The real activity-scoped selection owner must survive rotation", selectedOwner, viewModel)
+                        val state = viewModel.state.value
+                        assertEquals(expectedIds, state.selectedPointIds)
+                        val coordinates = state.combinedPilgrimageData?.points.orEmpty()
+                            .filter { it.id in state.selectedPointIds }.associate { it.id to it.coordinate }
+                        assertTrue("Selected source coordinates must remain exactly unchanged", coordinates == expectedCoordinates)
+                    }
+                    composeRule.onNodeWithText(REMOVE_FROM_TRIP).assertIsDisplayed()
+                }
+                assertSelectedSnapshot()
+                rotate(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE, Configuration.ORIENTATION_LANDSCAPE)
+                assertSelectedSnapshot()
+                scenario.onActivity { activity ->
+                    ViewModelProvider(activity)[SearchViewModel::class.java].selectDiscoveryPoints(
+                        fixture.subjects.single().anime,
+                        listOf(source.toPilgrimagePoint().copy(id = source.rawId, coordinate = changedCoordinate)),
+                    )
+                }
+                assertSelectedSnapshot()
+                rotate(ActivityInfo.SCREEN_ORIENTATION_PORTRAIT, Configuration.ORIENTATION_PORTRAIT)
+                assertSelectedSnapshot()
+            } finally {
+                scenario.onActivity { it.requestedOrientation = originalOrientation }
+            }
         }
     }
 

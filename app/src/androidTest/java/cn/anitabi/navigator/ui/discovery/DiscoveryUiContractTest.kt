@@ -141,6 +141,86 @@ class DiscoveryUiContractTest {
     }
 
     @Test
+    fun viewportCountsChangeWhileSelectedFilterStaysPinnedAndTripSelectionSurvives() {
+        val selected = setOf("101::point-0", "102::point-0")
+        val harness = Harness(initial = fixture().copy(
+            visibleIds = setOf("101::point-0", "101::point-1", "102::point-0"),
+        ), selected = selected)
+        show(harness)
+        composeRule.onNodeWithTag("subject-filter-101").assert(hasText(" \u00b7 2")).performClick().assertIsSelected()
+        composeRule.onNodeWithTag("subject-filter-102").assert(hasText(" \u00b7 1"))
+
+        composeRule.runOnIdle { harness.state = harness.state.copy(visibleIds = setOf("101::point-2")) }
+        composeRule.onNodeWithTag("subject-filter-101").assert(hasText(" \u00b7 1")).assertIsSelected()
+        composeRule.onNodeWithTag("subject-filter-102").assertDoesNotExist()
+        composeRule.runOnIdle {
+            harness.state = harness.state.copy(visibleIds = setOf("102::point-4", "102::point-5", "102::point-6"))
+        }
+        val pinned = composeRule.onNodeWithTag("subject-filter-101")
+            .assertIsDisplayed().assertIsSelected().assert(hasText(" \u00b7 0")).fetchSemanticsNode().boundsInRoot
+        val entering = composeRule.onNodeWithTag("subject-filter-102")
+            .assert(hasText(" \u00b7 3")).fetchSemanticsNode().boundsInRoot
+        assertTrue("The selected out-of-viewport subject must stay before entering subjects", pinned.left < entering.left)
+        composeRule.onNodeWithText("\u5df2\u9009 2 \u4e2a\u5730\u70b9").assertIsDisplayed()
+        composeRule.runOnIdle {
+            assertEquals(setOf(101L), harness.state.filters)
+            assertEquals(selected, harness.selectedIds)
+        }
+
+        composeRule.onNodeWithTag("subject-filter-101").performClick()
+        composeRule.onNodeWithTag("subject-filter-101").assertDoesNotExist()
+        composeRule.onNodeWithTag("subject-filter-102").assertIsDisplayed().assert(hasText(" \u00b7 3"))
+        composeRule.runOnIdle { assertTrue(harness.state.filters.isEmpty()); assertEquals(selected, harness.selectedIds) }
+    }
+
+    @Test
+    fun nearbyRequiresLocationAndOrdersAllAvailablePointsByExplicitStraightLineDistance() {
+        val base = fixture()
+        val points = listOf(
+            base.pointsById.getValue("101::point-2").copy(name = "Far fixture", coordinate = GeoPoint(0.0, .02)),
+            base.pointsById.getValue("101::point-0").copy(name = "Near fixture", coordinate = GeoPoint(0.0, .001)),
+            base.pointsById.getValue("101::point-1").copy(name = "Middle fixture", coordinate = GeoPoint(0.0, .01)),
+        )
+        val snapshot = requireNotNull(base.data.snapshot).let { original -> original.copy(
+            subjects = listOf(original.subjects.first().copy(pointIds = points.map { it.id })), points = points,
+        ) }
+        val selected = setOf(points.first().id)
+        val harness = Harness(initial = base.copy(
+            data = base.data.copy(snapshot = snapshot), pointsById = points.associateBy { it.id },
+            visibleIds = setOf(points.first().id), providerChoices = setOf(MapProvider.GOOGLE),
+            panel = base.panel.remember(PanelPresentation(PanelDetent.EXPANDED)),
+        ), selected = selected)
+        show(harness, height = 840.dp)
+        composeRule.onNodeWithText("\u9644\u8fd1").assertDoesNotExist()
+        composeRule.onNodeWithText("Far fixture").assertIsDisplayed()
+        composeRule.onNodeWithText("Near fixture").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("\u5b9a\u4f4d").performClick()
+        composeRule.onNodeWithText("\u9644\u8fd1").assertDoesNotExist()
+        composeRule.runOnIdle {
+            assertEquals(1, harness.locateRequests)
+            assertEquals(null, harness.state.location)
+            harness.state = harness.state.copy(location = GeoPoint(0.0, 0.0))
+        }
+        composeRule.onNodeWithText("\u9644\u8fd1").assertIsDisplayed().performClick().assertIsSelected()
+        composeRule.onNodeWithText("\u9644\u8fd1\u5730\u70b9").assertIsDisplayed()
+        val near = composeRule.onNode(hasText("Near fixture") and hasText("\u76f4\u7ebf 111 \u7c73"))
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val middle = composeRule.onNode(hasText("Middle fixture") and hasText("\u76f4\u7ebf 1.1 \u5343\u7c73"))
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        val far = composeRule.onNode(hasText("Far fixture") and hasText("\u76f4\u7ebf 2.2 \u5343\u7c73"))
+            .assertIsDisplayed().fetchSemanticsNode().boundsInRoot
+        assertTrue("Nearby rows must follow distance rather than fixture insertion order", near.top < middle.top && middle.top < far.top)
+        composeRule.runOnIdle { assertTrue(harness.state.nearby); assertEquals(selected, harness.selectedIds) }
+        capture("discovery-nearby-straight-line")
+
+        composeRule.onNodeWithText("\u89c6\u91ce\u5185\u5730\u70b9").performClick().assertIsSelected()
+        composeRule.onNodeWithText("Far fixture").assertIsDisplayed()
+        composeRule.onNodeWithText("Near fixture").assertDoesNotExist()
+        composeRule.onNodeWithText("Middle fixture").assertDoesNotExist()
+        composeRule.runOnIdle { assertFalse(harness.state.nearby); assertEquals(selected, harness.selectedIds) }
+    }
+
+    @Test
     fun listModeNeverCreatesMapAndSwitchingModesDisposesTheMapSlot() {
         val harness = Harness(initial = fixture().copy(listMode = true), selected = setOf("101::point-0", "102::point-0"))
         show(harness)

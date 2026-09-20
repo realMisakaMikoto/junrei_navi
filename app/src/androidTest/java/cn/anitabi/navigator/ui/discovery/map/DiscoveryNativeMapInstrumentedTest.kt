@@ -108,6 +108,141 @@ class DiscoveryNativeMapInstrumentedTest {
     fun googleProjectionAndBitmapAnchorSurvivePresentationChanges() = verifyProvider(MapProvider.GOOGLE)
 
     @Test
+    fun googleNativeClusterTapZoomsThenReturnsAllOverlapMembersAtSdkMaximum() {
+        val harness = Harness(MapProvider.GOOGLE)
+        val source = harness.points.first()
+        val overlaps = mutableListOf<List<String>>()
+        harness.points = listOf(source, source.copy(id = "synthetic::overlap-second"), source.copy(id = "synthetic::overlap-third"))
+        harness.imagesEnabled = false
+        harness.cameraCommand = DiscoveryCameraCommand.Restore(1L, DiscoveryCameraPosition(source.coordinate, 12f))
+        harness.overlapClick = { overlaps += it.toList() }
+        val expected = harness.points.mapTo(hashSetOf()) { it.id }
+        show(harness)
+        composeRule.waitUntil(30_000) {
+            check(!harness.unavailable) { "Native map unavailable for cluster interaction" }
+            harness.applied == listOf(1L) && harness.visible == expected
+        }
+        val view = nativeView(harness)
+        val project = projection(harness, view)
+        val sdk = requireNotNull(harness.googleMap)
+        val density = view.resources.displayMetrics.density
+        val anchor = composeRule.runOnIdle { project() }
+        awaitColor(harness, view, ScreenPoint(anchor.x, anchor.y + 13f * density), Color.rgb(36, 36, 38), "cluster-before-tap")
+        val zoomBeforeTap = composeRule.runOnIdle {
+            assertTrue("The cluster fixture must start below the SDK maximum", sdk.cameraPosition.zoom < sdk.maxZoomLevel - .1f)
+            sdk.cameraPosition.zoom
+        }
+        val idleBeforeTap = harness.cameraIdleCount
+        composeRule.onNodeWithTag(MAP_TAG).performTouchInput { click(Offset(anchor.x, anchor.y)) }
+        composeRule.waitUntil(15_000) {
+            check(!harness.unavailable) { "Native cluster zoom failed" }
+            harness.cameraIdleCount > idleBeforeTap && harness.visibleIdleCount == harness.cameraIdleCount &&
+                harness.visible == expected && composeRule.runOnIdle { sdk.cameraPosition.zoom > zoomBeforeTap }
+        }
+        composeRule.runOnIdle {
+            assertTrue("A lower-zoom cluster tap must zoom before opening overlap members", overlaps.isEmpty())
+            assertTrue("A cluster must not masquerade as a single point click", harness.clicks.isEmpty())
+            harness.cameraCommand = DiscoveryCameraCommand.Restore(2L, DiscoveryCameraPosition(source.coordinate, sdk.maxZoomLevel))
+            harness.presentationRevision++
+        }
+        composeRule.waitUntil(15_000) {
+            check(!harness.unavailable) { "Native maximum-zoom fixture unavailable" }
+            harness.applied == listOf(1L, 2L) && harness.visible == expected &&
+                harness.visibleRevision == harness.presentationRevision && harness.visibleIdleCount == harness.cameraIdleCount &&
+                composeRule.runOnIdle { sdk.cameraPosition.zoom >= sdk.maxZoomLevel - .1f }
+        }
+        val maxAnchor = composeRule.runOnIdle { project() }
+        val maxCamera = composeRule.runOnIdle { sdk.cameraPosition }
+        awaitColor(harness, view, ScreenPoint(maxAnchor.x, maxAnchor.y + 13f * density), Color.rgb(36, 36, 38), "cluster-at-maximum")
+        composeRule.onNodeWithTag(MAP_TAG).performTouchInput { click(Offset(maxAnchor.x, maxAnchor.y)) }
+        composeRule.waitUntil(5_000) { composeRule.runOnIdle { overlaps.isNotEmpty() } }
+        composeRule.runOnIdle {
+            assertEquals("One native tap must deliver every overlap member exactly once", listOf(expected.sorted()), overlaps)
+            assertGoogleCameraRetained(sdk, maxCamera)
+            assertEquals(expected, harness.visible)
+            assertTrue("Cluster interaction must retain source coordinates", harness.points.all { it.coordinate == source.coordinate })
+            assertSame(view, nativeViews(harness.root).single())
+        }
+    }
+
+    @Test
+    fun googleMinimalFocusKeepsVisibleTapStillAndOnlyUncoversHiddenPoint() {
+        val harness = Harness(MapProvider.GOOGLE)
+        harness.imagesEnabled = false
+        val sourceBits = harness.points.map { it.coordinate.latitude.toRawBits() to it.coordinate.longitude.toRawBits() }
+        show(harness)
+        awaitPoint(harness)
+        val view = nativeView(harness)
+        val project = projection(harness, view)
+        val sdk = requireNotNull(harness.googleMap)
+        val density = view.resources.displayMetrics.density
+        val idleBeforeOffset = harness.cameraIdleCount
+        composeRule.runOnIdle { sdk.moveCamera(CameraUpdateFactory.scrollBy(-40f * density, 0f)) }
+        composeRule.waitUntil(15_000) {
+            harness.cameraIdleCount > idleBeforeOffset && harness.visibleIdleCount == harness.cameraIdleCount &&
+                harness.visible == setOf(POINT_ID)
+        }
+        val visibleAnchor = composeRule.runOnIdle { project() }
+        val visibleCamera = composeRule.runOnIdle { sdk.cameraPosition }
+        composeRule.runOnIdle {
+            val content = harness.padding.content(view.width, view.height)
+            assertTrue("The off-centre fixture must already be inside the safe visible area", content.inset(28f * density).contains(visibleAnchor))
+            assertFalse("An already-centred fixture would not detect an unnecessary refocus", near(content.center, visibleAnchor))
+            harness.pointClick = { id ->
+                harness.cameraCommand = DiscoveryCameraCommand.Focus(2L, id, minimallyPan = true)
+                harness.presentationRevision++
+            }
+        }
+        awaitColor(harness, view, visibleAnchor, POINT_COLOR, "minimal-visible-before-tap")
+        clickAnchor(harness, visibleAnchor)
+        awaitPresentation(harness)
+        composeRule.runOnIdle {
+            assertEquals(listOf(1L, 2L), harness.applied)
+            assertGoogleCameraRetained(sdk, visibleCamera)
+            assertTrue("Tapping an unobscured point must not recenter it", near(visibleAnchor, project()))
+            harness.pointClick = null
+            harness.padding = PADDING.copy(bottom = (view.height * .4f).roundToInt())
+            harness.presentationRevision++
+        }
+        composeRule.waitUntil(10_000) { harness.visibleRevision == harness.presentationRevision }
+        val idleBeforeCover = harness.cameraIdleCount
+        composeRule.runOnIdle {
+            val content = harness.padding.content(view.width, view.height)
+            val coveredY = content.bottom + 20f * density
+            sdk.moveCamera(CameraUpdateFactory.scrollBy(0f, project().y - coveredY))
+        }
+        composeRule.waitUntil(15_000) {
+            check(!harness.unavailable) { "Native covered-point fixture unavailable" }
+            harness.cameraIdleCount > idleBeforeCover && harness.visibleIdleCount == harness.cameraIdleCount && harness.visible.isEmpty()
+        }
+        val coveredAnchor = composeRule.runOnIdle { project() }
+        val coveredZoom = composeRule.runOnIdle { sdk.cameraPosition.zoom }
+        val expectedAnchor = composeRule.runOnIdle {
+            val content = harness.padding.content(view.width, view.height)
+            assertFalse("The fixture point must actually be covered by measured padding", content.contains(coveredAnchor))
+            val pan = focusPan(coveredAnchor, content.inset(28f * density), minimallyPan = true)
+            assertTrue("Only the covered vertical axis should need movement", abs(pan.x) <= 3f && pan.y > 0f)
+            harness.cameraCommand = DiscoveryCameraCommand.Focus(3L, POINT_ID, minimallyPan = true)
+            harness.presentationRevision++
+            ScreenPoint(coveredAnchor.x - pan.x, coveredAnchor.y - pan.y)
+        }
+        awaitPresentation(harness)
+        val uncoveredAnchor = composeRule.runOnIdle {
+            val actual = project()
+            assertEquals(listOf(1L, 2L, 3L), harness.applied)
+            assertTrue("Native minimum pan must match the safe-edge pixel reference", near(expectedAnchor, actual))
+            assertFalse("Uncovering a point must not reframe it at the content centre", near(actual, harness.padding.content(view.width, view.height).center))
+            assertEquals("Minimum pan must retain zoom", coveredZoom, sdk.cameraPosition.zoom, .001f)
+            assertTrue("Minimum pan must preserve every source Double bit",
+                sourceBits == harness.points.map { it.coordinate.latitude.toRawBits() to it.coordinate.longitude.toRawBits() })
+            assertSame(view, nativeViews(harness.root).single())
+            actual
+        }
+        awaitColor(harness, view, uncoveredAnchor, POINT_COLOR, "minimal-uncovered-dot")
+        clickAnchor(harness, uncoveredAnchor)
+    }
+
+    @Test
     fun googleFitAllIncludesDateLineMembersAndDistantOutlierInsidePadding() {
         // Authored geometry only: three neighbours straddle the date line and one point is far away.
         val points = listOf(
@@ -448,8 +583,8 @@ class DiscoveryNativeMapInstrumentedTest {
                         harness.visible = it; harness.visibleRevision = presentationRevision
                         harness.visibleIdleCount = harness.cameraIdleCount
                     },
-                    onPointClick = { harness.clicks += it },
-                    onOverlapClick = { error("Unexpected synthetic overlap") }, onCameraChanged = { harness.cameraIdleCount++ },
+                    onPointClick = { harness.clicks += it; harness.pointClick?.invoke(it) },
+                    onOverlapClick = { harness.overlapClick(it) }, onCameraChanged = { harness.cameraIdleCount++ },
                     onManualMove = { harness.idleAtLastManualMove = harness.cameraIdleCount; harness.manualMoves++ },
                     onUnavailable = { harness.unavailable = true },
                     onCameraCommandApplied = { sequence, _ -> harness.applied += sequence },
@@ -626,6 +761,8 @@ class DiscoveryNativeMapInstrumentedTest {
         var cameraCommand by mutableStateOf<DiscoveryCameraCommand>(DiscoveryCameraCommand.Focus(1L, POINT_ID))
         var presentationRevision by mutableStateOf(0)
         var googleMap: GoogleMap? = null
+        var pointClick: ((String) -> Unit)? = null
+        var overlapClick: (List<String>) -> Unit = { error("Unexpected synthetic overlap") }
         @Volatile var visible = emptySet<String>()
         @Volatile var clicks = emptyList<String>()
         @Volatile var applied = emptyList<Long>()

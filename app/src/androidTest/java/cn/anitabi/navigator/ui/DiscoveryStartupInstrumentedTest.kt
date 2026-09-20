@@ -142,6 +142,55 @@ class DiscoveryStartupInstrumentedTest {
         assertFalse(state.locating)
     }
 
+    @Test
+    fun returningMapRestoresViewportButNewFocusRejectsDetachAndStaleAcknowledgement() {
+        preferences.saveCamera(savedCamera().copy(provider = MapProvider.GOOGLE))
+        val location = DeferredLocation()
+        val model = model(location)
+        val ready = runBlocking {
+            withTimeout(5_000) { model.state.first { points.first().id in it.pointsById } }
+        }
+        val target = ready.pointsById.getValue(points.first().id)
+        val moved = savedCamera().copy(
+            center = points.last().coordinate, zoom = 14f, bearing = 73f, tilt = 19f,
+            provider = MapProvider.GOOGLE,
+        )
+        onMain {
+            model.cameraChanged(moved)
+            model.manualMove()
+            model.mapDetached()
+        }
+        val restore = model.state.value.cameraCommand as DiscoveryCameraCommand.Restore
+        assertEquals(moved, restore.camera)
+        assertEquals(moved.provider, model.state.value.provider)
+        assertEquals(moved, preferences.lastCamera())
+
+        onMain { model.updateQuery(target.displayName) }
+        runBlocking {
+            withTimeout(5_000) { model.searchResults.first { results -> results.points.any { it.id == target.id } } }
+        }
+        assertEquals(restore, model.state.value.cameraCommand)
+
+        onMain { model.openPoint(target.id) }
+        val focus = model.state.value.cameraCommand as DiscoveryCameraCommand.Focus
+        assertEquals(target.id, focus.pointId)
+        assertFalse(focus.minimallyPan)
+        assertTrue(focus.sequence > restore.sequence)
+        onMain {
+            model.mapDetached()
+            // Same provider, older sequence: rejection must not rely on provider mismatch alone.
+            model.cameraCommandApplied(restore.sequence, moved.copy(zoom = 3f))
+        }
+        assertEquals(focus, model.state.value.cameraCommand)
+        assertEquals(moved, preferences.lastCamera())
+
+        val focused = moved.copy(center = target.coordinate, zoom = 16f)
+        onMain { model.cameraCommandApplied(focus.sequence, focused) }
+        assertNull(model.state.value.cameraCommand)
+        assertEquals(focused, preferences.lastCamera())
+        assertEquals(0, location.calls.get())
+    }
+
     private fun model(location: CurrentLocationProvider): DiscoveryViewModel {
         lateinit var model: DiscoveryViewModel
         onMain {
