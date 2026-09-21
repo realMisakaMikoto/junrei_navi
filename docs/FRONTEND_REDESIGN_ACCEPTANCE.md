@@ -4,7 +4,9 @@
 
 The approved September 15, 2026 brief replaces the entry experience with a complete discovery map, a single content panel, shared local search and itinerary selection, and a Material 3 redesign of every existing page. Implementation is authorized; device installation and deployment are separate. The baseline is `main@2b6d971`; development branch is `codex/frontend-discovery-redesign`.
 
-A checked item is verified at its named scope in the matrix, not a blanket native-provider pass; an unchecked group may contain established partial evidence. Exact `cb89265` CI **`35556295376`** and signed **`35557984317`** succeed, with independent 53-case UI evidence and three verified APKs. Current signed API 26 x86 safe fallback and API 37 Google/bitmap/performance/night checks pass. API 37 AMap's first suite had one initial click-callback timeout, then unchanged-byte focused and complete three-case reruns passed. No concrete defect/root cause was established; retain the transient limitation rather than inventing a new gate or claiming a source fix. Frames 07/08 of the additional visual fixture support native marker presentation, not fresh geographic-tile authentication; 04/06 are only loading. API 26 native coverage still awaits the user's environment/substitute decision, so overall acceptance remains incomplete. Main/protection/production/personal-device boundaries are unchanged.
+A checked item is verified at the matrix's stated scope or closed through an explicitly approved substitution; it is not a blanket native-provider pass. On **2026-09-21**, the user's reply **"1"** accepted **API 37 native AMap + API 26 UI/Google/safe-fallback coverage**. **API 26 native AMap remains untested.** The approved coordinate replacement is separately recorded; original live old/new same-ID equality remains unproven.
+
+Application source `cb89265` passed CI **`35556295376`** and signed **`35557984317`**, with independent 53-case UI evidence and three verified APKs. API 26 x86 safe fallback and API 37 Google/bitmap/performance/night checks pass. AMap's first suite had one initial click-callback timeout; the unchanged APK then passed the focused case, full three-case suite and visual fixture. Its cause remains unproven. Reviewed frames 07/08 show native marker presentation; 04/06 are only loading, and synthetic-grid captures do not establish fresh geographic-tile authentication. The final audit found no unmet requirement within the approved scope. Required checks for the closing documentation commit remain part of delivery; main/protection/production/personal-device boundaries are unchanged.
 
 ## Required deliverables
 
@@ -15,27 +17,27 @@ A checked item is verified at its named scope in the matrix, not a blanket nativ
 - [x] Map/search/trips navigation, toolbar settings, active-navigation cold restore and home return without stopping navigation (recorded app-shell/state/service scope).
 - [x] Single discovery/subject/point panel, measured compact/half/expanded heights, per-content scroll and detent restoration, tablet side panel and system back (component/state scope).
 - [x] Viewport subject chips with covers/counts and pinned filters, location/reset/display controls, viewport and nearby discovery with honest straight-line distances (component/injected-location scope).
-- [ ] Complete marker membership, clusters, zoom-dependent labels and pictures, selected outline, picture-off/error fallback and maximum-zoom overlap list.
-- [ ] Versioned spatial index; 300 ms idle computation; stale result suppression; main-thread incremental SDK markers; no viewport network fetch.
+- [x] Complete marker membership, clusters, zoom-dependent labels and pictures, selected outline, picture-off/error fallback and maximum-zoom overlap list (matrix's shared/native scopes and approved API 26 substitution).
+- [x] Versioned spatial index; 300 ms idle computation; stale result suppression; main-thread incremental SDK markers; no viewport network fetch.
 - [x] Shared 250 ms local subject/point/city search, honest partial scope, explicit Bangumi action, metadata-backed subject grouping and full point/source/image details (index/component/state tests).
 - [x] Selection independent of map filters; viewport select-all, clear, list fallback, provider switching, planning and multi-subject compatibility (selection/UI contracts; native switching remains below).
 - [x] Trips grouped into ongoing, draft selection and saved; restore preserves existing settings/order/progress (repository/UI scope).
-- [ ] Planner, route preview, road navigation, app transit, external handoff, future-stop editor, floating controls, notifications, onboarding and settings updated with all actions retained.
-- [ ] Neutral map/warm paper themes, system/light/dark preference, image marker preference, no wallpaper palette, type scale, 48 dp controls, accessibility and reduced motion.
-- [ ] Intent-aware camera with measured padding, location/last-view/first overview order, minimal pan on marker tap, gestures stop framing, fit all includes outliers.
-- [ ] Canonical WGS84 and Double precision; Google unchanged, AMap one official conversion, GCJ-02 route no extra conversion, provider-space projection and correct anchors.
-- [ ] Region fail-closed, privacy before AMap SDK, one active MapView, no discovery camera takeover during navigation, user/route data boundaries preserved.
+- [x] Planner, route preview, road navigation, app transit, external handoff, future-stop editor, floating controls, notifications, onboarding and settings updated with all actions retained (recorded component/state/service/native scopes).
+- [x] Neutral map/warm paper themes, system/light/dark preference, image marker preference, no wallpaper palette, type scale, 48 dp controls, accessibility and reduced motion.
+- [x] Intent-aware camera with measured padding, location/last-view/first overview order, minimal pan on marker tap, gestures stop framing, fit all includes outliers.
+- [x] Canonical WGS84 and Double precision; Google unchanged, AMap one official conversion, GCJ-02 route no extra conversion, provider-space projection and correct anchors (approved replacement coordinate basis).
+- [x] Region fail-closed, privacy before AMap SDK, one active MapView, no discovery camera takeover during navigation, user/route data boundaries preserved.
 
 ## Verification matrix
 
 - [x] JVM suite and meaningful parsing/cache/selection/panel/search/spatial/camera tests: repaired local source has 417 passing cases.
 - [x] Synthetic 1k/10k/100k membership/timing/incremental/memory evidence at the matrix's recorded JVM/Google scopes; no AMap performance or continuous-FPS claim.
 - [x] Existing Compose semantics plus new panel history, filtering, navigation, local search, image fallback and gesture regression coverage (recorded component/state/Google scopes; current-head emulator CI and affected native runtime remain below).
-- [ ] Dedicated API 26 and API 37 emulator execution.
+- [x] Dedicated API 26 and API 37 execution under the user's explicit coverage substitution; API 26 native AMap is untested.
 - [x] Representative portrait/short-landscape/tablet/theme/font evidence and actual TalkBack app-shell/list focus/actions. SDK marker-title metadata is not TalkBack marker traversal.
 - [x] Recorded native/UI screenshots and current API 37 AMap marker frames reviewed at the matrix's stated scopes; no remaining material visual finding. API 26 native-provider coverage remains separate.
 - [x] Repaired local Debug/Release Lint, R8, Google/AMap/APK audits and the exact SIGNED-cb artifact's independent hash/fixed-signer checks pass.
-- [ ] Final requirement-by-requirement audit, main-site exception documentation, updated project summary and honest remaining limitations.
+- [x] Final requirement-by-requirement audit, main-site exception documentation, updated project summary and disclosed limitations; final PR checks are retained.
 
 ## Documentation consulted
 

@@ -8,6 +8,10 @@ The `v0.2.5-release` environment allows protected branches only. The internal wo
 
 ## Approved activation and execution
 
+### Final coverage approval on 2026-09-21
+
+After reviewing the completed signed results and the API 26 ARM environment failures, the user explicitly selected option **"1"**: **API 37 native AMap + API 26 UI/Google/safe-fallback coverage**. This closes the coverage decision through an approved substitution. **API 26 native AMap remains untested**; safe fallback is not native rendering. The initial AMap tap transient, original unavailable old/new coordinate comparison and other evidence limits remain recorded. Final documentation retains the repository's required PR checks; this approval does not publish, deploy, merge main or install on a personal device.
+
 ### Current candidate at `cb89265`
 
 CI **`35556295376`** passed all four checks for `cb892650ad34512749760139ab8791df349ee541`; independent artifacts `10620898633` / `10621063446` confirm **53 cases per API**. Fresh controls/environment checks preceded protected candidate fast-forward/readback; main remained `2b6d971`. Signed **`35557984317` succeeded**, cleanup succeeded and both SSH jobs skipped. Independent `build/frontend-signed-35557984317/verified-artifacts.json` confirms fixed signer/v2 and these hashes:
@@ -24,7 +28,7 @@ The signed API 26 x86 unsupported-ABI case passed with matched installed hashes 
 
 The same-byte visual fixture passed (`signed-35557984317-api37-amap-visual/visual-evidence.json`). Reviewed frames 07/08 show light-dot/dark-image native markers without material presentation issues; early 04/06 loading frames are not acceptance evidence. These synthetic-grid frames do not newly prove authenticated geographic tiles; the older `3f14597` tile observation remains separate.
 
-Current signed API 37 Google artwork **2**, native **7** and performance **2** cases all pass in `signed-35557984317-api37-google/marker-font-evidence.json`. Consent setup + night **2** also pass in `signed-35557984317-api37-night`: actual Navigator/navigation UI/same View, events `[true,false]`, no initial registration event, no routes/guidance and restored fine/coarse permissions. The API 26 native-coverage decision is still unanswered; no waiver or overall completion is implied.
+Current signed API 37 Google artwork **2**, native **7** and performance **2** cases all pass in `signed-35557984317-api37-google/marker-font-evidence.json`. Consent setup + night **2** also pass in `signed-35557984317-api37-night`: actual Navigator/navigation UI/same View, events `[true,false]`, no initial registration event, no routes/guidance and restored fine/coarse permissions. The user's accepted substitute above closes the API 26 coverage decision without claiming native AMap execution there.
 
 ### Verified earlier signed snapshot `3f14597`
 
@@ -42,11 +46,11 @@ These packages were installed only on dedicated AVDs; switching the local debug 
 
 API 37 signed ARM execution also passed Google consent setup + native night mode in **12.287 s**, with the same View, events `[true,false]`, no routes/guidance and restored permissions (`build/frontend-review/signed-35549085053-api37-arm64-night/`). JDI yielded no useful camera fields, the target ended and forwarding was removed; no acceptance credit comes from it.
 
-The new official API 26 ARM64 AVD cannot currently boot: emulator 37 rejects ARM, and isolated official 34.2.16/31.3.14 stop at the HDA/no-PCI error. It has no running device/APK; old AVDs/global emulator remain intact. The user has not answered whether to retain the native API 26 AMap gate with a compatible ARM environment or approve the explicit API 37-native/API 26-UI-Google-static substitute. No choice or waiver is assumed.
+The official API 26 ARM64 AVD could not boot: emulator 37 rejects ARM, and isolated official 34.2.16/31.3.14 stop at the HDA/no-PCI error. It has no running device/APK; old AVDs/global emulator remain intact. Those failures led to the explicit coverage question, subsequently resolved by the user's option "1" above. They are not relabeled as a successful ARM test.
 
-The committed `cb89265` repair passes local build in **9m 57s**: **417 JVM, zero failures/skips**, both Lints/R8 and fresh audits. Full ordinary CI, signed artifacts, signed-x86 fallback and the current API 37 executions now have the scoped results above. The original AMap click transient and outstanding API 26 coverage decision remain explicit.
+The committed `cb89265` repair passes local build in **9m 57s**: **417 JVM, zero failures/skips**, both Lints/R8 and fresh audits. Full ordinary CI, signed artifacts, signed-x86 fallback and the current API 37 executions have the scoped results above. The original AMap click transient and accepted API 26 substitution remain explicit.
 
-Earlier API 26 local-debug regressions passed two artwork, seven Google native (**21.761 s**) and two performance (**21.896 s**) cases, bound to target `e2eddfc43a447e09c7f9f429c25918e1e31e54f028e5e6b166c3b3bb916711b7` and test `9ea77782fb4bce0e7d1fe739c240390a10524bcde287f8ccaf8a4cc22974ded9`. Current signed results above use separate `2dca...`/`3870...` hashes; they must not be conflated. The API 26 environment/substitute question remains unanswered.
+Earlier API 26 local-debug regressions passed two artwork, seven Google native (**21.761 s**) and two performance (**21.896 s**) cases, bound to target `e2eddfc43a447e09c7f9f429c25918e1e31e54f028e5e6b166c3b3bb916711b7` and test `9ea77782fb4bce0e7d1fe739c240390a10524bcde287f8ccaf8a4cc22974ded9`. Current signed results above use separate `2dca...`/`3870...` hashes; the accepted substitution does not conflate these artifacts or claim API 26 native AMap execution.
 
 ### Earlier attempts
 
@@ -80,4 +84,4 @@ The actual Google SDK notice was accepted on both dedicated AVDs through `Google
 
 The combined consent-setup + `NativeNavigationThemeInstrumentedTest` invocation passed on API 37 in **9.535 s** and API 26 in **5.799 s** (two cases each, one being consent setup). Both evidence JSONs record Navigator ready, navigation UI enabled, the same View across themes and fresh night-mode events `[true,false]`. SDK 7.8.0 emitted no initial registration event; explicit DARK/LIGHT event assertions remain strict. There were no destinations/routes/guidance, temporary permissions were restored and no production change was needed for this readiness test. These files are in the green `67e07a4` snapshot; the subsequent font/mapping head has the separate promotion gate above. Exact hashes/files remain in the [matrix](FRONTEND_REQUIREMENT_MATRIX.md).
 
-The approved replacement in [DISCOVERY_DATA_CONTRACT.md](DISCOVERY_DATA_CONTRACT.md) now has actual API 37 AMap projection alongside its web/Google/saved-coordinate evidence. Overall acceptance still awaits the explicit API 26 native-coverage decision; original live old/new coordinate equality remains unproven.
+The approved replacement in [DISCOVERY_DATA_CONTRACT.md](DISCOVERY_DATA_CONTRACT.md) has actual API 37 AMap projection alongside its web/Google/saved-coordinate evidence. The separate API 26 coverage substitution is now explicitly accepted; original live old/new coordinate equality remains unproven.
