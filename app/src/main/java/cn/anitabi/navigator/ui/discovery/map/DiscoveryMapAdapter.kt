@@ -2,6 +2,8 @@ package cn.anitabi.navigator.ui.discovery.map
 
 import android.content.Context
 import android.graphics.Bitmap
+import android.os.Handler
+import android.os.Looper
 import android.view.MotionEvent
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
@@ -40,11 +42,10 @@ internal interface DiscoveryMapAdapter {
     fun listen(onIdle: () -> Unit, onMove: () -> Unit, onGesture: () -> Unit, onMarker: (String) -> Unit)
     fun upsert(id: String, coordinate: GeoPoint, title: String, icon: DiscoveryMarkerBitmap, selected: Boolean)
     fun remove(id: String)
-    fun restore(position: DiscoveryCameraPosition)
-    fun center(coordinate: GeoPoint, zoom: Float)
-    fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int)
-    fun pan(offset: ScreenPoint)
-    fun resetBearing()
+    fun restore(position: DiscoveryCameraPosition, onSettled: () -> Unit = {})
+    fun focus(coordinate: GeoPoint, zoom: Float, content: ScreenRect, minimallyPan: Boolean = false, onSettled: () -> Unit = {})
+    fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int, onSettled: () -> Unit = {})
+    fun resetBearing(onSettled: () -> Unit = {})
     fun stop()
     fun close()
 }
@@ -103,24 +104,36 @@ internal class GoogleDiscoveryMapAdapter(private val map: GoogleMap) : Discovery
         }
     }
     override fun remove(id: String) { markers.remove(id)?.remove() }
-    override fun restore(position: DiscoveryCameraPosition) {
+    override fun restore(position: DiscoveryCameraPosition, onSettled: () -> Unit) {
         if (position.provider == provider) map.moveCamera(CameraUpdateFactory.newCameraPosition(
             CameraPosition(position.center.google(), position.zoom, position.tilt, position.bearing),
         ))
+        onSettled()
     }
-    override fun center(coordinate: GeoPoint, zoom: Float) { map.moveCamera(CameraUpdateFactory.newLatLngZoom(coordinate.google(), zoom)) }
-    override fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int) {
-        if (coordinates.isEmpty() || width <= 0 || height <= 0) return
-        if (coordinates.distinct().size == 1) return center(coordinates.first(), 16f.coerceAtMost(maxZoom))
+    override fun focus(coordinate: GeoPoint, zoom: Float, content: ScreenRect, minimallyPan: Boolean, onSettled: () -> Unit) {
+        if (!minimallyPan) map.moveCamera(CameraUpdateFactory.newLatLngZoom(coordinate.google(), zoom))
+        val offset = focusPan(project(coordinate), content, minimallyPan)
+        if (offset.x != 0f || offset.y != 0f) map.moveCamera(CameraUpdateFactory.scrollBy(offset.x, offset.y))
+        onSettled()
+    }
+    override fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int, onSettled: () -> Unit) {
+        if (coordinates.isEmpty() || width <= 0 || height <= 0) return onSettled()
+        if (coordinates.distinct().size == 1) {
+            map.moveCamera(CameraUpdateFactory.newLatLngZoom(coordinates.first().google(), 16f.coerceAtMost(maxZoom)))
+            return onSettled()
+        }
         val bounds = LatLngBounds.builder().also { builder -> coordinates.forEach { builder.include(it.google()) } }.build()
         val content = padding.content(width, height)
         // Both the SDK callback and measured layout have completed before this method.
         // This overload uses the map's padded viewport, including the measured sheet.
         map.moveCamera(CameraUpdateFactory.newLatLngBounds(bounds,
             (minOf(content.right - content.left, content.bottom - content.top) * .08f).toInt()))
+        onSettled()
     }
-    override fun pan(offset: ScreenPoint) { if (offset.x != 0f || offset.y != 0f) map.moveCamera(CameraUpdateFactory.scrollBy(offset.x, offset.y)) }
-    override fun resetBearing() { map.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.builder(map.cameraPosition).bearing(0f).tilt(0f).build())) }
+    override fun resetBearing(onSettled: () -> Unit) {
+        map.moveCamera(CameraUpdateFactory.newCameraPosition(CameraPosition.builder(map.cameraPosition).bearing(0f).tilt(0f).build()))
+        onSettled()
+    }
     override fun stop() { map.stopAnimation() }
     override fun close() {
         map.setOnCameraIdleListener(null)
@@ -132,13 +145,17 @@ internal class GoogleDiscoveryMapAdapter(private val map: GoogleMap) : Discovery
     }
 }
 
-internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap) : DiscoveryMapAdapter {
+internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap, private val onFailure: () -> Unit) : DiscoveryMapAdapter {
     // Constructed only after the existing application privacy gate permits SDK use.
     private val converter = OfficialAmapCoordinateConverter(context)
     private val coordinates = DiscoveryDisplayCoordinates { source ->
         converter.convert(source).let { GeoPoint(it.latitude, it.longitude) }
     }
     private val markers = mutableMapOf<String, AmapMarker>()
+    private val cameraSequence = DiscoveryCameraSequence()
+    private var cameraMoving = false
+    private val main = Handler(Looper.getMainLooper())
+    private var closed = false
     override val provider = MapProvider.AMAP
     override val maxZoom: Float get() = map.maxZoomLevel
     override fun displayCoordinate(id: String, source: GeoPoint): GeoPoint = coordinates.get(id, source)
@@ -165,13 +182,22 @@ internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap) 
     }
     override fun listen(onIdle: () -> Unit, onMove: () -> Unit, onGesture: () -> Unit, onMarker: (String) -> Unit) {
         map.setOnCameraChangeListener(object : AMap.OnCameraChangeListener {
-            override fun onCameraChange(position: AmapCameraPosition) = onMove()
-            override fun onCameraChangeFinish(position: AmapCameraPosition) = onIdle()
+            override fun onCameraChange(position: AmapCameraPosition) = callback {
+                cameraMoving = true
+                onMove()
+            }
+            override fun onCameraChangeFinish(position: AmapCameraPosition) = callback {
+                cameraMoving = false
+                cameraSequence.onCameraFinish()
+                if (!cameraSequence.isPending) onIdle()
+            }
         })
         map.setOnMapTouchListener { event ->
-            if (event.actionMasked == MotionEvent.ACTION_MOVE || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) onGesture()
+            if (event.actionMasked == MotionEvent.ACTION_MOVE || event.actionMasked == MotionEvent.ACTION_POINTER_DOWN) {
+                callback { cameraSequence.cancel(); onGesture() }
+            }
         }
-        map.setOnMarkerClickListener { marker -> (marker.`object` as? String)?.let(onMarker); true }
+        map.setOnMarkerClickListener { marker -> (marker.`object` as? String)?.let { id -> callback { onMarker(id) } }; true }
     }
     override fun upsert(id: String, coordinate: GeoPoint, title: String, icon: DiscoveryMarkerBitmap, selected: Boolean) {
         val descriptor = AmapBitmapDescriptorFactory.fromBitmap(icon.bitmap)
@@ -191,30 +217,65 @@ internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap) 
         }
     }
     override fun remove(id: String) { markers.remove(id)?.remove() }
-    override fun restore(position: DiscoveryCameraPosition) {
-        if (position.provider == provider) map.moveCamera(AmapCameraUpdateFactory.newCameraPosition(
-            AmapCameraPosition(position.center.amap(), position.zoom, position.tilt, position.bearing),
-        ))
+    override fun restore(position: DiscoveryCameraPosition, onSettled: () -> Unit) {
+        if (position.provider != provider) { cameraSequence.cancel(); return onSettled() }
+        val canSkip = !cameraMoving && !cameraSequence.isPending
+        cameraSequence.start(listOf(DiscoveryCameraSequence.Step(
+            isComplete = { camera().near(position) },
+            apply = { move(AmapCameraUpdateFactory.newCameraPosition(
+                AmapCameraPosition(position.center.amap(), position.zoom, position.tilt, position.bearing))) },
+            canSkip = canSkip,
+        )), onSettled)
     }
-    override fun center(coordinate: GeoPoint, zoom: Float) { map.moveCamera(AmapCameraUpdateFactory.newLatLngZoom(coordinate.amap(), zoom)) }
-    override fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int) {
-        if (coordinates.isEmpty() || width <= 0 || height <= 0) return
+    override fun focus(coordinate: GeoPoint, zoom: Float, content: ScreenRect, minimallyPan: Boolean, onSettled: () -> Unit) {
+        val canSkip = !cameraMoving && !cameraSequence.isPending
+        val steps = buildList {
+            if (!minimallyPan) add(DiscoveryCameraSequence.Step(
+                isComplete = { camera().let { it.center.near(coordinate) && kotlin.math.abs(it.zoom - zoom) < .001f } },
+                apply = { move(AmapCameraUpdateFactory.newLatLngZoom(coordinate.amap(), zoom)) },
+                canSkip = canSkip,
+            ))
+            add(DiscoveryCameraSequence.Step(
+                isComplete = { focusPan(project(coordinate), content, minimallyPan).let {
+                    kotlin.math.abs(it.x) <= 1f && kotlin.math.abs(it.y) <= 1f
+                } },
+                apply = { focusPan(project(coordinate), content, minimallyPan).let {
+                    move(AmapCameraUpdateFactory.scrollBy(it.x, it.y))
+                } },
+                canSkip = !minimallyPan || canSkip,
+            ))
+        }
+        cameraSequence.start(steps, onSettled)
+    }
+    override fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int, onSettled: () -> Unit) {
+        if (coordinates.isEmpty() || width <= 0 || height <= 0) { cameraSequence.cancel(); return onSettled() }
         if (coordinates.distinct().size == 1) {
-            center(coordinates.first(), 16f.coerceAtMost(maxZoom))
-            pan(focusPan(project(coordinates.first()), padding.content(width, height), false))
-            return
+            return focus(coordinates.first(), 16f.coerceAtMost(maxZoom), padding.content(width, height), onSettled = onSettled)
         }
         val bounds = AmapLatLngBounds.builder().also { builder -> coordinates.forEach { builder.include(it.amap()) } }.build()
         val content = padding.content(width, height)
         val margin = (minOf(content.right - content.left, content.bottom - content.top) * .08f).toInt()
-        map.moveCamera(AmapCameraUpdateFactory.newLatLngBoundsRect(bounds,
-            content.left.toInt() + margin, width - content.right.toInt() + margin,
-            content.top.toInt() + margin, height - content.bottom.toInt() + margin))
+        cameraSequence.start(listOf(DiscoveryCameraSequence.Step(
+            isComplete = { coordinates.all { content.contains(project(it)) } },
+            apply = { move(AmapCameraUpdateFactory.newLatLngBoundsRect(bounds,
+                content.left.toInt() + margin, width - content.right.toInt() + margin,
+                content.top.toInt() + margin, height - content.bottom.toInt() + margin)) },
+            canSkip = false,
+        )), onSettled)
     }
-    override fun pan(offset: ScreenPoint) { if (offset.x != 0f || offset.y != 0f) map.moveCamera(AmapCameraUpdateFactory.scrollBy(offset.x, offset.y)) }
-    override fun resetBearing() { map.moveCamera(AmapCameraUpdateFactory.newCameraPosition(AmapCameraPosition.builder(map.cameraPosition).bearing(0f).tilt(0f).build())) }
-    override fun stop() { map.stopAnimation() }
+    override fun resetBearing(onSettled: () -> Unit) = restore(camera().copy(bearing = 0f, tilt = 0f), onSettled)
+    private fun move(update: com.amap.api.maps.CameraUpdate) { cameraMoving = true; map.moveCamera(update) }
+    private fun callback(action: () -> Unit) {
+        val invoke = Runnable {
+            if (!closed) try { action() } catch (_: RuntimeException) { cameraSequence.cancel(); onFailure() }
+        }
+        if (Looper.myLooper() == main.looper) invoke.run() else main.post(invoke)
+    }
+    override fun stop() { cameraSequence.cancel(); map.stopAnimation() }
     override fun close() {
+        closed = true
+        main.removeCallbacksAndMessages(null)
+        cameraSequence.cancel()
         map.setOnCameraChangeListener(null)
         map.setOnMapTouchListener(null)
         map.setOnMarkerClickListener(null)
@@ -223,6 +284,12 @@ internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap) 
         coordinates.clear()
     }
 }
+
+private fun GeoPoint.near(other: GeoPoint): Boolean = kotlin.math.abs(latitude - other.latitude) < .000001 &&
+    kotlin.math.abs(longitude - other.longitude) < .000001
+private fun DiscoveryCameraPosition.near(other: DiscoveryCameraPosition): Boolean = center.near(other.center) &&
+    kotlin.math.abs(zoom - other.zoom) < .001f && kotlin.math.abs(tilt - other.tilt) < .001f &&
+    kotlin.math.abs(bearing - other.bearing) < .001f
 
 private fun GeoPoint.google() = LatLng(latitude, longitude)
 private fun GeoPoint.amap() = AmapLatLng(latitude, longitude)

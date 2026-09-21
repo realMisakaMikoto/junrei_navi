@@ -100,6 +100,9 @@ fun DiscoveryMap(
     val failedImages = remember { linkedSetOf<String>() }
     var imageRevision by remember { mutableIntStateOf(0) }
     var consumedCommand by remember(provider) { mutableStateOf<Long?>(null) }
+    var pendingCommand by remember(adapter) { mutableStateOf<Long?>(null) }
+    var pendingClusterGeometry by remember(adapter) { mutableStateOf<Triple<DiscoveryMapPadding, Int, Int>?>(null) }
+    var cameraRequestGeneration by remember(adapter) { mutableIntStateOf(0) }
     var initializedCamera by remember(adapter) { mutableStateOf(false) }
 
     key(provider) {
@@ -113,7 +116,7 @@ fun DiscoveryMap(
             MapProvider.AMAP -> AmapMapView(
                 modifier = modifier,
                 privacyReady = privacyReady && isAmapMapCreationReady(context),
-                onMapReady = { adapter = AmapDiscoveryMapAdapter(context, it) },
+                onMapReady = { adapter = AmapDiscoveryMapAdapter(context, it) { currentUnavailable.value() } },
                 onUnavailable = { currentUnavailable.value() },
                 onViewportSizeChanged = { w, h -> width = w; height = h },
             )
@@ -128,6 +131,9 @@ fun DiscoveryMap(
                 onMove = { generation.invalidate() },
                 onGesture = {
                     generation.invalidate()
+                    cameraRequestGeneration++
+                    pendingCommand = null
+                    pendingClusterGeometry = null
                     // A pending initial/focus command may not run after a user's gesture.
                     consumedCommand = currentCommand.value?.sequence
                     currentManualMove.value()
@@ -139,13 +145,22 @@ fun DiscoveryMap(
                     else if (map.camera().zoom >= map.maxZoom - .1f) currentOverlapClick.value(cluster.memberIds)
                     else {
                         val anchor = currentDisplayPoints.value[cluster.anchorId] ?: return@listen
-                        map.center(anchor, (map.camera().zoom + 2f).coerceAtMost(map.maxZoom))
-                        map.pan(focusPan(map.project(anchor), currentPadding.value.content(width, height), false))
+                        cameraRequestGeneration++
+                        pendingCommand = null
+                        val requestGeneration = cameraRequestGeneration
+                        pendingClusterGeometry = Triple(currentPadding.value, width, height)
+                        map.focus(anchor, (map.camera().zoom + 2f).coerceAtMost(map.maxZoom),
+                            currentPadding.value.content(width, height), onSettled = {
+                                if (cameraRequestGeneration == requestGeneration) pendingClusterGeometry = null
+                            })
                     }
                 },
             )
         }
         onDispose {
+            cameraRequestGeneration++
+            pendingCommand = null
+            pendingClusterGeometry = null
             generation.invalidate()
             // A provider switch may have destroyed the old map lease before this effect.
             runCatching { map?.close() }
@@ -183,6 +198,12 @@ fun DiscoveryMap(
         val map = adapter ?: return@LaunchedEffect
         if (width <= 0 || height <= 0) return@LaunchedEffect
         try {
+            if (pendingClusterGeometry?.let { it != Triple(padding, width, height) } == true) {
+                // Cancel a cluster tap's unfinished padding correction after a layout change.
+                cameraRequestGeneration++
+                pendingClusterGeometry = null
+                map.stop()
+            }
             map.configure(darkTheme, padding, width, height)
             if (!initializedCamera && currentCommand.value == null && provider == MapProvider.GOOGLE) {
                 // Authored country overview, not a source/user location or a route target.
@@ -195,37 +216,51 @@ fun DiscoveryMap(
 
     LaunchedEffect(adapter, index, dataVersion, cameraCommand?.sequence, padding, width, height, density) {
         val map = adapter ?: return@LaunchedEffect
-        val command = cameraCommand ?: return@LaunchedEffect
-        if (width <= 0 || height <= 0 || consumedCommand == command.sequence) return@LaunchedEffect
+        val command = cameraCommand ?: run {
+            if (pendingCommand != null) {
+                cameraRequestGeneration++
+                pendingCommand = null
+                runCatching(map::stop).onFailure { currentUnavailable.value() }
+            }
+            return@LaunchedEffect
+        }
+        if (width <= 0 || height <= 0 || (consumedCommand == command.sequence && pendingCommand != command.sequence)) return@LaunchedEffect
         if ((command is DiscoveryCameraCommand.Focus || command is DiscoveryCameraCommand.FitAll) &&
             index?.key != DiscoveryIndexKey(dataVersion, provider)) return@LaunchedEffect
+        if (command is DiscoveryCameraCommand.Focus && command.pointId !in displayPoints) return@LaunchedEffect
         try {
             val content = padding.content(width, height)
+            val requestGeneration = ++cameraRequestGeneration
+            pendingClusterGeometry = null
+            consumedCommand = command.sequence
+            // Geometry changes restart only an unfinished command; settled/manual views stay put.
+            pendingCommand = command.sequence
+            val onSettled = {
+                if (cameraRequestGeneration == requestGeneration && currentCommand.value?.sequence == command.sequence) {
+                    pendingCommand = null
+                    currentCommandApplied.value(command.sequence, map.camera())
+                    cameraRevision++
+                }
+            }
             when (command) {
                 is DiscoveryCameraCommand.Focus -> {
                     val point = displayPoints[command.pointId] ?: return@LaunchedEffect
-                    if (command.minimallyPan) map.pan(focusPan(map.project(point), content.inset(28f * density), true))
-                    else {
-                        map.center(point, maxOf(15f, map.camera().zoom).coerceAtMost(map.maxZoom))
-                        map.pan(focusPan(map.project(point), content, false))
-                    }
+                    map.focus(point, maxOf(15f, map.camera().zoom).coerceAtMost(map.maxZoom),
+                        if (command.minimallyPan) content.inset(28f * density) else content,
+                        command.minimallyPan, onSettled)
                 }
                 is DiscoveryCameraCommand.FitAll -> map.fit(
                     displayPoints.filterKeys { command.pointIds == null || it in command.pointIds }.values.toList(),
-                    padding, width, height,
+                    padding, width, height, onSettled,
                 )
-                is DiscoveryCameraCommand.Restore -> map.restore(command.camera)
-                is DiscoveryCameraCommand.ResetBearing -> map.resetBearing()
+                is DiscoveryCameraCommand.Restore -> map.restore(command.camera, onSettled)
+                is DiscoveryCameraCommand.ResetBearing -> map.resetBearing(onSettled)
                 is DiscoveryCameraCommand.Locate -> {
                     val point = map.displayCoordinate("__user_location", command.coordinate)
-                    map.center(point, 15f.coerceAtMost(map.maxZoom))
-                    map.pan(focusPan(map.project(point), content, false))
+                    map.focus(point, 15f.coerceAtMost(map.maxZoom), content, onSettled = onSettled)
                 }
             }
-            consumedCommand = command.sequence
-            currentCommandApplied.value(command.sequence, map.camera())
-            cameraRevision++
-        } catch (_: RuntimeException) { currentUnavailable.value() }
+        } catch (_: RuntimeException) { pendingCommand = null; currentUnavailable.value() }
     }
 
     LaunchedEffect(index, calculationInputs) {

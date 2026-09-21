@@ -4,6 +4,8 @@ import android.graphics.Bitmap
 import android.animation.ValueAnimator
 import android.graphics.Color
 import android.graphics.Rect
+import android.os.Build
+import android.os.Bundle
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.fillMaxSize
@@ -28,6 +30,8 @@ import cn.anitabi.navigator.TestAnitabiApplication
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
+import cn.anitabi.navigator.ui.map.AmapMapView
+import cn.anitabi.navigator.ui.map.isAmapNativeMapLibraryAvailable
 import cn.anitabi.navigator.ui.map.NavigationMapView
 import cn.anitabi.navigator.ui.map.animateCameraRespectingMotion
 import cn.anitabi.navigator.security.AppAppearance
@@ -50,9 +54,12 @@ import com.google.android.gms.maps.model.MapColorScheme
 import com.google.android.libraries.navigation.NavigationView
 import java.io.File
 import java.util.concurrent.atomic.AtomicInteger
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicReference
 import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.CompletableDeferred
+import org.json.JSONObject
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -471,14 +478,40 @@ class DiscoveryNativeMapInstrumentedTest {
     fun amapProjectionAndBitmapAnchorSurvivePresentationChanges() = verifyProvider(MapProvider.AMAP)
 
     @Test
+    fun unsupportedAmapAbiReportsUnavailableWithoutConstructingSdkView() {
+        assertFalse("Run this fixture only on an ABI without the AMap native library",
+            isAmapNativeMapLibraryAvailable(application))
+        prepareAmap()
+        val root = AtomicReference<View?>()
+        val unavailable = AtomicBoolean(false)
+        val ready = AtomicBoolean(false)
+        composeRule.setContent {
+            val currentRoot = LocalView.current.rootView
+            SideEffect { root.set(currentRoot) }
+            AnitabiTheme {
+                AmapMapView(privacyReady = true, onMapReady = { ready.set(true) },
+                    onUnavailable = { unavailable.set(true) }, modifier = Modifier.fillMaxSize())
+            }
+        }
+        composeRule.waitUntil(10_000) { unavailable.get() }
+        composeRule.runOnIdle {
+            assertFalse("An unsupported native library must never deliver a map", ready.get())
+            assertTrue("No native SDK View may be attached on the unsupported ABI",
+                nativeViews(requireNotNull(root.get())).isEmpty())
+        }
+    }
+
+    @Test
     fun amapOverlapMarkerExposesItsCountToNativeAccessibility() {
         prepareAmap()
         val harness = Harness(MapProvider.AMAP)
         harness.points = listOf(harness.points.first(), harness.points.first().copy(id = "synthetic::overlap"))
         show(harness)
-        composeRule.waitUntil(30_000) {
-            check(!harness.unavailable) { "Native map unavailable; this is a failed live SDK check" }
-            harness.applied == listOf(1L) && harness.visible.size == 2
+        withAmapAwaitDiagnostics(harness, "await-overlap") {
+            composeRule.waitUntil(30_000) {
+                check(!harness.unavailable) { "Native map unavailable; this is a failed live SDK check" }
+                harness.applied == listOf(1L) && harness.visible.size == 2
+            }
         }
         val view = nativeView(harness) as AmapNativeView
         composeRule.waitUntil(10_000) {
@@ -622,11 +655,70 @@ class DiscoveryNativeMapInstrumentedTest {
     }
 
     private fun awaitPoint(harness: Harness) {
-        composeRule.waitUntil(30_000) {
-            check(!harness.unavailable) { "Native map unavailable; this is a failed live SDK check" }
-            harness.applied == listOf(1L) && harness.visible == setOf(POINT_ID)
+        withAmapAwaitDiagnostics(harness, "await-point") {
+            composeRule.waitUntil(30_000) {
+                check(!harness.unavailable) { "Native map unavailable; this is a failed live SDK check" }
+                harness.applied == listOf(1L) && harness.visible == setOf(POINT_ID)
+            }
         }
         composeRule.runOnIdle { assertEquals(1, nativeViews(harness.root).size) }
+    }
+
+    private fun withAmapAwaitDiagnostics(harness: Harness, stage: String, await: () -> Unit) {
+        try {
+            await()
+        } catch (failure: Throwable) {
+            if (harness.provider == MapProvider.AMAP) {
+                runCatching { saveAmapAwaitFailure(harness, stage) }
+                    .onFailure { failure.addSuppressed(AssertionError("AMap wait diagnostics failed: ${it.javaClass.simpleName}")) }
+            }
+            throw failure
+        }
+    }
+
+    private fun saveAmapAwaitFailure(harness: Harness, stage: String) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val report = JSONObject().put("api", Build.VERSION.SDK_INT)
+        instrumentation.runOnMainSync {
+            val root = runCatching { harness.root }.getOrNull()
+            val views = root?.let(::nativeViews)
+            val view = views?.filterIsInstance<AmapNativeView>()?.singleOrNull()
+            val sdk = runCatching { view?.map }.getOrNull()
+            // AMap documents a null projection before initialization. Only scalar results leave Main.
+            val projection = runCatching { sdk?.projection }.getOrNull()
+            val bounds = runCatching { projection?.visibleRegion?.latLngBounds }.getOrNull()
+            val source = harness.points.firstOrNull { it.id == POINT_ID && it.provider == MapProvider.AMAP }
+            val display = if (sdk != null && application.container.amapPrivacyGate.isReady) {
+                runCatching { source?.let { OfficialAmapCoordinateConverter(application).convert(it.coordinate).toLatLng() } }.getOrNull()
+            } else null
+            val screen = runCatching { display?.let { projection?.toScreenLocation(it) } }
+                .getOrNull()?.let { ScreenPoint(it.x.toFloat(), it.y.toFloat()) }
+            val content = view?.takeIf { it.width > 0 && it.height > 0 }?.let { harness.padding.content(it.width, it.height) }
+            report.put("appliedCommandCount", harness.applied.size)
+                .put("visibleMemberCount", harness.visible.size)
+                .put("cameraIdleCount", harness.cameraIdleCount)
+                .put("visibleIdleCount", harness.visibleIdleCount)
+                .put("visibleRevision", harness.visibleRevision)
+                .put("presentationRevision", harness.presentationRevision)
+                .put("unavailable", harness.unavailable)
+                .put("rootAvailable", root != null)
+                .put("nativeViewCount", views?.size ?: JSONObject.NULL)
+                .put("nativeMapAvailable", sdk != null)
+                .put("nativeProjectionAvailable", projection != null)
+                .put("nativeBoundsAvailable", bounds != null)
+                .put("nativeScreenMarkerCount", runCatching { sdk?.mapScreenMarkers?.size }.getOrNull() ?: JSONObject.NULL)
+                .put("convertedFixtureAvailable", display != null)
+                .put("fixtureInNativeBounds", runCatching { display?.let { bounds?.contains(it) } }.getOrNull() ?: JSONObject.NULL)
+                .put("fixtureProjected", screen != null)
+                .put("fixtureInViewport", if (screen != null && view != null) {
+                    screen.x >= 0f && screen.x < view.width && screen.y >= 0f && screen.y < view.height
+                } else JSONObject.NULL)
+                .put("fixtureInContent", if (screen != null && content != null) content.contains(screen) else JSONObject.NULL)
+                .put("fixtureNearContentCenter", if (screen != null && content != null) near(screen, content.center) else JSONObject.NULL)
+        }
+        val directory = File(requireNotNull(application.getExternalFilesDir(null)), "frontend-review").apply { mkdirs() }
+        File(directory, "native-amap-$stage-failure.json").writeText(report.toString())
+        instrumentation.sendStatus(0, Bundle().apply { putString("amapAwaitDiagnostic", report.toString()) })
     }
 
     private fun nativeView(harness: Harness): View = composeRule.runOnIdle { nativeViews(harness.root).single() }
