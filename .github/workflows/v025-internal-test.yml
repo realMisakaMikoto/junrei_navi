@@ -245,7 +245,12 @@ jobs:
           ANITABI_AMAP_API_KEY: ${{ secrets.ANITABI_AMAP_API_KEY }}
           ANITABI_BACKEND_BASE_URL: ${{ vars.ANITABI_V025_TEST_BACKEND_BASE_URL }}
           ANITABI_SIGN_INTERNAL_TEST_APKS: 'true'
-        run: ./gradlew testDebugUnitTest lintRelease assembleRelease assembleDebug assembleDebugAndroidTest --stacktrace
+        run: |
+          set -euo pipefail
+          build_args=(--no-daemon --max-workers=2 '-Dorg.gradle.jvmargs=-Xmx4096m -Dfile.encoding=UTF-8' --stacktrace)
+          ./gradlew "${build_args[@]}" testDebugUnitTest lintRelease
+          ./gradlew "${build_args[@]}" assembleRelease
+          ./gradlew "${build_args[@]}" assembleDebug assembleDebugAndroidTest
 
       - name: Audit the private APK and fixed signer
         working-directory: candidate
