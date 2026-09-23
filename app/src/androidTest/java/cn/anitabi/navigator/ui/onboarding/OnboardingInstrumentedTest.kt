@@ -75,16 +75,18 @@ class OnboardingInstrumentedTest {
             composeRule.onNodeWithTag("onboarding-service-submit")
                 .performScrollTo()
                 .performClick()
-            composeRule.onNodeWithText("搜索 Bangumi").assertIsDisplayed()
-            reportEvidence("ONBOARDING_COMPLETED_TO_SEARCH")
+            awaitTag("discovery-screen")
+            composeRule.onNodeWithTag("discovery-screen").assertIsDisplayed()
+            reportEvidence("ONBOARDING_COMPLETED_TO_DISCOVERY")
         }
 
         assertTrue(application.container.appSettingsStore.hasCompletedOnboarding())
         ActivityScenario.launch(MainActivity::class.java).use {
-            composeRule.onNodeWithText("搜索 Bangumi").assertIsDisplayed()
+            awaitTag("discovery-screen")
+            composeRule.onNodeWithTag("discovery-screen").assertIsDisplayed()
             composeRule.onAllNodesWithTag("onboarding-start").fetchSemanticsNodes()
                 .also { nodes -> assertTrue(nodes.isEmpty()) }
-            reportEvidence("ONBOARDING_RESTARTED_IN_SEARCH")
+            reportEvidence("ONBOARDING_RESTARTED_IN_DISCOVERY")
         }
     }
 

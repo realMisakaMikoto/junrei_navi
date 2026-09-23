@@ -3,7 +3,6 @@ package cn.anitabi.navigator.ui.search
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -24,6 +23,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.LazyRow
@@ -64,8 +64,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalUriHandler
+import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.liveRegion
@@ -78,8 +79,8 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import cn.anitabi.navigator.ui.components.JournalTopBar
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import cn.anitabi.navigator.R
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
@@ -88,11 +89,6 @@ import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.TerritoryRegion
 import cn.anitabi.navigator.core.model.mapProvider
 import cn.anitabi.navigator.data.repository.PilgrimageWarning
-import cn.anitabi.navigator.ui.theme.Ink
-import cn.anitabi.navigator.ui.theme.MutedInk
-import cn.anitabi.navigator.ui.theme.Paper
-import cn.anitabi.navigator.ui.theme.Sand
-import cn.anitabi.navigator.ui.theme.Vermilion
 import cn.anitabi.navigator.ui.planner.PlannerRoute
 import cn.anitabi.navigator.ui.planner.PlannerViewModel
 import cn.anitabi.navigator.navigation.NavigationViewModel
@@ -101,6 +97,7 @@ import cn.anitabi.navigator.ui.about.AboutScreen
 import cn.anitabi.navigator.telemetry.TelemetryConsentController
 import cn.anitabi.navigator.security.AppSettingsStore
 import cn.anitabi.navigator.ui.map.AmapPrivacyGate
+import cn.anitabi.navigator.ui.theme.MapSurfaceTheme
 import coil3.compose.AsyncImage
 
 @Composable
@@ -220,16 +217,22 @@ internal fun SearchScreen(
     onAnimeToggle: (Anime) -> Unit,
     onOpenSelection: () -> Unit,
     onOpenAbout: () -> Unit,
+    localSearchContent: (@Composable () -> Unit)? = null,
+    localSearchItems: (LazyListScope.() -> Unit)? = null,
+    showHeader: Boolean = true,
+    insetNavigationBars: Boolean = true,
 ) {
     Surface(
-        color = Paper,
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize().testTag("search-screen"),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
-            SearchHeader(onOpenAbout = onOpenAbout)
+            if (showHeader) SearchHeader(onOpenAbout = onOpenAbout)
             LazyColumn(
                 modifier = Modifier
+                    .widthIn(max = 840.dp)
                     .fillMaxWidth()
+                    .align(Alignment.CenterHorizontally)
                     .weight(1f)
                     .testTag("search-content"),
                 contentPadding = PaddingValues(bottom = 8.dp),
@@ -240,8 +243,13 @@ internal fun SearchScreen(
                         isLoading = state.isLoading,
                         onQueryChange = onQueryChange,
                         onSearch = onSearch,
+                        includesLocalSearch = localSearchContent != null || localSearchItems != null,
                     )
                 }
+                if (localSearchContent != null) {
+                    item(key = "local-search") { localSearchContent() }
+                }
+                localSearchItems?.invoke(this)
                 item { StatusMessage(state.errorMessage) }
                 if (state.selectedAnimes.isNotEmpty()) {
                     item {
@@ -252,12 +260,16 @@ internal fun SearchScreen(
                     }
                 }
                 when {
-                    state.isLoading -> item { LoadingState("正在加载搜索结果…") }
+                    state.isLoading -> item { LoadingState("正在搜索 Bangumi…") }
                     state.searchResults.isEmpty() -> item {
-                        EmptySearchState(hasQuery = state.query.isNotBlank())
+                        EmptySearchState(
+                            hasQuery = state.query.isNotBlank(),
+                            localSearchActive = localSearchContent != null || localSearchItems != null,
+                        )
                     }
                     else -> animeResults(
                         results = state.searchResults,
+                        previousQuery = state.bangumiQuery != null && state.bangumiQuery != state.query.trim(),
                         selectedAnimeIds = state.selectedAnimeData.keys,
                         loadingAnimeIds = state.loadingAnimeIds,
                         onAnimeToggle = onAnimeToggle,
@@ -267,7 +279,9 @@ internal fun SearchScreen(
             AnimeSelectionFooter(
                 animeCount = state.selectedAnimes.size,
                 pointCount = state.combinedPilgrimageData?.points?.size.orZero(),
+                selectedPointCount = state.selectedPointIds.size,
                 onOpenSelection = onOpenSelection,
+                insetNavigationBars = insetNavigationBars,
             )
         }
     }
@@ -279,21 +293,24 @@ private fun SearchForm(
     isLoading: Boolean,
     onQueryChange: (String) -> Unit,
     onSearch: () -> Unit,
+    includesLocalSearch: Boolean,
 ) {
+    val focusManager = LocalFocusManager.current
+    val keyboard = LocalSoftwareKeyboardController.current
     Column(
         modifier = Modifier
             .fillMaxWidth()
             .padding(horizontal = 16.dp, vertical = 14.dp),
     ) {
         Text(
-            text = "查找作品",
-            color = Ink,
-            style = MaterialTheme.typography.titleLarge,
+            text = if (includesLocalSearch) "寻找下一个巡礼地点" else "查找作品",
+            color = MaterialTheme.colorScheme.onSurface,
+            style = MaterialTheme.typography.headlineSmall,
             fontWeight = FontWeight.SemiBold,
         )
         Text(
-            text = "输入动画名称，加入这次巡礼",
-            color = MutedInk,
+            text = if (includesLocalSearch) "先搜索已加载的地图数据，也可以从 Bangumi 查找作品" else "输入动画名称，加入这次巡礼",
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
             modifier = Modifier.padding(top = 2.dp, bottom = 12.dp),
         )
@@ -301,8 +318,8 @@ private fun SearchForm(
             value = query,
             onValueChange = onQueryChange,
             modifier = Modifier.fillMaxWidth(),
-            label = { Text("动漫名称") },
-            placeholder = { Text("例如：吹响吧！上低音号") },
+            label = { Text(if (includesLocalSearch) "作品、地点、城市" else "动漫名称") },
+            placeholder = { Text(if (includesLocalSearch) "搜索作品、地点、城市" else "输入作品名称") },
             leadingIcon = { Icon(Icons.Rounded.Search, contentDescription = null) },
             trailingIcon = {
                 if (query.isNotEmpty()) {
@@ -313,11 +330,13 @@ private fun SearchForm(
             },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
-            keyboardActions = KeyboardActions(onSearch = { onSearch() }),
+            keyboardActions = KeyboardActions(onSearch = {
+                if (includesLocalSearch) { focusManager.clearFocus(); keyboard?.hide() } else onSearch()
+            }),
             shape = RoundedCornerShape(10.dp),
             colors = OutlinedTextFieldDefaults.colors(
-                focusedBorderColor = Vermilion,
-                focusedLabelColor = Vermilion,
+                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                focusedLabelColor = MaterialTheme.colorScheme.primary,
                 unfocusedContainerColor = MaterialTheme.colorScheme.surface,
                 focusedContainerColor = MaterialTheme.colorScheme.surface,
             ),
@@ -330,13 +349,13 @@ private fun SearchForm(
                 .padding(top = 10.dp)
                 .heightIn(min = 50.dp),
             shape = RoundedCornerShape(12.dp),
-            colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
         ) {
             Text("搜索 Bangumi")
         }
         Text(
             text = "作品与别名索引由 Bangumi 提供",
-            color = MutedInk,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelMedium,
             modifier = Modifier
                 .align(Alignment.CenterHorizontally)
@@ -347,53 +366,9 @@ private fun SearchForm(
 
 @Composable
 private fun SearchHeader(onOpenAbout: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
-        modifier = Modifier
-            .fillMaxWidth()
-            .statusBarsPadding(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .heightIn(min = 64.dp)
-                .padding(start = 16.dp, end = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Image(
-                painter = painterResource(R.drawable.anitabi_brand_mark),
-                contentDescription = "巡礼手帳标识",
-                modifier = Modifier.size(40.dp),
-                contentScale = ContentScale.Fit,
-            )
-            Column(
-                modifier = Modifier
-                    .weight(1f)
-                    .padding(start = 12.dp),
-            ) {
-                Text(
-                    text = "巡礼手帳",
-                    color = Ink,
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.SemiBold,
-                )
-                Text(
-                    text = "动画取景地路线",
-                    color = MutedInk,
-                    style = MaterialTheme.typography.labelMedium,
-                )
-            }
-            IconButton(
-                onClick = onOpenAbout,
-                modifier = Modifier.size(48.dp),
-            ) {
-                Icon(
-                    imageVector = Icons.Rounded.Info,
-                    contentDescription = "关于、隐私与数据来源",
-                    tint = MutedInk,
-                )
-            }
+    JournalTopBar(title = "搜索", subtitle = "巡礼手帳") {
+        IconButton(onClick = onOpenAbout) {
+            Icon(Icons.Rounded.Info, contentDescription = "关于、隐私与数据来源")
         }
     }
 }
@@ -413,14 +388,14 @@ private fun SelectedAnimeStrip(
             ) {
                 Text(
                     text = "已选作品",
-                    color = Ink,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.weight(1f),
                 )
                 Text(
                     text = "${selectedAnimes.size} 部 · 点按移除",
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -451,17 +426,17 @@ private fun SelectedAnimeStrip(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AsyncImage(
-                                model = anime.imageUrl,
+                                model = cn.anitabi.navigator.data.images.AnitabiImageReference.displayModel(anime.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
                                 contentDescription = "$title 封面",
                                 modifier = Modifier
                                     .size(width = 34.dp, height = 46.dp)
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(Sand),
+                                    .background(MaterialTheme.colorScheme.outlineVariant),
                                 contentScale = ContentScale.Crop,
                             )
                             Text(
                                 text = title,
-                                color = Ink,
+                                color = MaterialTheme.colorScheme.onSurface,
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = FontWeight.Medium,
                                 maxLines = 2,
@@ -473,7 +448,7 @@ private fun SelectedAnimeStrip(
                             Icon(
                                 imageVector = Icons.Rounded.Clear,
                                 contentDescription = null,
-                                tint = MutedInk,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                 modifier = Modifier.size(20.dp),
                             )
                         }
@@ -486,15 +461,16 @@ private fun SelectedAnimeStrip(
 
 private fun LazyListScope.animeResults(
     results: List<Anime>,
+    previousQuery: Boolean,
     selectedAnimeIds: Set<Long>,
     loadingAnimeIds: Set<Long>,
     onAnimeToggle: (Anime) -> Unit,
 ) {
     item {
         Text(
-            text = "搜索结果 · ${results.size} 部",
+            text = "${if (previousQuery) "上次 Bangumi 搜索结果" else "Bangumi 搜索结果"} · ${results.size} 部",
             style = MaterialTheme.typography.labelLarge,
-            color = MutedInk,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 12.dp, bottom = 8.dp),
         )
     }
@@ -529,12 +505,12 @@ private fun LazyListScope.animeResults(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(
-                    model = anime.imageUrl,
+                    model = cn.anitabi.navigator.data.images.AnitabiImageReference.displayModel(anime.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
                     contentDescription = "$title 封面",
                     modifier = Modifier
                         .size(width = 60.dp, height = 80.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Sand),
+                        .background(MaterialTheme.colorScheme.outlineVariant),
                     contentScale = ContentScale.Crop,
                 )
                 Column(
@@ -544,7 +520,7 @@ private fun LazyListScope.animeResults(
                 ) {
                     Text(
                         text = title,
-                        color = Ink,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.SemiBold,
                         maxLines = 2,
@@ -553,7 +529,7 @@ private fun LazyListScope.animeResults(
                     if (anime.nameCn != null) {
                         Text(
                             text = anime.name,
-                            color = MutedInk,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodySmall,
                             maxLines = 2,
                             overflow = TextOverflow.Ellipsis,
@@ -562,7 +538,7 @@ private fun LazyListScope.animeResults(
                     }
                     Text(
                         text = "Bangumi #${anime.subjectId}",
-                        color = MutedInk,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                         modifier = Modifier.padding(top = 8.dp),
                     )
@@ -576,17 +552,17 @@ private fun LazyListScope.animeResults(
                                 stateDescription = "正在读取巡礼点"
                             },
                         strokeWidth = 2.dp,
-                        color = Vermilion,
+                        color = MaterialTheme.colorScheme.primary,
                     )
                     selected -> Icon(
                         imageVector = Icons.Rounded.Check,
                         contentDescription = null,
-                        tint = Vermilion,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(26.dp),
                     )
                     else -> Text(
                         text = "选择",
-                        color = Vermilion,
+                        color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -601,7 +577,9 @@ private fun LazyListScope.animeResults(
 private fun AnimeSelectionFooter(
     animeCount: Int,
     pointCount: Int,
+    selectedPointCount: Int,
     onOpenSelection: () -> Unit,
+    insetNavigationBars: Boolean = true,
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
@@ -611,7 +589,7 @@ private fun AnimeSelectionFooter(
         Row(
             modifier = Modifier
                 .fillMaxWidth()
-                .navigationBarsPadding()
+                .then(if (insetNavigationBars) Modifier.navigationBarsPadding() else Modifier)
                 .imePadding()
                 .padding(horizontal = 16.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -622,18 +600,19 @@ private fun AnimeSelectionFooter(
                     .weight(1f)
                     .semantics {
                         liveRegion = LiveRegionMode.Polite
-                        stateDescription = "已选 $animeCount 部动画，合计 $pointCount 个巡礼点"
+                        stateDescription = "已选 $animeCount 部动画、$selectedPointCount 个地点，可选 $pointCount 个巡礼点"
                     },
             ) {
-                Text("已选 $animeCount 部作品", color = Ink, fontWeight = FontWeight.SemiBold)
-                Text("$pointCount 个巡礼地点", color = MutedInk, style = MaterialTheme.typography.bodyMedium)
+                Text("已选 $animeCount 部作品", color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold)
+                Text("$pointCount 个巡礼地点", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
+                Text("已选 $selectedPointCount 个地点", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodyMedium)
             }
             Button(
                 onClick = onOpenSelection,
                 enabled = pointCount > 0,
                 modifier = Modifier.heightIn(min = 48.dp),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Text("选择地点")
             }
@@ -666,12 +645,13 @@ internal fun PilgrimageSelectionScreen(
         amapRegionDataReady = amapRegionDataReady,
         amapPrivacyAndKeyReady = amapPrivacyAndKeyReady,
     )
+    MapSurfaceTheme {
     BoxWithConstraints(modifier = Modifier.fillMaxSize().testTag("point-selection-screen")) {
         val widthClass = contentWidthClass(maxWidth)
         val showList = state.showList || forceListMode || availableMapProvider == null
         val useDualPane = !showList &&
             (widthClass == ContentWidthClass.Expanded || maxWidth > maxHeight)
-        Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
+        Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             Column(modifier = Modifier.fillMaxSize()) {
                 SelectionToolbar(
                     title = data?.anime?.nameCn ?: data?.anime?.name.orEmpty(),
@@ -714,7 +694,7 @@ internal fun PilgrimageSelectionScreen(
                         text = "当前地图显示 ${mapPoints.size}/${data.points.size} 个地点；" +
                             "另有 $otherSelectedCount 个已选地点在其他地区，完整列表可查看全部地点",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MutedInk,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
                     )
                 }
@@ -783,6 +763,7 @@ internal fun PilgrimageSelectionScreen(
                 )
             }
         }
+    }
     }
 }
 
@@ -913,7 +894,7 @@ private fun SelectionToolbar(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             IconButton(onClick = onBack, modifier = Modifier.size(48.dp)) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回", tint = Ink)
+                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回", tint = MaterialTheme.colorScheme.onSurface)
             }
             Column(
                 modifier = Modifier
@@ -922,7 +903,7 @@ private fun SelectionToolbar(
             ) {
                 Text(
                     text = title.ifBlank { "选择巡礼地点" },
-                    color = Ink,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -934,7 +915,7 @@ private fun SelectionToolbar(
                         partialData -> "$pointCount 个可用地点 · 数据可能不完整"
                         else -> "$pointCount 个巡礼地点"
                     },
-                    color = if (partialData) MaterialTheme.colorScheme.error else MutedInk,
+                    color = if (partialData) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodySmall,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
@@ -943,7 +924,7 @@ private fun SelectionToolbar(
             }
             Text(
                 text = "选择地点",
-                color = MutedInk,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelLarge,
                 modifier = Modifier.padding(end = 12.dp),
             )
@@ -986,12 +967,12 @@ private fun PointList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(
-                    model = point.imageUrl,
+                    model = cn.anitabi.navigator.data.images.AnitabiImageReference.request(point.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
                     contentDescription = "${point.name} 巡礼截图",
                     modifier = Modifier
                         .size(72.dp)
                         .clip(RoundedCornerShape(8.dp))
-                        .background(Sand),
+                        .background(MaterialTheme.colorScheme.outlineVariant),
                     contentScale = ContentScale.Crop,
                 )
                 Column(
@@ -1001,7 +982,7 @@ private fun PointList(
                 ) {
                     Text(
                         text = point.name,
-                        color = Ink,
+                        color = MaterialTheme.colorScheme.onSurface,
                         style = MaterialTheme.typography.titleSmall,
                         fontWeight = FontWeight.Medium,
                         maxLines = 2,
@@ -1012,14 +993,14 @@ private fun PointList(
                             point.coordinate.latitude,
                             point.coordinate.longitude,
                         ),
-                        color = MutedInk,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
                         modifier = Modifier.padding(top = 4.dp),
                     )
                     if (!point.origin.isNullOrBlank()) {
                         Text(
                             text = "截图来源：${point.origin}",
-                            color = Vermilion,
+                            color = MaterialTheme.colorScheme.primary,
                             style = MaterialTheme.typography.labelMedium,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
@@ -1036,13 +1017,13 @@ private fun PointList(
                     Icon(
                         imageVector = Icons.Rounded.Check,
                         contentDescription = null,
-                        tint = Vermilion,
+                        tint = MaterialTheme.colorScheme.primary,
                         modifier = Modifier.size(26.dp),
                     )
                 } else {
                     Text(
                         text = "选择",
-                        color = Vermilion,
+                        color = MaterialTheme.colorScheme.primary,
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.SemiBold,
                     )
@@ -1079,20 +1060,20 @@ private fun SelectionFooter(
                     Icon(
                         imageVector = Icons.AutoMirrored.Rounded.List,
                         contentDescription = null,
-                        tint = MutedInk,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.size(20.dp),
                     )
                     Icon(
                         imageVector = Icons.Rounded.Map,
                         contentDescription = null,
-                        tint = MutedInk,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier
                             .padding(start = 6.dp)
                             .size(20.dp),
                     )
                     Text(
                         text = "列表与地图并排显示",
-                        color = MutedInk,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelLarge,
                         modifier = Modifier.padding(start = 10.dp),
                     )
@@ -1113,7 +1094,7 @@ private fun SelectionFooter(
             ) {
                 Text(
                     text = "已选 $selectedCount 个地点",
-                    color = Ink,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.SemiBold,
                     maxLines = 1,
@@ -1138,7 +1119,7 @@ private fun SelectionFooter(
                     enabled = selectedCount >= 2,
                     modifier = Modifier.heightIn(min = 48.dp),
                     shape = RoundedCornerShape(12.dp),
-                    colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                    colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 ) {
                     Text("规划路线")
                 }
@@ -1232,11 +1213,11 @@ private fun Attribution(mapProvider: MapProvider, modifier: Modifier = Modifier)
             MapProvider.GOOGLE -> "Google Maps"
             MapProvider.AMAP -> "高德地图"
         },
-        color = Ink,
+        color = MaterialTheme.colorScheme.onSurface,
         style = MaterialTheme.typography.labelSmall,
         modifier = modifier
             .clip(RoundedCornerShape(4.dp))
-            .background(Color.White.copy(alpha = 0.88f))
+            .background(MaterialTheme.colorScheme.surface)
             .padding(horizontal = 5.dp, vertical = 3.dp),
     )
 }
@@ -1268,13 +1249,13 @@ private fun LoadingState(message: String) {
             .padding(32.dp),
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        CircularProgressIndicator(color = Vermilion)
-        Text(message, color = MutedInk, modifier = Modifier.padding(top = 12.dp))
+        CircularProgressIndicator(color = MaterialTheme.colorScheme.primary)
+        Text(message, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(top = 12.dp))
     }
 }
 
 @Composable
-private fun EmptySearchState(hasQuery: Boolean) {
+private fun EmptySearchState(hasQuery: Boolean, localSearchActive: Boolean = false) {
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -1283,13 +1264,21 @@ private fun EmptySearchState(hasQuery: Boolean) {
         horizontalAlignment = Alignment.CenterHorizontally,
     ) {
         Text(
-            text = if (hasQuery) "没有搜索结果" else "搜索动画作品",
+            text = when {
+                localSearchActive -> "暂无 Bangumi 结果"
+                hasQuery -> "没有搜索结果"
+                else -> "搜索动画作品"
+            },
             style = MaterialTheme.typography.headlineMedium,
         )
         Spacer(Modifier.height(8.dp))
         Text(
-            text = if (hasQuery) "换一个译名或原名再试试。" else "支持中文译名、日文原名和英文名。",
-            color = MutedInk,
+            text = when {
+                localSearchActive -> "点击“搜索 Bangumi”在线查找作品；也可以换一个译名或原名再试试。"
+                hasQuery -> "换一个译名或原名再试试。"
+                else -> "支持中文译名、日文原名和英文名。"
+            },
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyLarge,
         )
     }

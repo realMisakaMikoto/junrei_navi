@@ -18,6 +18,7 @@ import cn.anitabi.navigator.ui.map.AmapDisplayCoordinate
 import cn.anitabi.navigator.ui.map.AmapMapView
 import cn.anitabi.navigator.ui.map.NavigationMapView
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
+import cn.anitabi.navigator.ui.map.animateCameraRespectingMotion
 import cn.anitabi.navigator.ui.map.isAmapMapCreationReady
 import cn.anitabi.navigator.ui.map.pilgrimageMarkerOptions
 import cn.anitabi.navigator.ui.map.withPositiveMapViewport
@@ -169,7 +170,7 @@ private fun GooglePilgrimageMap(
                         CameraUpdateFactory.newLatLngBounds(bounds, width, height, 88)
                     }
                 } ?: return@LaunchedEffect
-                readyMap.animateCamera(cameraUpdate)
+                readyMap.animateCameraRespectingMotion(cameraUpdate)
                 centeredContentKey = contentKey
             }
         } catch (error: RuntimeException) {
@@ -305,7 +306,7 @@ private fun AmapPilgrimageMap(
                     }.build()
                     AmapCameraUpdateFactory.newLatLngBounds(bounds, 88)
                 }
-                readyMap.animateCamera(cameraUpdate)
+                readyMap.animateCameraRespectingMotion(cameraUpdate)
                 centeredContentKey = contentKey
             }
         } catch (error: RuntimeException) {

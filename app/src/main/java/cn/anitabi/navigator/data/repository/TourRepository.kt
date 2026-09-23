@@ -50,6 +50,35 @@ class TourRepository(
         resolvedProgress.remove(plan.id)
     }
 
+    suspend fun publishRefreshedRouteIfCurrent(
+        expected: SavedTour,
+        refreshedPlan: TourPlan,
+    ): Boolean = writeAtomically {
+        require(expected.storedTour.id == refreshedPlan.id && expected.plan.id == refreshedPlan.id)
+        val savedPlan = expected.storedTour.toUnresolvedPlan(
+            resolvedExecutionStrategy = expected.plan.executionStrategy,
+            resolvedMapProvider = expected.plan.mapProvider,
+            resolvedRegionDataVersion = expected.plan.regionDataVersion,
+        )
+        if (StoredTourV2.from(savedPlan, null) != StoredTourV2.from(refreshedPlan, null)) {
+            return@writeAtomically false
+        }
+        val progressStamp = runtimeProgress.get()
+        if (
+            progressStamp?.tourId == refreshedPlan.id &&
+            progressStamp.progress != expected.progress
+        ) {
+            return@writeAtomically false
+        }
+        val current = dao.get(refreshedPlan.id)?.toSavedTour() ?: return@writeAtomically false
+        if (current != expected || runtimeProgress.get() != progressStamp) {
+            return@writeAtomically false
+        }
+        // New route legs must not re-derive or persist the user's existing progress.
+        publishResolved(refreshedPlan, expected.progress)
+        true
+    }
+
     suspend fun saveActiveEditIfCurrent(
         expectedPlan: TourPlan,
         expectedProgress: NavigationProgress,
@@ -241,6 +270,10 @@ class TourRepository(
     suspend fun get(id: String): SavedTour? = readConsistently { dao.get(id)?.toSavedTour() }
 
     suspend fun getMostRecent(): SavedTour? = readConsistently { dao.getMostRecent()?.toSavedTour() }
+
+    suspend fun getSavedTours(): List<SavedTour> = readConsistently {
+        dao.getIdsMostRecentFirst().mapNotNull { id -> dao.get(id)?.toSavedTour() }
+    }
 
     suspend fun getMostRecentInStates(states: Set<NavigationState>): SavedTour? = readConsistently {
         findMostRecentInStates(states)

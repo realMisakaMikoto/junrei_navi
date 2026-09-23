@@ -62,6 +62,10 @@ val releaseSigningValues = listOf(
     releaseKeyPassword,
 )
 val releaseSigningReady = releaseSigningValues.all { it != null }
+val signInternalTestApks = signingValue("ANITABI_SIGN_INTERNAL_TEST_APKS") == "true"
+if (signInternalTestApks && !releaseSigningReady) {
+    throw GradleException("Internal signed tests require the complete existing release signing configuration")
+}
 if (releaseSigningValues.any { it != null } && !releaseSigningReady) {
     throw GradleException("Release signing requires all four ANITABI_* signing values")
 }
@@ -102,6 +106,9 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            if (signInternalTestApks) signingConfig = signingConfigs.getByName("release")
+        }
         release {
             isMinifyEnabled = true
             isShrinkResources = true
@@ -173,6 +180,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.navigation:navigation-compose:2.10.1")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
@@ -192,10 +201,12 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:5.4.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("com.squareup.okhttp3:okhttp-tls:5.4.0")
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

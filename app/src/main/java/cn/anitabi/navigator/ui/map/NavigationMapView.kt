@@ -21,6 +21,7 @@ import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
@@ -30,6 +31,8 @@ import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import cn.anitabi.navigator.core.model.MapProvider
 import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.model.MapColorScheme
+import com.google.android.libraries.navigation.ForceNightMode
 import com.google.android.libraries.navigation.NavigationView
 
 private const val MAP_LOG_TAG = "NavigationMapView"
@@ -51,6 +54,7 @@ fun NavigationMapView(
     val currentOnMapReady = rememberUpdatedState(onMapReady)
     val currentOnUnavailable = rememberUpdatedState(onUnavailable)
     val currentOnViewportSizeChanged = rememberUpdatedState(onViewportSizeChanged)
+    val darkTheme = MaterialTheme.colorScheme.background.luminance() < .5f
     var attempt by remember(navigationUiEnabled) { mutableIntStateOf(0) }
     var runtimeFailure by remember(navigationUiEnabled, attempt) { mutableStateOf(false) }
     val creation = remember(navigationUiEnabled, attempt) {
@@ -84,6 +88,21 @@ fun NavigationMapView(
     }
     requireNotNull(lease)
     requireNotNull(navigationView)
+    var readyMap by remember(navigationView) { mutableStateOf<GoogleMap?>(null) }
+
+    LaunchedEffect(readyMap, darkTheme) {
+        val map = readyMap ?: return@LaunchedEffect
+        if (lease.isDestroyed) return@LaunchedEffect
+        runCatching {
+            map.setMapColorScheme(if (darkTheme) MapColorScheme.DARK else MapColorScheme.LIGHT)
+            if (navigationUiEnabled) {
+                navigationView.setForceNightMode(if (darkTheme) ForceNightMode.FORCE_NIGHT else ForceNightMode.FORCE_DAY)
+            }
+        }.onFailure { error ->
+            logMapFailure("THEME", error)
+            runtimeFailure = true
+        }
+    }
 
     AndroidView(
         factory = { navigationView },
@@ -148,6 +167,7 @@ fun NavigationMapView(
                 navigationView.getMapAsync { map ->
                     if (disposed) return@getMapAsync
                     try {
+                        readyMap = map
                         currentOnMapReady.value(map)
                     } catch (error: RuntimeException) {
                         logMapFailure("MAP_READY_CALLBACK", error)

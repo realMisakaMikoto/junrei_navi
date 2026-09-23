@@ -1,9 +1,7 @@
 package cn.anitabi.navigator
 
 import android.os.Bundle
-import android.graphics.Color as AndroidColor
 import androidx.activity.ComponentActivity
-import androidx.activity.SystemBarStyle
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.compose.setContent
 import androidx.activity.viewModels
@@ -16,12 +14,18 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import cn.anitabi.navigator.ui.onboarding.OnboardingRoute
-import cn.anitabi.navigator.ui.search.SearchRoute
 import cn.anitabi.navigator.ui.search.SearchViewModel
 import cn.anitabi.navigator.ui.planner.PlannerViewModel
 import cn.anitabi.navigator.navigation.NavigationViewModel
 import cn.anitabi.navigator.ui.theme.AnitabiTheme
-import cn.anitabi.navigator.ui.theme.Paper
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.ui.graphics.luminance
+import androidx.core.view.WindowCompat
+import androidx.lifecycle.createSavedStateHandle
+import androidx.lifecycle.viewmodel.initializer
+import androidx.lifecycle.viewmodel.viewModelFactory
+import cn.anitabi.navigator.ui.discovery.DiscoveryViewModel
+import cn.anitabi.navigator.ui.AppShell
 
 class MainActivity : ComponentActivity() {
     private val container by lazy { (application as AnitabiApplication).container }
@@ -29,7 +33,7 @@ class MainActivity : ComponentActivity() {
         SearchViewModel.Factory(
             container.bangumiApi,
             container.pilgrimageRepository,
-            container.tourRepository,
+            container.plannerDraftRepository,
         )
     }
     private val plannerViewModel by viewModels<PlannerViewModel> {
@@ -37,43 +41,61 @@ class MainActivity : ComponentActivity() {
             planner = container.tourPlanner,
             repository = container.tourRepository,
             locationProvider = container.locationProvider,
+            draftRepository = container.plannerDraftRepository,
         )
     }
     private val navigationViewModel by viewModels<NavigationViewModel> {
         NavigationViewModel.Factory(application, container.tourRepository, container.tourPlanner)
     }
+    private val discoveryViewModel by viewModels<DiscoveryViewModel> {
+        viewModelFactory {
+            initializer {
+                DiscoveryViewModel(
+                    container.discoveryRepository, container.discoveryPreferences,
+                    container.locationProvider, container.territoryClassifier::classify,
+                    createSavedStateHandle(),
+                    freshLocation = {
+                        container.locationProvider.currentLocationFix(maxAgeMillis = 30_000, maxAccuracyMeters = 5_000.0).coordinate
+                    },
+                )
+            }
+        }
+    }
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge(
-            statusBarStyle = SystemBarStyle.light(
-                AndroidColor.TRANSPARENT,
-                AndroidColor.TRANSPARENT,
-            ),
-            navigationBarStyle = SystemBarStyle.light(
-                AndroidColor.TRANSPARENT,
-                AndroidColor.argb(230, 247, 246, 242),
-            ),
-        )
+        enableEdgeToEdge()
         setContent {
-            AnitabiTheme {
+            var appearance by remember { mutableStateOf(container.appSettingsStore.appearance()) }
+            var imagesEnabled by remember { mutableStateOf(container.appSettingsStore.imageMarkersEnabled()) }
+            AnitabiTheme(appearance = appearance) {
+                val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
+                androidx.compose.runtime.SideEffect {
+                    WindowCompat.getInsetsController(window, window.decorView).apply {
+                        isAppearanceLightStatusBars = !dark
+                        isAppearanceLightNavigationBars = !dark
+                    }
+                }
                 var onboardingComplete by remember {
                     mutableStateOf(container.appSettingsStore.hasCompletedOnboarding())
                 }
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .background(Paper),
+                        .background(MaterialTheme.colorScheme.background),
                 ) {
                     if (onboardingComplete) {
-                        SearchRoute(
-                            viewModel = searchViewModel,
+                        AppShell(
+                            container = container,
+                            searchViewModel = searchViewModel,
+                            discoveryViewModel = discoveryViewModel,
                             plannerViewModel = plannerViewModel,
                             navigationViewModel = navigationViewModel,
-                            telemetryConsentController = container.telemetryConsentController,
-                            appSettingsStore = container.appSettingsStore,
-                            amapPrivacyGate = container.amapPrivacyGate,
-                            classifyTerritory = container.territoryClassifier::classify,
+                            appearance = appearance,
+                            onAppearanceChange = { appearance = it; container.appSettingsStore.setAppearance(it) },
+                            imagesEnabled = imagesEnabled,
+                            onImagesEnabledChange = { imagesEnabled = it; container.appSettingsStore.setImageMarkersEnabled(it) },
+                            darkTheme = dark,
                         )
                     } else {
                         OnboardingRoute(

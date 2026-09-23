@@ -4,6 +4,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import cn.anitabi.navigator.core.model.Anime
+import cn.anitabi.navigator.core.model.PlannerDraft
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.StoredTourV2
@@ -11,9 +12,13 @@ import cn.anitabi.navigator.data.network.ApiException
 import cn.anitabi.navigator.data.network.bangumi.BangumiApi
 import cn.anitabi.navigator.data.repository.PilgrimageData
 import cn.anitabi.navigator.data.repository.PilgrimageRepository
-import cn.anitabi.navigator.data.repository.TourRepository
+import cn.anitabi.navigator.data.repository.PlannerDraftRepository
+import cn.anitabi.navigator.data.repository.PlannerDraftProblem
+import java.time.ZonedDateTime
+import java.util.UUID
 import cn.anitabi.navigator.data.repository.mergePilgrimageData
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -23,27 +28,37 @@ import kotlinx.coroutines.launch
 class SearchViewModel(
     private val bangumiApi: BangumiApi,
     private val pilgrimageRepository: PilgrimageRepository,
-    private val tourRepository: TourRepository,
+    private val draftRepository: PlannerDraftRepository? = null,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(SearchUiState())
     val state: StateFlow<SearchUiState> = mutableState.asStateFlow()
+    private val animeLoads = mutableMapOf<Long, Job>()
+    private var searchJob: Job? = null
 
     init {
-        viewModelScope.launch {
-            val stored = runCatching { tourRepository.getMostRecent()?.storedTour }.getOrNull()
-                ?: return@launch
-            val cached = stored.selectedAnimes.mapNotNull { anime ->
-                runCatching { pilgrimageRepository.loadCached(anime.subjectId) }.getOrNull()
-            }
-            val restored = restoreSearchSelection(stored, cached) ?: return@launch
-            mutableState.update { current ->
-                if (current.selectedAnimeData.isNotEmpty() || current.selectedPointIds.isNotEmpty()) {
-                    current
-                } else {
-                    current.copy(
-                        selectedAnimeData = restored.animeData,
-                        selectedPointIds = restored.selectedPointIds,
-                    )
+        draftRepository?.let { drafts ->
+            viewModelScope.launch {
+                drafts.state.collect { saved ->
+                    if (!saved.initialized) return@collect
+                    val draft = saved.draft
+                    mutableState.update { current ->
+                        val error = if (saved.problem == PlannerDraftProblem.WRITE_FAILED) {
+                            "草稿修改未能保存，请检查设备存储后重试；离开应用前请再次操作"
+                        } else current.errorMessage
+                        if (draft == null) current.copy(draftId = null, selectedPointIds = emptySet(), errorMessage = error)
+                        else {
+                            val restored = draft.toSearchSelection()
+                            val data = restored.animeData.mapValues { (id, selected) ->
+                                mergeLoadedSubject(selected, current.selectedAnimeData[id] ?: selected)
+                            }
+                            current.copy(
+                                draftId = draft.draftId,
+                                selectedAnimeData = data,
+                                selectedPointIds = restored.selectedPointIds,
+                                errorMessage = error,
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -59,12 +74,13 @@ class SearchViewModel(
             mutableState.update { it.copy(errorMessage = "请输入动漫名称") }
             return
         }
-        viewModelScope.launch {
+        searchJob?.cancel()
+        searchJob = viewModelScope.launch {
             mutableState.update { it.copy(isLoading = true, errorMessage = null) }
             runCatching { bangumiApi.searchAnime(keyword) }
                 .onSuccess { results ->
                     mutableState.update {
-                        it.copy(searchResults = results, isLoading = false)
+                        it.copy(searchResults = results, bangumiQuery = keyword, isLoading = false)
                     }
                 }
                 .onFailure(::handleFailure)
@@ -74,6 +90,7 @@ class SearchViewModel(
     fun toggleAnime(anime: Anime) {
         val current = state.value
         if (anime.subjectId in current.selectedAnimeData) {
+            animeLoads.remove(anime.subjectId)?.cancel()
             mutableState.update { value ->
                 val remainingData = value.selectedAnimeData - anime.subjectId
                 val remainingPointIds = mergePilgrimageData(remainingData.values)
@@ -83,13 +100,15 @@ class SearchViewModel(
                 value.copy(
                     selectedAnimeData = remainingData,
                     selectedPointIds = value.selectedPointIds.intersect(remainingPointIds),
+                    loadingAnimeIds = value.loadingAnimeIds - anime.subjectId,
                     errorMessage = null,
                 )
             }
+            persistSelection()
             return
         }
         if (anime.subjectId in current.loadingAnimeIds) return
-        viewModelScope.launch {
+        animeLoads[anime.subjectId] = viewModelScope.launch {
             mutableState.update {
                 it.copy(loadingAnimeIds = it.loadingAnimeIds + anime.subjectId, errorMessage = null)
             }
@@ -97,12 +116,14 @@ class SearchViewModel(
                 .onSuccess { data ->
                     mutableState.update {
                         it.copy(
-                            selectedAnimeData = it.selectedAnimeData + (anime.subjectId to data),
+                            selectedAnimeData = it.selectedAnimeData + (anime.subjectId to mergeLoadedSubject(it.selectedAnimeData[anime.subjectId], data)),
                             loadingAnimeIds = it.loadingAnimeIds - anime.subjectId,
                         )
                     }
+                    persistSelection()
                 }
                 .onFailure { throwable ->
+                    if (throwable is CancellationException) throw throwable
                     mutableState.update { it.copy(loadingAnimeIds = it.loadingAnimeIds - anime.subjectId) }
                     handleFailure(throwable)
                 }
@@ -131,6 +152,7 @@ class SearchViewModel(
                 else -> current.copy(selectedPointIds = selected + pointId, errorMessage = null)
             }
         }
+        persistSelection()
     }
 
     fun updateVisibleBounds(bounds: GeoBounds) {
@@ -149,10 +171,45 @@ class SearchViewModel(
                 errorMessage = null,
             )
         }
+        persistSelection()
     }
 
     fun clearSelection() {
         mutableState.update { it.copy(selectedPointIds = emptySet(), errorMessage = null) }
+        draftRepository?.clear()
+    }
+
+    /** Discovery supplies raw point IDs; the shared selection owns a coordinate snapshot. */
+    fun selectDiscoveryPoints(anime: Anime, points: List<PilgrimagePoint>) {
+        mutableState.update { current -> current.withDiscoveryPoints(anime, points) }
+        persistSelection()
+    }
+
+    fun addSelections(items: List<Pair<Anime, PilgrimagePoint>>) {
+        mutableState.update { current ->
+            items.groupBy { it.first.subjectId }.values.fold(current) { updated, group ->
+                updated.withDiscoveryPoints(group.first().first, group.map { it.second })
+            }
+        }
+        persistSelection()
+    }
+
+    fun toggleDiscoveredAnime(data: PilgrimageData) {
+        if (data.anime.subjectId in state.value.selectedAnimeData) {
+            toggleAnime(data.anime)
+            return
+        }
+        mutableState.update { current -> current.copy(
+            selectedAnimeData = current.selectedAnimeData + (data.anime.subjectId to data),
+            errorMessage = null,
+        ) }
+        persistSelection()
+    }
+
+    fun toggleDiscoveryPoint(anime: Anime, point: PilgrimagePoint) {
+        val scopedId = "${anime.subjectId}::${point.id}"
+        if (scopedId in state.value.selectedPointIds) togglePoint(scopedId)
+        else selectDiscoveryPoints(anime, listOf(point))
     }
 
     fun setShowList(showList: Boolean) {
@@ -212,6 +269,53 @@ class SearchViewModel(
         mutableState.update { it.copy(aboutOpen = false) }
     }
 
+    suspend fun preparePlanner(): String? {
+        val drafts = draftRepository ?: return null
+        if (state.value.selectedPointIds.size < 2) {
+            mutableState.update { it.copy(errorMessage = "至少选择 2 个巡礼点才能规划路线") }
+            return null
+        }
+        val id = persistSelection() ?: return null
+        if (!drafts.flush(id)) {
+            mutableState.update { it.copy(errorMessage = "草稿未能保存，请检查设备存储后重试") }
+            return null
+        }
+        return id
+    }
+
+    private fun persistSelection(): String? {
+        val drafts = draftRepository ?: return null
+        val current = state.value
+        val combined = current.combinedPilgrimageData ?: run { drafts.clear(); return null }
+        val points = combined.points.filter { it.id in current.selectedPointIds }
+        val previous = drafts.state.value.draft?.takeIf { it.sourceTourId == null }
+        val now = ZonedDateTime.now().withSecond(0).withNano(0)
+        val initial = previous ?: PlannerDraft(
+            draftId = UUID.randomUUID().toString(),
+            selectedAnimes = current.selectedAnimes,
+            displayAnime = combined.anime,
+            selectedPoints = points,
+            transitDate = now.toLocalDate().toString(),
+            transitTime = now.toLocalTime().toString(),
+            transitZoneId = now.zone.id,
+        )
+        val ids = points.mapTo(hashSetOf(), PilgrimagePoint::id)
+        val order = initial.manualOrderPointIds.filter { it in ids }
+        val orderedIds = order.toHashSet()
+        val draft = initial.copy(
+            selectedAnimes = current.selectedAnimes,
+            displayAnime = combined.anime,
+            selectedPoints = points,
+            manualOrderPointIds = order + points.filterNot { it.id in orderedIds }.map(PilgrimagePoint::id),
+            startPointId = if (initial.useCurrentLocation) null else initial.startPointId?.takeIf { it in ids } ?: points.firstOrNull()?.id,
+            fixedEndPointId = initial.fixedEndPointId?.takeIf { it in ids } ?: points.lastOrNull()?.id,
+        )
+        val normalized = draft.withValidEndpointOrder()
+        if (normalized != previous) drafts.replace(normalized)
+        mutableState.update { it.copy(draftId = draft.draftId) }
+        return draft.draftId
+    }
+
     private fun handleFailure(throwable: Throwable) {
         if (throwable is CancellationException) throw throwable
         val message = when (throwable) {
@@ -230,13 +334,36 @@ class SearchViewModel(
     class Factory(
         private val bangumiApi: BangumiApi,
         private val pilgrimageRepository: PilgrimageRepository,
-        private val tourRepository: TourRepository,
+        private val draftRepository: PlannerDraftRepository,
     ) : ViewModelProvider.Factory {
         @Suppress("UNCHECKED_CAST")
         override fun <T : ViewModel> create(modelClass: Class<T>): T {
-            return SearchViewModel(bangumiApi, pilgrimageRepository, tourRepository) as T
+            return SearchViewModel(bangumiApi, pilgrimageRepository, draftRepository) as T
         }
     }
+}
+
+internal fun mergeLoadedSubject(existing: PilgrimageData?, loaded: PilgrimageData): PilgrimageData {
+    if (existing == null) return loaded
+    val points = loaded.points.associateBy(PilgrimagePoint::id) + existing.points.associateBy(PilgrimagePoint::id)
+    return loaded.copy(points = points.values.toList(), expectedPointCount = maxOf(loaded.expectedPointCount, points.size))
+}
+
+internal fun SearchUiState.withDiscoveryPoints(anime: Anime, points: List<PilgrimagePoint>): SearchUiState {
+    val existing = selectedAnimeData[anime.subjectId]
+    val combined = points.associateBy(PilgrimagePoint::id) +
+        existing?.points.orEmpty().associateBy(PilgrimagePoint::id)
+    val data = PilgrimageData(
+        anime = existing?.anime ?: anime,
+        points = combined.values.toList(),
+        expectedPointCount = maxOf(existing?.expectedPointCount ?: 0, combined.size),
+        warnings = existing?.warnings.orEmpty(),
+    )
+    return copy(
+        selectedAnimeData = selectedAnimeData + (anime.subjectId to data),
+        selectedPointIds = selectedPointIds + points.map { "${anime.subjectId}::${it.id}" },
+        errorMessage = null,
+    )
 }
 
 internal data class RestoredSearchSelection(
@@ -244,21 +371,53 @@ internal data class RestoredSearchSelection(
     val selectedPointIds: Set<String>,
 )
 
+private fun PlannerDraft.toSearchSelection(): RestoredSearchSelection {
+    val data = selectedAnimes.associate { anime ->
+        val prefix = "${anime.subjectId}::"
+        val points = selectedPoints.mapNotNull { point ->
+            val rawId = when {
+                point.id.startsWith(prefix) -> point.id.removePrefix(prefix)
+                selectedAnimes.size == 1 && "::" !in point.id -> point.id
+                else -> return@mapNotNull null
+            }
+            point.copy(id = rawId, name = point.name.removePrefix("《${anime.nameCn ?: anime.name}》· "))
+        }
+        anime.subjectId to PilgrimageData(anime, points, points.size)
+    }
+    return RestoredSearchSelection(data, selectedPoints.mapTo(linkedSetOf()) { point ->
+        if ("::" in point.id) point.id else "${selectedAnimes.single().subjectId}::${point.id}"
+    })
+}
+
 internal fun restoreSearchSelection(
     stored: StoredTourV2,
     cached: List<PilgrimageData>,
 ): RestoredSearchSelection? {
     val selectedAnimeIds = stored.selectedAnimes.mapTo(linkedSetOf(), Anime::subjectId)
     if (selectedAnimeIds.isEmpty()) return null
-    val animeData = cached
-        .filter { it.anime.subjectId in selectedAnimeIds }
-        .associateBy { it.anime.subjectId }
-    if (animeData.keys != selectedAnimeIds) return null
+    val cachedById = cached.associateBy { it.anime.subjectId }
+    val animeData = stored.selectedAnimes.associate { anime ->
+        val cache = cachedById[anime.subjectId]
+        val prefix = "${anime.subjectId}::"
+        val savedPoints = stored.selectedPoints.mapNotNull { point ->
+            val rawId = when {
+                point.id.startsWith(prefix) -> point.id.removePrefix(prefix)
+                selectedAnimeIds.size == 1 && "::" !in point.id -> point.id
+                else -> return@mapNotNull null
+            }
+            point.copy(id = rawId, name = point.name.removePrefix("《${anime.nameCn ?: anime.name}》· "))
+        }
+        // User-owned coordinates win over refreshed public cache, including missing source points.
+        val points = cache?.points.orEmpty().associateBy(PilgrimagePoint::id) + savedPoints.associateBy(PilgrimagePoint::id)
+        anime.subjectId to PilgrimageData(anime, points.values.toList(), maxOf(cache?.expectedPointCount ?: 0, points.size), cache?.warnings.orEmpty())
+    }
     val availablePointIds = mergePilgrimageData(animeData.values)
         ?.points
         .orEmpty()
         .mapTo(mutableSetOf(), PilgrimagePoint::id)
-    val storedPointIds = stored.selectedPoints.mapTo(mutableSetOf(), PilgrimagePoint::id)
+    val storedPointIds = stored.selectedPoints.mapNotNullTo(mutableSetOf()) { point ->
+        if ("::" in point.id) point.id else stored.selectedAnimes.singleOrNull()?.let { "${it.subjectId}::${point.id}" }
+    }
     return RestoredSearchSelection(
         animeData = animeData,
         selectedPointIds = storedPointIds.intersect(availablePointIds),
@@ -266,7 +425,9 @@ internal fun restoreSearchSelection(
 }
 
 data class SearchUiState(
+    val draftId: String? = null,
     val query: String = "",
+    val bangumiQuery: String? = null,
     val searchResults: List<Anime> = emptyList(),
     val selectedAnimeData: Map<Long, PilgrimageData> = emptyMap(),
     val loadingAnimeIds: Set<Long> = emptySet(),
