@@ -1,5 +1,9 @@
 # Frontend discovery redesign acceptance
 
+## Subsequent repair acceptance
+
+The September 21 acceptance below covers its original approved scope and exact artifacts. The later image/load feedback, F1-F7 repair plan and own-location/phone-heading requirement are active work, tracked separately in [FRONTEND_FIX_ACCEPTANCE.md](FRONTEND_FIX_ACCEPTANCE.md). Their code, device tests and performance measurements must be verified at the new source/artifact identities; historical passes do not close them.
+
 ## Scope and evidence policy
 
 The approved September 15, 2026 brief replaces the entry experience with a complete discovery map, a single content panel, shared local search and itinerary selection, and a Material 3 redesign of every existing page. Implementation is authorized; device installation and deployment are separate. The baseline is `main@2b6d971`; development branch is `codex/frontend-discovery-redesign`.

@@ -7,6 +7,7 @@ import android.os.Looper
 import android.view.MotionEvent
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.navigation.normalizePhoneHeading
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
 import com.google.android.gms.maps.CameraUpdateFactory
 import com.google.android.gms.maps.GoogleMap
@@ -42,6 +43,7 @@ internal interface DiscoveryMapAdapter {
     fun listen(onIdle: () -> Unit, onMove: () -> Unit, onGesture: () -> Unit, onMarker: (String) -> Unit)
     fun upsert(id: String, coordinate: GeoPoint, title: String, icon: DiscoveryMarkerBitmap, selected: Boolean)
     fun remove(id: String)
+    fun setUserLocation(displayCoordinate: GeoPoint?, headingDegrees: Float?, density: Float, dark: Boolean)
     fun restore(position: DiscoveryCameraPosition, onSettled: () -> Unit = {})
     fun focus(coordinate: GeoPoint, zoom: Float, content: ScreenRect, minimallyPan: Boolean = false, onSettled: () -> Unit = {})
     fun fit(coordinates: List<GeoPoint>, padding: DiscoveryMapPadding, width: Int, height: Int, onSettled: () -> Unit = {})
@@ -52,6 +54,8 @@ internal interface DiscoveryMapAdapter {
 
 internal class GoogleDiscoveryMapAdapter(private val map: GoogleMap) : DiscoveryMapAdapter {
     private val markers = mutableMapOf<String, Marker>()
+    private var userLocation: Marker? = null
+    private var userLocationStyle: DiscoveryUserLocationStyle? = null
     override val provider = MapProvider.GOOGLE
     override val maxZoom: Float get() = map.maxZoomLevel
     override fun displayCoordinate(id: String, source: GeoPoint): GeoPoint = source
@@ -104,6 +108,31 @@ internal class GoogleDiscoveryMapAdapter(private val map: GoogleMap) : Discovery
         }
     }
     override fun remove(id: String) { markers.remove(id)?.remove() }
+    override fun setUserLocation(displayCoordinate: GeoPoint?, headingDegrees: Float?, density: Float, dark: Boolean) {
+        if (displayCoordinate == null) {
+            userLocation?.remove()
+            userLocation = null
+            userLocationStyle = null
+            return
+        }
+        val heading = headingDegrees?.let(::normalizePhoneHeading)
+        val style = DiscoveryUserLocationStyle(density, dark, heading != null)
+        val position = displayCoordinate.google()
+        val marker = userLocation
+        if (marker == null) {
+            val icon = discoveryUserLocationArtwork(style)
+            userLocation = map.addMarker(MarkerOptions().position(position)
+                .icon(BitmapDescriptorFactory.fromBitmap(icon.bitmap)).anchor(.5f, .5f)
+                .flat(true).rotation(heading ?: 0f).zIndex(3f))
+        } else {
+            if (marker.position != position) marker.position = position
+            marker.rotation = heading ?: 0f
+            if (style != userLocationStyle) {
+                marker.setIcon(BitmapDescriptorFactory.fromBitmap(discoveryUserLocationArtwork(style).bitmap))
+            }
+        }
+        userLocationStyle = style
+    }
     override fun restore(position: DiscoveryCameraPosition, onSettled: () -> Unit) {
         if (position.provider == provider) map.moveCamera(CameraUpdateFactory.newCameraPosition(
             CameraPosition(position.center.google(), position.zoom, position.tilt, position.bearing),
@@ -142,6 +171,9 @@ internal class GoogleDiscoveryMapAdapter(private val map: GoogleMap) : Discovery
         map.setOnMarkerClickListener(null)
         markers.values.forEach { it.remove() }
         markers.clear()
+        userLocation?.remove()
+        userLocation = null
+        userLocationStyle = null
     }
 }
 
@@ -152,6 +184,8 @@ internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap, 
         converter.convert(source).let { GeoPoint(it.latitude, it.longitude) }
     }
     private val markers = mutableMapOf<String, AmapMarker>()
+    private var userLocation: AmapMarker? = null
+    private var userLocationStyle: DiscoveryUserLocationStyle? = null
     private val cameraSequence = DiscoveryCameraSequence()
     private var cameraMoving = false
     private val main = Handler(Looper.getMainLooper())
@@ -217,6 +251,32 @@ internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap, 
         }
     }
     override fun remove(id: String) { markers.remove(id)?.remove() }
+    override fun setUserLocation(displayCoordinate: GeoPoint?, headingDegrees: Float?, density: Float, dark: Boolean) {
+        if (displayCoordinate == null) {
+            userLocation?.remove()
+            userLocation = null
+            userLocationStyle = null
+            return
+        }
+        val heading = headingDegrees?.let(::normalizePhoneHeading)
+        val style = DiscoveryUserLocationStyle(density, dark, heading != null)
+        val position = displayCoordinate.amap()
+        val rotation = heading?.let { normalizePhoneHeading(-it) } ?: 0f
+        val marker = userLocation
+        if (marker == null) {
+            val icon = discoveryUserLocationArtwork(style)
+            userLocation = map.addMarker(AmapMarkerOptions().position(position)
+                .icon(AmapBitmapDescriptorFactory.fromBitmap(icon.bitmap)).anchor(.5f, .5f)
+                .setFlat(true).rotateAngle(rotation).zIndex(3f))?.also { it.setInfoWindowEnable(false) }
+        } else {
+            if (marker.position != position) marker.position = position
+            marker.rotateAngle = rotation
+            if (style != userLocationStyle) {
+                marker.setIcon(AmapBitmapDescriptorFactory.fromBitmap(discoveryUserLocationArtwork(style).bitmap))
+            }
+        }
+        userLocationStyle = style
+    }
     override fun restore(position: DiscoveryCameraPosition, onSettled: () -> Unit) {
         if (position.provider != provider) { cameraSequence.cancel(); return onSettled() }
         val canSkip = !cameraMoving && !cameraSequence.isPending
@@ -281,6 +341,9 @@ internal class AmapDiscoveryMapAdapter(context: Context, private val map: AMap, 
         map.setOnMarkerClickListener(null)
         markers.values.forEach { it.remove() }
         markers.clear()
+        userLocation?.remove()
+        userLocation = null
+        userLocationStyle = null
         coordinates.clear()
     }
 }

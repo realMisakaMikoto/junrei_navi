@@ -84,7 +84,7 @@ internal object DiscoveryParser {
             )
         }
         if (points.map { it.rawId }.distinct().size != points.size) invalid()
-        DiscoverySubjectDetails(id, points)
+        DiscoverySubjectDetails(id, points, fromStaticPage = true)
     }.also { if (it.map { cell -> cell.subjectId }.distinct().size != it.size) invalid() }
 
     fun apiDetails(subjectId: Long, document: JsonElement): DiscoverySubjectDetails = DiscoverySubjectDetails(
@@ -111,53 +111,58 @@ internal object DiscoveryParser {
     fun merge(
         snapshot: DiscoverySnapshot,
         details: List<DiscoverySubjectDetails>,
-        detailsVersion: String = snapshot.version,
     ): DiscoverySnapshot {
         val bySubject = details.associateBy { it.subjectId }
         val byId = details.flatMap { subject -> subject.points.map { "${subject.subjectId}::${it.rawId}" to it } }.toMap()
         val points = snapshot.points.mapNotNull { point ->
             val detail = byId[point.id] ?: return@mapNotNull point
-            if (detail.isFolder) return@mapNotNull null
+            val authoritative = bySubject[point.subjectId]?.fromStaticPage == true
+            if (detail.isFolder) return@mapNotNull if (authoritative) null else point
+            if (!authoritative && point.detailsVersion == snapshot.version) {
+                // A legacy missing image can be checked independently of verified text/details.
+                return@mapNotNull if (point.imageMetadataVersion < DISCOVERY_IMAGE_METADATA_VERSION) point.copy(
+                    imageUrl = point.imageUrl ?: detail.imageUrl,
+                    imageMetadataVersion = detail.imageMetadataVersion,
+                ) else point
+            }
+            val groupName = detail.groupName ?: detail.groupId?.let { folderId ->
+                bySubject[point.subjectId]?.points?.find { it.rawId == folderId && it.isFolder }?.let { it.nameCn ?: it.name }
+            }
             point.copy(
-                name = detail.name,
-                nameCn = detail.nameCn,
-                imageUrl = detail.imageUrl,
-                episode = detail.episode,
-                timecodeSeconds = detail.timecodeSeconds,
-                groupId = detail.groupId,
-                groupName = detail.groupName ?: detail.groupId?.let { folderId ->
-                    bySubject[point.subjectId]?.points?.find { it.rawId == folderId && it.isFolder }?.let { it.nameCn ?: it.name }
-                },
-                description = detail.description,
-                source = detail.source,
-                sourceUrl = detail.sourceUrl,
-                detailsVersion = detailsVersion,
+                name = if (authoritative) detail.name else detail.name ?: point.name,
+                nameCn = if (authoritative) detail.nameCn else detail.nameCn ?: point.nameCn,
+                imageUrl = if (authoritative) detail.imageUrl else point.imageUrl ?: detail.imageUrl,
+                episode = if (authoritative) detail.episode else detail.episode ?: point.episode,
+                timecodeSeconds = if (authoritative) detail.timecodeSeconds else detail.timecodeSeconds ?: point.timecodeSeconds,
+                groupId = if (authoritative) detail.groupId else detail.groupId ?: point.groupId,
+                groupName = if (authoritative) groupName else groupName ?: point.groupName,
+                description = if (authoritative) detail.description else detail.description ?: point.description,
+                source = if (authoritative) detail.source else detail.source ?: point.source,
+                sourceUrl = if (authoritative) detail.sourceUrl else detail.sourceUrl ?: point.sourceUrl,
+                detailsVersion = if (authoritative) snapshot.version else "api:${snapshot.version}",
+                imageMetadataVersion = detail.imageMetadataVersion,
             )
         }
         val ids = points.map { it.id }.toHashSet()
         return snapshot.copy(
             points = points,
             subjects = snapshot.subjects.map { it.copy(pointIds = it.pointIds.filter(ids::contains)) },
-            currentSubjectIds = snapshot.currentSubjectIds + bySubject.keys,
-        )
+        ).reconcileCompletion()
     }
 
     fun carryDetails(index: DiscoverySnapshot, old: DiscoverySnapshot?): DiscoverySnapshot {
         if (old == null) return index
         val oldPoints = old.points.associateBy { it.id }
-        return index.copy(points = index.points.map { point ->
-            oldPoints[point.id]?.copy(coordinate = point.coordinate, priority = point.priority) ?: point
-        })
+        return index.copy(
+            points = index.points.map { point ->
+                oldPoints[point.id]?.copy(coordinate = point.coordinate, priority = point.priority) ?: point
+            },
+            loadedPages = if (old.version == index.version) old.loadedPages else emptySet(),
+        ).reconcileCompletion()
     }
 
-    internal fun allowedImage(value: String?): String? {
-        val candidate = value?.let { if (it.startsWith("/") && !it.startsWith("//")) "https://image.anitabi.cn$it" else it }
-        val url = candidate?.toHttpUrlOrNull() ?: return null
-        return candidate.takeIf {
-            url.scheme == "https" && url.host == "image.anitabi.cn" &&
-                url.username.isEmpty() && url.password.isEmpty() && url.port == 443
-        }
-    }
+    internal fun allowedImage(value: String?): String? =
+        cn.anitabi.navigator.data.images.AnitabiImageReference.normalize(value)
 
     private fun allowedSource(value: String?): String? = value?.takeIf {
         val url = it.toHttpUrlOrNull()

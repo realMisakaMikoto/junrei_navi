@@ -43,6 +43,7 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.routing.TourOptimizer
 import cn.anitabi.navigator.data.discovery.*
@@ -51,7 +52,7 @@ import cn.anitabi.navigator.ui.discovery.map.DiscoveryMap
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryMapPadding
 import cn.anitabi.navigator.ui.search.SearchViewModel
 import cn.anitabi.navigator.ui.theme.MapSurfaceTheme
-import coil3.compose.AsyncImage
+import cn.anitabi.navigator.data.images.AnitabiImageVariant
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
 
@@ -73,21 +74,28 @@ fun DiscoveryRoute(
     val locationPermission = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
         viewModel.locate()
     }
-    LaunchedEffect(Unit) { viewModel.initializeLocation(AndroidLocationProvider.hasLocationPermission(context)) }
+    val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+    LaunchedEffect(lifecycleOwner, state.listMode) {
+        if (state.listMode) {
+            viewModel.setMapLocationActive(false)
+            return@LaunchedEffect
+        }
+        lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+            viewModel.setMapLocationActive(true)
+            viewModel.initializeLocation(AndroidLocationProvider.hasLocationPermission(context))
+            try { kotlinx.coroutines.awaitCancellation() } finally { viewModel.setMapLocationActive(false) }
+        }
+    }
     val togglePoint: (DiscoveryPoint) -> Unit = { point ->
         state.data.snapshot?.subjects?.find { it.id == point.subjectId }?.let { subject ->
             selection.toggleDiscoveryPoint(subject.anime, point.toPilgrimagePoint().copy(id = point.rawId))
         }
     }
     val selectVisible: () -> Unit = {
-        state.visibleIds.mapNotNull(state.pointsById::get).groupBy { it.subjectId }.forEach { (id, points) ->
-            state.data.snapshot?.subjects?.find { it.id == id }?.let { subject ->
-                selection.selectDiscoveryPoints(subject.anime, points.map { it.toPilgrimagePoint().copy(id = it.rawId) })
-            }
-        }
+        viewModel.selectViewport(selection::addSelections)
     }
     DiscoveryScreen(
-        state = state, selectedIds = selected.selectedPointIds, privacyReady = privacyReady,
+        state = state.copy(message = selected.errorMessage ?: state.message), selectedIds = selected.selectedPointIds, privacyReady = privacyReady,
         imagesEnabled = imagesEnabled, darkTheme = darkTheme,
         onImagesEnabled = onImagesEnabled, onSearch = onSearch, onSettings = onSettings,
         onProvider = viewModel::selectProvider, onFilter = viewModel::toggleFilter,
@@ -104,13 +112,15 @@ fun DiscoveryRoute(
         onBackPanel = viewModel::backPanel, onPanelPresentation = viewModel::rememberPanel,
         onGroupByEpisode = viewModel::setGroupByEpisode,
         onFitAll = { ids -> viewModel.fitAll(ids) },
-        onVisibleIds = viewModel::setVisibleIds, onOverlap = viewModel::openOverlap,
+        onVisibleIds = {}, onOverlap = viewModel::openOverlap,
         onCameraChanged = viewModel::cameraChanged, onManualMove = viewModel::manualMove,
         onUnavailable = viewModel::mapUnavailable, onSelectVisible = selectVisible,
         onClearSelection = selection::clearSelection, onPlan = onPlan,
         onMapDetached = viewModel::mapDetached,
         onCameraCommandApplied = viewModel::cameraCommandApplied,
         onRetryDetails = viewModel::retrySubjectDetails,
+        onViewportInvalidated = { viewModel.invalidateViewport(it) },
+        onViewportCalculated = { token, ids -> viewModel.viewportCalculated(token, ids) },
     )
 }
 
@@ -151,6 +161,8 @@ internal fun DiscoveryScreen(
     onMapDetached: () -> Unit = {},
     onCameraCommandApplied: (Long, cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition) -> Unit = { _, _ -> },
     onRetryDetails: (Long) -> Unit = { onRefresh() },
+    onViewportInvalidated: (DiscoveryViewportInvalidation) -> Unit = {},
+    onViewportCalculated: (DiscoveryViewportToken, Set<String>) -> Unit = { _, _ -> },
 ) {
     BackHandler(state.panel.canGoBack, onBackPanel)
     MapSurfaceTheme {
@@ -161,6 +173,7 @@ internal fun DiscoveryScreen(
             val sidePanelWidth = minOf(380.dp, maxWidth * 0.44f)
             val systemTop = WindowInsets.statusBars.getTop(density)
             var toolbarHeight by remember { mutableIntStateOf(0) }
+            var imageRetryRevision by remember { mutableIntStateOf(0) }
             var panelWidth by remember { mutableIntStateOf(0) }
             var panelHeight by remember { mutableIntStateOf(0) }
             var measuredPanelKey by remember { mutableStateOf<String?>(null) }
@@ -168,11 +181,30 @@ internal fun DiscoveryScreen(
             val filteredMapPoints = remember(state.mapPoints, state.filters, state.provider) {
                 state.mapPoints.filter { it.provider == state.provider && (state.filters.isEmpty() || it.subjectId in state.filters) }
             }
-            val regionReady = state.provider in state.providerChoices
+            val ownLocation = state.location.takeIf { state.locationProvider == state.provider }
+            val establishedLocationMap = state.establishedLocationProvider == state.provider
+            val regionReady = state.provider in state.providerChoices || establishedLocationMap
+            val mapAvailable = !state.listMode && regionReady && (state.data.indexAvailable || establishedLocationMap)
+            val view = androidx.compose.ui.platform.LocalView.current
+            val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+            val context = LocalContext.current
+            val headingProvider = remember(context, view) {
+                cn.anitabi.navigator.navigation.PhoneHeadingProvider(context) { view.display?.rotation ?: android.view.Surface.ROTATION_0 }
+            }
+            var ownHeading by remember(ownLocation, mapAvailable) { mutableStateOf<Float?>(null) }
+            LaunchedEffect(ownLocation, mapAvailable, privacyReady, state.provider, lifecycleOwner) {
+                ownHeading = null
+                if (ownLocation == null || !mapAvailable || state.provider == MapProvider.AMAP && !privacyReady) return@LaunchedEffect
+                lifecycleOwner.lifecycle.repeatOnLifecycle(androidx.lifecycle.Lifecycle.State.STARTED) {
+                    if (AndroidLocationProvider.hasLocationPermission(context)) {
+                        try { headingProvider.observe(ownLocation).collect { ownHeading = it } } finally { ownHeading = null }
+                    }
+                }
+            }
             LaunchedEffect(state.data.indexAvailable, regionReady, state.provider, privacyReady) {
                 if (state.data.indexAvailable && (!regionReady || state.provider == MapProvider.AMAP && !privacyReady)) onUnavailable()
             }
-            if (!state.listMode && state.data.indexAvailable && regionReady) {
+            if (mapAvailable) {
                 val currentDetached by rememberUpdatedState(onMapDetached)
                 DisposableEffect(Unit) { onDispose { currentDetached() } }
                 val mapModifier = Modifier.fillMaxSize().testTag("discovery-map")
@@ -193,6 +225,13 @@ internal fun DiscoveryScreen(
                     onOverlapClick = onOverlap, onCameraChanged = onCameraChanged,
                     onManualMove = onManualMove, onUnavailable = onUnavailable, modifier = mapModifier,
                     onCameraCommandApplied = onCameraCommandApplied,
+                    imageRetryRevision = imageRetryRevision,
+                    viewportToken = state.viewportToken,
+                    onViewportInvalidated = onViewportInvalidated,
+                    onViewportCalculated = onViewportCalculated,
+                    userLocation = ownLocation,
+                    userLocationProvider = state.locationProvider,
+                    userHeading = ownHeading,
                 )
             } else if (!state.data.indexAvailable) {
                 Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background), contentAlignment = Alignment.Center) {
@@ -215,6 +254,7 @@ internal fun DiscoveryScreen(
                         MapAction("地图显示设置", Icons.Rounded.Layers, { displayMenu = true })
                         DropdownMenu(expanded = displayMenu, onDismissRequest = { displayMenu = false }) {
                             DropdownMenuItem(text = { Text(if (imagesEnabled) "关闭图片标记" else "开启图片标记") }, onClick = { onImagesEnabled(!imagesEnabled); displayMenu = false })
+                            DropdownMenuItem(text = { Text("\u91cd\u8bd5\u5f53\u524d\u56fe\u7247") }, onClick = { imageRetryRevision++; displayMenu = false }, enabled = imagesEnabled && !state.listMode)
                             DropdownMenuItem(text = { Text(if (state.listMode) "显示地图" else "切换地点列表") }, onClick = { onListMode(!state.listMode); displayMenu = false })
                             DropdownMenuItem(text = { Text(if (state.batchMode) "退出批量选点" else "批量选点") }, onClick = { onBatchMode(!state.batchMode); displayMenu = false })
                             DropdownMenuItem(text = { Text("刷新发现数据") }, onClick = { onRefresh(); displayMenu = false })
@@ -226,7 +266,10 @@ internal fun DiscoveryScreen(
             Column(
                 Modifier.align(Alignment.TopCenter).fillMaxWidth()
                     .padding(start = if (sidePanel) sidePanelWidth else 0.dp)
-                    .onSizeChanged { toolbarHeight = it.height }.statusBarsPadding(),
+                    .onSizeChanged {
+                        if (toolbarHeight != it.height) onViewportInvalidated(DiscoveryViewportInvalidation.LAYOUT)
+                        toolbarHeight = it.height
+                    }.statusBarsPadding(),
             ) {
                 Surface(
                     onClick = onSearch, shape = RoundedCornerShape(28.dp), shadowElevation = 2.dp,
@@ -287,7 +330,10 @@ internal fun DiscoveryScreen(
                 state.listMode -> Modifier.fillMaxWidth().padding(top = with(density) { toolbarHeight.toDp() })
                 wide -> Modifier.align(Alignment.TopStart).statusBarsPadding().width(sidePanelWidth)
                 else -> Modifier.align(Alignment.BottomCenter).fillMaxWidth()
-            }.onSizeChanged { panelWidth = it.width; panelHeight = it.height; measuredPanelKey = state.panel.current.key }
+            }.onSizeChanged {
+                if (panelWidth != it.width || panelHeight != it.height) onViewportInvalidated(DiscoveryViewportInvalidation.LAYOUT)
+                panelWidth = it.width; panelHeight = it.height; measuredPanelKey = state.panel.current.key
+            }
             val availableHeight = (maxHeight - with(density) { (if (sidePanel) systemTop else toolbarHeight).toDp() }).coerceAtLeast(80.dp)
             val detent = if (state.listMode || wide) PanelDetent.EXPANDED else state.panel.presentation.detent
             val maxPanelHeight = when (detent) {
@@ -406,6 +452,9 @@ private fun DiscoveryPanelContent(
                 Column(Modifier.weight(1f).padding(horizontal = 12.dp, vertical = 8.dp)) {
                     Text(title, style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis, modifier = Modifier.semantics { heading() })
                     if (panel == DiscoveryPanel.Overview) Text(discoveryDataLabel(state.data), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    state.message?.let { message -> Text(message, style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.semantics { liveRegion = androidx.compose.ui.semantics.LiveRegionMode.Polite }) }
                 }
                 if (canChangeDetent) {
                     if (detent != PanelDetent.COLLAPSED) IconButton(onClick = { changeDetent(-1) }) { Icon(Icons.Rounded.ExpandMore, "收起面板") }
@@ -436,7 +485,7 @@ private fun DiscoveryPanelContent(
                             } }
                             if (state.batchMode) item {
                                 FlowRow(Modifier.padding(horizontal = 16.dp)) {
-                                    TextButton(onClick = onSelectVisible, enabled = state.visibleIds.isNotEmpty()) { Text("视野全选") }
+                                    TextButton(onClick = onSelectVisible, enabled = state.canSelectViewport) { Text("视野全选") }
                                     TextButton(onClick = onClearSelection, enabled = selectedIds.isNotEmpty()) { Text("清空选择") }
                                 }
                             }
@@ -529,7 +578,7 @@ private fun PointDetails(point: DiscoveryPoint, subject: DiscoverySubject?, data
     var showImage by rememberSaveable(point.id) { mutableStateOf(false) }
     Column(Modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         point.imageUrl?.let { url ->
-            AsyncImage(model = url, contentDescription = "地点截图，点击查看大图", contentScale = ContentScale.Crop,
+            DiscoveryImage(url, AnitabiImageVariant.DISPLAY, description = "地点截图，点击查看大图", contentScale = ContentScale.Crop,
                 modifier = Modifier.fillMaxWidth().heightIn(min = 140.dp, max = 240.dp).aspectRatio(16f / 9f).clickable { showImage = true })
         }
         Column(Modifier.padding(horizontal = 20.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -579,10 +628,7 @@ internal fun DiscoveryPointRow(
 
 @Composable
 internal fun DiscoveryThumbnail(url: String?, modifier: Modifier = Modifier) {
-    Box(modifier.clip(RoundedCornerShape(8.dp)).background(MaterialTheme.colorScheme.surfaceContainerHigh), contentAlignment = Alignment.Center) {
-        Icon(Icons.Rounded.Place, null, Modifier.size(22.dp), tint = MaterialTheme.colorScheme.onSurfaceVariant)
-        if (url != null) AsyncImage(model = url, contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize())
-    }
+    DiscoveryImage(url, AnitabiImageVariant.THUMBNAIL, modifier.clip(RoundedCornerShape(8.dp)), compact = true)
 }
 
 @Composable

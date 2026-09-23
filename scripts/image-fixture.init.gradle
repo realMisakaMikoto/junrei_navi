@@ -1,0 +1,15 @@
+gradle.projectsEvaluated {
+    def app = gradle.rootProject.project(':app')
+    app.tasks.register('runControlledImageServer', JavaExec) {
+        dependsOn app.tasks.named('compileDebugUnitTestKotlin')
+        // Host TLS must choose the JVM platform, not the mockable Android framework stubs.
+        classpath = app.tasks.named('testDebugUnitTest').get().classpath.filter { it.name != 'android.jar' }
+        mainClass.set('cn.anitabi.navigator.data.images.ControlledImageServer')
+        def requested = gradle.rootProject.findProperty('imageFixtureDir')
+        if (!requested) throw new GradleException('imageFixtureDir is required')
+        def directory = new File(requested.toString()).canonicalFile
+        def root = new File(gradle.rootProject.projectDir, 'build').canonicalFile
+        if (!directory.toPath().startsWith(root.toPath())) throw new GradleException('Fixture must stay within workspace build')
+        args directory.absolutePath
+    }
+}

@@ -245,7 +245,20 @@ fun PlannerRoute(
         }
     }
     val plan = state.plan
-    if (plan == null && state.restoredTourId != null) {
+    if (state.isRestoringDraft || state.draftRecoveryError != null) {
+        Column(Modifier.fillMaxSize()) {
+            JournalTopBar("\u6062\u590d\u89c4\u5212\u8349\u7a3f", onBack)
+            Column(Modifier.padding(20.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+                if (state.isRestoringDraft) {
+                    LinearProgressIndicator(Modifier.fillMaxWidth())
+                    Text("\u6b63\u5728\u6062\u590d\u5730\u70b9\u4e0e\u89c4\u5212\u8bbe\u7f6e")
+                } else {
+                    Text(state.draftRecoveryError.orEmpty(), color = MaterialTheme.colorScheme.error)
+                    Button(onClick = onBack) { Text("\u8fd4\u56de\u9009\u62e9\u5730\u70b9") }
+                }
+            }
+        }
+    } else if (plan == null && state.restoredTourId != null) {
         Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize()) {
                 cn.anitabi.navigator.ui.components.JournalTopBar("恢复保存的行程", onBack)
@@ -581,7 +594,7 @@ internal fun PlannerSettingsScreen(
             }
             PlannerBottomAction(
                 onClick = onGenerate,
-                enabled = !state.isLoading,
+                enabled = state.canGenerate,
                 label = if (state.isLoading) loadingRouteLabel(state) else "生成路线",
                 isLoading = state.isLoading,
                 icon = Icons.Rounded.Route,

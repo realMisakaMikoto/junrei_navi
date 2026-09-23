@@ -35,6 +35,7 @@ import cn.anitabi.navigator.ui.planner.PlannerRoute
 import cn.anitabi.navigator.ui.planner.PlannerViewModel
 import cn.anitabi.navigator.ui.search.*
 import cn.anitabi.navigator.ui.trips.TripsRoute
+import kotlinx.coroutines.launch
 
 private enum class AppDestination(val route: String, val label: String) {
     MAP("map", "地图"), SEARCH("search", "搜索"), TRIPS("trips", "行程"),
@@ -54,6 +55,7 @@ fun AppShell(
     darkTheme: Boolean,
 ) {
     val controller = rememberNavController()
+    val scope = rememberCoroutineScope()
     val backStack by controller.currentBackStackEntryAsState()
     val route = backStack?.destination?.route ?: "map"
     val showMainNavigation = route in AppDestination.entries.map { it.route }
@@ -86,11 +88,9 @@ fun AppShell(
         }
     }
     val openPlanner: () -> Unit = {
-        selection.combinedPilgrimageData?.let { data ->
-            val points = data.points.filter { it.id in selection.selectedPointIds }
-            if (points.size >= 2) {
-                plannerViewModel.configure(data.anime, points)
-                controller.navigate("planner") { launchSingleTop = true }
+        scope.launch {
+            searchViewModel.preparePlanner()?.let { id ->
+                controller.navigate("planner/$id") { launchSingleTop = true }
             }
         }
     }
@@ -183,8 +183,17 @@ fun AppShell(
                         onMapUnavailable = { map.provider?.let(searchViewModel::handleMapUnavailable) }, onPlan = openPlanner,
                     )
                 }
-                composable("planner") {
-                    val close: () -> Unit = { plannerViewModel.cancelPlanning(); controller.popBackStack(); Unit }
+                composable("planner/{draftId}") { entry ->
+                    LaunchedEffect(entry.arguments?.getString("draftId")) {
+                        plannerViewModel.restoreDraft(entry.arguments?.getString("draftId").orEmpty())
+                    }
+                    val close: () -> Unit = { scope.launch {
+                        plannerViewModel.cancelPlanning()
+                        val plannerState = plannerViewModel.state.value
+                        if (plannerState.draftRecoveryError != null || plannerState.draftId == null || plannerViewModel.flushDraft() != null) {
+                            controller.popBackStack()
+                        }
+                    }; Unit }
                     BackHandler(onBack = close)
                     PlannerRoute(plannerViewModel, close, onStartNavigation = { plan ->
                         navigationViewModel.start(plan); searchViewModel.openNavigation()
@@ -200,7 +209,9 @@ fun AppShell(
                         runningTourId = navigation.plan?.id.takeIf { navigation.isRunning },
                         onBack = { controller.popBackStack() },
                         onResume = { saved -> navigationViewModel.start(saved.plan); searchViewModel.openNavigation(); controller.navigate("navigation") },
-                        onReplan = { saved -> plannerViewModel.configureSaved(saved); controller.navigate("planner") },
+                        onReplan = { saved -> scope.launch {
+                            plannerViewModel.prepareSavedDraft(saved)?.let { id -> controller.navigate("planner/$id") }
+                        } },
                     )
                 }
                 composable("about") {

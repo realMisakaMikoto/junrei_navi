@@ -18,15 +18,21 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.data.images.AnitabiImageReference
+import cn.anitabi.navigator.data.images.AnitabiImageVariant
+import cn.anitabi.navigator.data.images.ImageFailureBackoff
+import cn.anitabi.navigator.data.images.imageFailure
+import cn.anitabi.navigator.ui.discovery.DiscoveryViewportToken
+import cn.anitabi.navigator.ui.discovery.DiscoveryViewportInvalidation
 import cn.anitabi.navigator.ui.map.AmapMapView
 import cn.anitabi.navigator.ui.map.NavigationMapView
 import cn.anitabi.navigator.ui.map.isAmapMapCreationReady
 import coil3.SingletonImageLoader
 import coil3.request.ImageRequest
 import coil3.request.SuccessResult
+import coil3.request.ErrorResult
 import coil3.request.allowHardware
 import coil3.toBitmap
-import java.net.URI
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.coroutineScope
@@ -64,6 +70,13 @@ fun DiscoveryMap(
     onUnavailable: () -> Unit,
     modifier: Modifier = Modifier,
     onCameraCommandApplied: (Long, DiscoveryCameraPosition) -> Unit = { _, _ -> },
+    imageRetryRevision: Int = 0,
+    viewportToken: DiscoveryViewportToken? = null,
+    onViewportInvalidated: (DiscoveryViewportInvalidation) -> Unit = {},
+    onViewportCalculated: (DiscoveryViewportToken, Set<String>) -> Unit = { _, _ -> },
+    userLocation: GeoPoint? = null,
+    userLocationProvider: MapProvider? = null,
+    userHeading: Float? = null,
 ) {
     val context = LocalContext.current
     val fontDensity = LocalDensity.current
@@ -78,17 +91,20 @@ fun DiscoveryMap(
     val currentVisible = rememberUpdatedState(onVisibleIdsChanged)
     val currentPadding = rememberUpdatedState(padding)
     val currentCommand = rememberUpdatedState(cameraCommand)
+    val currentInvalidated = rememberUpdatedState(onViewportInvalidated)
+    val currentViewportCalculated = rememberUpdatedState(onViewportCalculated)
     var adapter by remember(provider) { mutableStateOf<DiscoveryMapAdapter?>(null) }
     var width by remember(provider) { mutableIntStateOf(0) }
     var height by remember(provider) { mutableIntStateOf(0) }
     var cameraRevision by remember(provider) { mutableIntStateOf(0) }
+    var cameraMoving by remember(provider) { mutableStateOf(false) }
     var index by remember(provider) { mutableStateOf<DiscoverySpatialIndex?>(null) }
     var displayPoints by remember(provider) { mutableStateOf<Map<String, GeoPoint>>(emptyMap()) }
     var clusters by remember(provider) { mutableStateOf<List<DiscoveryCluster>>(emptyList()) }
     var clusterToken by remember(provider) { mutableStateOf<DiscoveryCalculationToken?>(null) }
     var clusterInputs by remember(provider) { mutableStateOf<Any?>(null) }
     val calculationInputs = remember(adapter, dataVersion, cameraRevision, points, selectedIds,
-        focusedPointId, padding, imagesEnabled, width, height, fontDensity) { Any() }
+        focusedPointId, padding, imagesEnabled, width, height, fontDensity, viewportToken) { Any() }
     val currentCalculationInputs = rememberUpdatedState(calculationInputs)
     val currentClusters = rememberUpdatedState(clusters)
     val currentDisplayPoints = rememberUpdatedState(displayPoints)
@@ -97,13 +113,32 @@ fun DiscoveryMap(
     val images = remember { object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     } }
-    val failedImages = remember { linkedSetOf<String>() }
+    val failedImages = remember { ImageFailureBackoff() }
     var imageRevision by remember { mutableIntStateOf(0) }
     var consumedCommand by remember(provider) { mutableStateOf<Long?>(null) }
     var pendingCommand by remember(adapter) { mutableStateOf<Long?>(null) }
     var pendingClusterGeometry by remember(adapter) { mutableStateOf<Triple<DiscoveryMapPadding, Int, Int>?>(null) }
     var cameraRequestGeneration by remember(adapter) { mutableIntStateOf(0) }
     var initializedCamera by remember(adapter) { mutableStateOf(false) }
+    var userDisplayCoordinate by remember(adapter) { mutableStateOf<GeoPoint?>(null) }
+
+    LaunchedEffect(adapter, userLocation, userLocationProvider, privacyReady) {
+        userDisplayCoordinate = null
+        val map = adapter ?: return@LaunchedEffect
+        map.setUserLocation(null, null, density, darkTheme)
+        if (userLocation == null || userLocationProvider != provider || provider == MapProvider.AMAP && !privacyReady) return@LaunchedEffect
+        userDisplayCoordinate = runCatching { map.displayCoordinate("__user_location", userLocation) }.getOrNull()
+    }
+    LaunchedEffect(adapter, userDisplayCoordinate, userHeading, density, darkTheme) {
+        // Heading never participates in source conversion, clustering or camera calculation keys.
+        runCatching { adapter?.setUserLocation(userDisplayCoordinate, userHeading, density, darkTheme) }
+    }
+
+    DisposableEffect(padding, width, height, fontDensity, imagesEnabled) {
+        generation.invalidate()
+        currentInvalidated.value(DiscoveryViewportInvalidation.LAYOUT)
+        onDispose { }
+    }
 
     key(provider) {
         when (provider) {
@@ -111,14 +146,20 @@ fun DiscoveryMap(
                 modifier = modifier,
                 onMapReady = { adapter = GoogleDiscoveryMapAdapter(it) },
                 onUnavailable = { currentUnavailable.value() },
-                onViewportSizeChanged = { w, h -> width = w; height = h },
+                onViewportSizeChanged = { w, h ->
+                    if (width != w || height != h) currentInvalidated.value(DiscoveryViewportInvalidation.LAYOUT)
+                    width = w; height = h
+                },
             )
             MapProvider.AMAP -> AmapMapView(
                 modifier = modifier,
                 privacyReady = privacyReady && isAmapMapCreationReady(context),
                 onMapReady = { adapter = AmapDiscoveryMapAdapter(context, it) { currentUnavailable.value() } },
                 onUnavailable = { currentUnavailable.value() },
-                onViewportSizeChanged = { w, h -> width = w; height = h },
+                onViewportSizeChanged = { w, h ->
+                    if (width != w || height != h) currentInvalidated.value(DiscoveryViewportInvalidation.LAYOUT)
+                    width = w; height = h
+                },
             )
         }
     }
@@ -127,8 +168,12 @@ fun DiscoveryMap(
         val map = adapter
         if (map != null) {
             map.listen(
-                onIdle = { cameraRevision++; currentCameraChanged.value(map.camera()) },
-                onMove = { generation.invalidate() },
+                onIdle = { cameraMoving = false; cameraRevision++; currentCameraChanged.value(map.camera()) },
+                onMove = {
+                    cameraMoving = true
+                    generation.invalidate()
+                    currentInvalidated.value(DiscoveryViewportInvalidation.CAMERA)
+                },
                 onGesture = {
                     generation.invalidate()
                     cameraRequestGeneration++
@@ -145,6 +190,8 @@ fun DiscoveryMap(
                     else if (map.camera().zoom >= map.maxZoom - .1f) currentOverlapClick.value(cluster.memberIds)
                     else {
                         val anchor = currentDisplayPoints.value[cluster.anchorId] ?: return@listen
+                        generation.invalidate()
+                        currentInvalidated.value(DiscoveryViewportInvalidation.CAMERA)
                         cameraRequestGeneration++
                         pendingCommand = null
                         val requestGeneration = cameraRequestGeneration
@@ -162,6 +209,7 @@ fun DiscoveryMap(
             pendingCommand = null
             pendingClusterGeometry = null
             generation.invalidate()
+            currentInvalidated.value(DiscoveryViewportInvalidation.MAP_LIFECYCLE)
             // A provider switch may have destroyed the old map lease before this effect.
             runCatching { map?.close() }
         }
@@ -230,6 +278,8 @@ fun DiscoveryMap(
         if (command is DiscoveryCameraCommand.Focus && command.pointId !in displayPoints) return@LaunchedEffect
         try {
             val content = padding.content(width, height)
+            generation.invalidate()
+            currentInvalidated.value(DiscoveryViewportInvalidation.CAMERA)
             val requestGeneration = ++cameraRequestGeneration
             pendingClusterGeometry = null
             consumedCommand = command.sequence
@@ -238,6 +288,7 @@ fun DiscoveryMap(
             val onSettled = {
                 if (cameraRequestGeneration == requestGeneration && currentCommand.value?.sequence == command.sequence) {
                     pendingCommand = null
+                    cameraMoving = false
                     currentCommandApplied.value(command.sequence, map.camera())
                     cameraRevision++
                 }
@@ -263,11 +314,13 @@ fun DiscoveryMap(
         } catch (_: RuntimeException) { pendingCommand = null; currentUnavailable.value() }
     }
 
-    LaunchedEffect(index, calculationInputs) {
+    LaunchedEffect(index, calculationInputs, cameraMoving, pendingCommand) {
         val map = adapter ?: return@LaunchedEffect
         val spatialIndex = index ?: return@LaunchedEffect
         if (spatialIndex.key != DiscoveryIndexKey(dataVersion, provider)) return@LaunchedEffect
         if (width <= 0 || height <= 0) return@LaunchedEffect
+        if (cameraMoving || pendingCommand != null || (cameraCommand != null && consumedCommand != cameraCommand.sequence)) return@LaunchedEffect
+        val selectionToken = viewportToken
         val token = generation.next(spatialIndex.key)
         try {
             delay(300)
@@ -300,34 +353,52 @@ fun DiscoveryMap(
                 clusterToken = token
                 clusterInputs = calculationInputs
                 currentVisible.value(result.flatMap { it.memberIds }.toSet())
+                selectionToken?.let { currentViewportCalculated.value(it, result.flatMap { cluster -> cluster.memberIds }.toSet()) }
             }
         } catch (error: CancellationException) { throw error }
         catch (_: RuntimeException) { currentUnavailable.value() }
     }
 
-    LaunchedEffect(clusters, points, imagesEnabled) {
+    val wantedImages = remember(clusters, imagesEnabled) {
+        if (!imagesEnabled) emptySet() else clusters.filter { it.decoration == DiscoveryMarkerDecoration.IMAGE }
+            .mapNotNull { AnitabiImageReference.request(it.imageUrl, AnitabiImageVariant.THUMBNAIL) }.toSet()
+    }
+    var appliedImageRetry by remember { mutableIntStateOf(imageRetryRevision) }
+    LaunchedEffect(wantedImages, imageRetryRevision, imagesEnabled) {
         if (!imagesEnabled) return@LaunchedEffect
-        val wanted = clusters.filter { it.decoration == DiscoveryMarkerDecoration.IMAGE }
-            .mapNotNull { it.imageUrl?.takeIf(::allowedDiscoveryImage) }.toSet()
+        val wanted = wantedImages
+        failedImages.retain(wanted)
+        if (appliedImageRetry != imageRetryRevision) {
+            failedImages.retry(wanted)
+            appliedImageRetry = imageRetryRevision
+        }
         val slots = Semaphore(3)
-        coroutineScope {
-            wanted.forEach { url ->
-                if (images.get(url) != null || url in failedImages) return@forEach
-                launch {
-                    slots.withPermit {
+        // A successful large viewport must not endlessly refetch images evicted by the LRU.
+        val completed = wanted.filterTo(hashSetOf()) { images.get(it) != null }
+        while (true) {
+            coroutineScope {
+                wanted.forEach { url ->
+                    if (url in completed || failedImages.remainingMillis(url, SystemClock.elapsedRealtime()) > 0) return@forEach
+                    launch { slots.withPermit {
                         val result = SingletonImageLoader.get(context).execute(
                             ImageRequest.Builder(context).data(url).size(240, 180).allowHardware(false).build(),
                         )
+                        ensureActive()
                         if (result is SuccessResult) {
+                            completed.add(url)
+                            failedImages.clear(url)
                             images.put(url, result.image.toBitmap())
                             imageRevision++
-                        } else {
-                            failedImages.add(url)
-                            if (failedImages.size > 256) failedImages.remove(failedImages.first())
+                        } else if (result is ErrorResult) {
+                            if (result.throwable is CancellationException) throw result.throwable
+                            failedImages.record(url, imageFailure(result.throwable), SystemClock.elapsedRealtime())
                         }
-                    }
+                    } }
                 }
             }
+            val remaining = wanted - completed
+            if (remaining.isEmpty()) break
+            delay(remaining.minOf { failedImages.remainingMillis(it, SystemClock.elapsedRealtime()) }.coerceAtLeast(1_000))
         }
     }
 
@@ -350,7 +421,8 @@ fun DiscoveryMap(
                 if (!current()) return@LaunchedEffect
                 val point = metadata[cluster.anchorId] ?: return@forEachCooperatively
                 val coordinate = displayPoints[cluster.anchorId] ?: return@forEachCooperatively
-                val image = cluster.imageUrl?.let(images::get).takeIf { cluster.decoration == DiscoveryMarkerDecoration.IMAGE }
+                val image = AnitabiImageReference.request(cluster.imageUrl, AnitabiImageVariant.THUMBNAIL)
+                    ?.let(images::get).takeIf { cluster.decoration == DiscoveryMarkerDecoration.IMAGE }
                 val appearance = MarkerAppearance(cluster.memberIds, cluster.anchorId, coordinate, cluster.selected,
                     cluster.decoration, point.colorArgb, point.title, image, darkTheme, density, fontDensity.fontScale)
                 if (appliedMarkers[cluster.id] != appearance) {
@@ -371,9 +443,6 @@ private data class MarkerAppearance(
     val density: Float, val fontScale: Float,
 )
 
-private fun allowedDiscoveryImage(url: String): Boolean = runCatching {
-    URI(url).let { it.scheme == "https" && it.host == "image.anitabi.cn" && it.userInfo == null && (it.port == -1 || it.port == 443) }
-}.getOrDefault(false)
 
 /** Bound each stretch of SDK work; no work is dropped to meet the frame budget. */
 private suspend inline fun <T> List<T>.forEachCooperatively(action: (T) -> Unit) {

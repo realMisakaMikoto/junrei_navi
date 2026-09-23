@@ -61,6 +61,16 @@ class DiscoveryUiContractTest {
     val composeRule = createComposeRule()
 
     @Test
+    fun locationOrDraftFailureIsVisibleWithoutExpandingThePanel() {
+        val message = "Synthetic draft could not be saved; retry after checking storage"
+        val harness = Harness(initial = fixture().copy(message = message))
+        show(harness)
+        composeRule.onNodeWithText(message).assertIsDisplayed()
+        composeRule.onNodeWithTag("discovery-panel-list").assertDoesNotExist()
+        composeRule.onNodeWithContentDescription("\u5b9a\u4f4d").assertIsDisplayed()
+    }
+
+    @Test
     fun phoneStartsCollapsedAndEachDetentKeepsOneContentPanel() {
         val harness = Harness()
         show(harness)
@@ -128,7 +138,7 @@ class DiscoveryUiContractTest {
         composeRule.onNodeWithTag("subject-filter-101").performClick().assertIsSelected()
         composeRule.onNodeWithText("\u9ad8\u5fb7\u5730\u56fe").performClick().assertIsSelected()
         composeRule.runOnIdle {
-            harness.state = harness.state.copy(visibleIds = setOf("102::point-0"))
+            harness.state = harness.state.withViewport(setOf("102::point-0"))
         }
         composeRule.onNodeWithTag("subject-filter-101").assertIsDisplayed().assertIsSelected()
         composeRule.onNodeWithText("\u5df2\u9009 2 \u4e2a\u5730\u70b9").assertIsDisplayed()
@@ -143,18 +153,18 @@ class DiscoveryUiContractTest {
     @Test
     fun viewportCountsChangeWhileSelectedFilterStaysPinnedAndTripSelectionSurvives() {
         val selected = setOf("101::point-0", "102::point-0")
-        val harness = Harness(initial = fixture().copy(
-            visibleIds = setOf("101::point-0", "101::point-1", "102::point-0"),
+        val harness = Harness(initial = fixture().withViewport(
+            setOf("101::point-0", "101::point-1", "102::point-0"),
         ), selected = selected)
         show(harness)
         composeRule.onNodeWithTag("subject-filter-101").assert(hasText(" \u00b7 2")).performClick().assertIsSelected()
         composeRule.onNodeWithTag("subject-filter-102").assert(hasText(" \u00b7 1"))
 
-        composeRule.runOnIdle { harness.state = harness.state.copy(visibleIds = setOf("101::point-2")) }
+        composeRule.runOnIdle { harness.state = harness.state.withViewport(setOf("101::point-2")) }
         composeRule.onNodeWithTag("subject-filter-101").assert(hasText(" \u00b7 1")).assertIsSelected()
         composeRule.onNodeWithTag("subject-filter-102").assertDoesNotExist()
         composeRule.runOnIdle {
-            harness.state = harness.state.copy(visibleIds = setOf("102::point-4", "102::point-5", "102::point-6"))
+            harness.state = harness.state.withViewport(setOf("102::point-4", "102::point-5", "102::point-6"))
         }
         val pinned = composeRule.onNodeWithTag("subject-filter-101")
             .assertIsDisplayed().assertIsSelected().assert(hasText(" \u00b7 0")).fetchSemanticsNode().boundsInRoot
@@ -187,7 +197,7 @@ class DiscoveryUiContractTest {
         val selected = setOf(points.first().id)
         val harness = Harness(initial = base.copy(
             data = base.data.copy(snapshot = snapshot), pointsById = points.associateBy { it.id },
-            visibleIds = setOf(points.first().id), providerChoices = setOf(MapProvider.GOOGLE),
+            viewportSnapshot = DiscoveryViewportSnapshot(base.viewportToken, setOf(points.first().id)), providerChoices = setOf(MapProvider.GOOGLE),
             panel = base.panel.remember(PanelPresentation(PanelDetent.EXPANDED)),
         ), selected = selected)
         show(harness, height = 840.dp)
@@ -449,6 +459,10 @@ class DiscoveryUiContractTest {
     }
 
     companion object {
+        private fun DiscoveryUiState.withViewport(ids: Set<String>): DiscoveryUiState {
+            val token = viewportToken.copy(provider = provider, dataVersion = mapDataVersion)
+            return copy(viewportToken = token, viewportSnapshot = DiscoveryViewportSnapshot(token, ids))
+        }
         private const val EXPAND = "\u5c55\u5f00\u9762\u677f"
         private const val COLLAPSE = "\u6536\u8d77\u9762\u677f"
         private const val BACK = "\u8fd4\u56de\u4e0a\u4e00\u5c42"
@@ -469,7 +483,8 @@ class DiscoveryUiContractTest {
             val snapshot = DiscoverySnapshot("fixture", 1, 2, subjects, points, loadedPages = setOf(0), endVersionVerified = true)
             return DiscoveryUiState(
                 data = DiscoveryState(snapshot = snapshot, initialized = true),
-                pointsById = points.associateBy { it.id }, visibleIds = points.map { it.id }.toSet(),
+                pointsById = points.associateBy { it.id },
+                viewportSnapshot = DiscoveryViewportSnapshot(DiscoveryViewportToken(), points.map { it.id }.toSet()),
                 providerChoices = setOf(MapProvider.GOOGLE, MapProvider.AMAP),
             )
         }

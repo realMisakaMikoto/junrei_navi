@@ -426,7 +426,7 @@ private fun SelectedAnimeStrip(
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             AsyncImage(
-                                model = anime.imageUrl,
+                                model = cn.anitabi.navigator.data.images.AnitabiImageReference.displayModel(anime.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
                                 contentDescription = "$title 封面",
                                 modifier = Modifier
                                     .size(width = 34.dp, height = 46.dp)
@@ -505,7 +505,7 @@ private fun LazyListScope.animeResults(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(
-                    model = anime.imageUrl,
+                    model = cn.anitabi.navigator.data.images.AnitabiImageReference.displayModel(anime.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
                     contentDescription = "$title 封面",
                     modifier = Modifier
                         .size(width = 60.dp, height = 80.dp)
@@ -967,7 +967,7 @@ private fun PointList(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 AsyncImage(
-                    model = point.imageUrl,
+                    model = cn.anitabi.navigator.data.images.AnitabiImageReference.request(point.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
                     contentDescription = "${point.name} 巡礼截图",
                     modifier = Modifier
                         .size(72.dp)

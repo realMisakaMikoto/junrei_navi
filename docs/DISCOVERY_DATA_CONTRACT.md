@@ -1,5 +1,11 @@
 # Discovery data contract
 
+## September 23 repair clarification
+
+The index owns point identity, WGS84 coordinates and generation membership. A validated static page can verify same-generation details; an unversioned subject API cannot replace that authority or remove indexed points through an unverified folder flag. Successful HTTP completion is separate from subject coverage, validated pages and final index consistency. Same-generation refresh rebuilds membership from the fresh index and retains only consistent page completion records.
+
+Image metadata rule version 1 is independent of the upstream generation. The shared resolver repairs only the initial `/images/<points|user|bangumi>/` prefix on the already approved image host, keeps the complete object suffix and version query, and validates unsafe source syntax before URL canonicalization. Request boundaries repair recognizable legacy stored references without clearing user data; legacy null metadata remains eligible for a source refresh. Thumbnail requests use h160; detail/viewer requests start at h360; original bytes require explicit action. Unknown query semantics are preserved. See [image diagnosis](IMAGE_LOADING_DIAGNOSIS.md) for actual evidence and remaining live-sample/UI limits.
+
 Verified against public primary sources on 2026-09-15, 2026-09-16 and 2026-09-20. Samples were inspected in memory. This document records structure and aggregate checks only; it contains no source titles, coordinates, search terms, or response bodies.
 
 ## Authorized endpoints

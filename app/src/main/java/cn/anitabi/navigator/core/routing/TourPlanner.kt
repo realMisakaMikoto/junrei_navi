@@ -78,7 +78,10 @@ class TourPlanner(
         }
         val regionalRouting = resolveRouting(request.mode, request.start, request.selectedPoints)
         val routingContext = regionalRouting.routingContext()
-        val orderedStops = orderRoadStops(
+        val orderedStops = explicitOrder(
+            request.manualOrderPointIds, request.selectedPoints, request.startPointId,
+            request.endPolicy, request.fixedEndPointId,
+        )?.filterNot { it.id == request.startPointId } ?: orderRoadStops(
             start = request.start,
             stops = stops,
             mode = request.mode,
@@ -138,7 +141,10 @@ class TourPlanner(
                 ?: throw IllegalArgumentException("Start point must be selected")
         }
         val stops = request.selectedPoints.filterNot { it.id == request.startPointId }
-        val orderedStops = optimizer.approximateGlobalOrder(
+        val orderedStops = explicitOrder(
+            request.manualOrderPointIds, request.selectedPoints, request.startPointId,
+            request.endPolicy, request.fixedEndPointId,
+        )?.filterNot { it.id == request.startPointId } ?: optimizer.approximateGlobalOrder(
             start = request.start,
             points = stops,
             endPolicy = request.endPolicy,
@@ -928,7 +934,10 @@ class TourPlanner(
             request.selectedPoints.singleOrNull { it.id == id }
                 ?: throw IllegalArgumentException("Start point must be selected")
         }
-        val orderedPoints = if (selectedStart == null) {
+        val orderedPoints = explicitOrder(
+            request.manualOrderPointIds, request.selectedPoints, request.startPointId,
+            request.endPolicy, request.fixedEndPointId,
+        ) ?: if (selectedStart == null) {
             optimizer.approximateGlobalOrder(
                 start = request.start,
                 points = request.selectedPoints,
@@ -1221,6 +1230,7 @@ data class RoadPlanRequest(
     val objective: RouteObjective,
     val endPolicy: EndPolicy,
     val fixedEndPointId: String? = null,
+    val manualOrderPointIds: List<String>? = null,
 )
 
 data class TransitPlanRequest(
@@ -1230,6 +1240,7 @@ data class TransitPlanRequest(
     val startPointId: String? = null,
     val endPolicy: EndPolicy,
     val fixedEndPointId: String? = null,
+    val manualOrderPointIds: List<String>? = null,
     val timeMode: TransitTimeMode,
     val anchorTime: String? = null,
     val routingPreference: TransitRoutingPreference = TransitRoutingPreference.RECOMMENDED,
@@ -1301,4 +1312,22 @@ fun classifyTransitExecutionStrategy(
     } else {
         TransitExecutionStrategy.IN_APP_GOOGLE_ROUTES
     }
+}
+
+/** Explicit user order bypasses only optimization, retaining regional checks and normal route windows. */
+private fun explicitOrder(
+    ids: List<String>?,
+    points: List<PilgrimagePoint>,
+    startPointId: String?,
+    endPolicy: EndPolicy,
+    fixedEndPointId: String?,
+): List<PilgrimagePoint>? {
+    if (ids == null) return null
+    val byId = points.associateBy(PilgrimagePoint::id)
+    require(ids.size == points.size && ids.toSet() == byId.keys) { "Manual order must contain every selected point exactly once" }
+    require(startPointId == null || ids.firstOrNull() == startPointId) { "Manual order must preserve the selected start" }
+    require(endPolicy != EndPolicy.FIXED || fixedEndPointId != null && ids.lastOrNull() == fixedEndPointId) {
+        "Manual order must preserve the fixed end"
+    }
+    return ids.map(byId::getValue)
 }

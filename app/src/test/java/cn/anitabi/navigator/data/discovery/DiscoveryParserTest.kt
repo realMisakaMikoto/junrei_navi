@@ -40,12 +40,18 @@ class DiscoveryParserTest {
         assertEquals("0", merged.points.first().episode)
     }
 
-    @Test fun foldersAreNotNavigationPoints() {
+    @Test fun staticPageFoldersAreNotNavigationPoints() {
         val index = DiscoveryParser.index(indexFixture())
-        val api = Json.parseToJsonElement("""[{"id":"shared","isFolder":true}]""")
-        val merged = DiscoveryParser.merge(index, listOf(DiscoveryParser.apiDetails(1, api)))
+        val page = Json.parseToJsonElement("""[[1,[],[["shared",0,0,1,0,0,0,0,0,0,0,0,0,0,0]],100]]""")
+        val merged = DiscoveryParser.merge(index, DiscoveryParser.page(page))
         assertEquals(2, merged.points.size)
         assertTrue(merged.subjects.first().pointIds.isEmpty())
+    }
+
+    @Test fun apiFoldersCannotRemoveIndexedNavigationPoints() {
+        val index = DiscoveryParser.index(indexFixture())
+        val api = Json.parseToJsonElement("""[{"id":"shared","isFolder":true}]""")
+        assertEquals(index, DiscoveryParser.merge(index, listOf(DiscoveryParser.apiDetails(1, api))))
     }
 
     @Test fun folderDirectoryNamesAreResolvedWithoutAddingDirectoryMarkers() {
@@ -92,9 +98,17 @@ class DiscoveryParserTest {
     @Test fun refreshedDetailsClearFieldsThatTheNewGenerationRemoved() {
         val index = DiscoveryParser.index(indexFixture())
         val old = DiscoveryParser.merge(index, DiscoveryParser.page(pageFixture(listOf(1, 2, 3))))
-        val empty = Json.parseToJsonElement("""[{"id":"shared"}]""")
-        val refreshed = DiscoveryParser.merge(old, listOf(DiscoveryParser.apiDetails(1, empty)))
+        val emptyPage = Json.parseToJsonElement("""[[1,[],[["shared",0,0,0,0,0,0,0,0,0,0,0,0,0,0]],100]]""")
+        val refreshed = DiscoveryParser.merge(old, DiscoveryParser.page(emptyPage))
         assertNull(refreshed.points.first().imageUrl)
         assertNull(refreshed.points.first().description)
+    }
+
+    @Test fun apiCannotClaimStaticAuthorityEvenWhenCallerOmitsVersion() {
+        val index = DiscoveryParser.index(indexFixture())
+        val verified = DiscoveryParser.merge(index, DiscoveryParser.page(pageFixture(listOf(1, 2, 3))))
+        val sparse = Json.parseToJsonElement("""[{"id":"shared","name":"API replacement"}]""")
+        val merged = DiscoveryParser.merge(verified, listOf(DiscoveryParser.apiDetails(1, sparse)))
+        assertEquals(verified, merged)
     }
 }

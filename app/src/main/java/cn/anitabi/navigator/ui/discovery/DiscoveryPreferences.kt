@@ -7,10 +7,10 @@ import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
 
 /** Stores the user's view, independently of public data and itinerary coordinates. */
-class DiscoveryPreferences(context: Context) {
+class DiscoveryPreferences(context: Context) : DiscoveryCameraStore {
     private val preferences = context.getSharedPreferences("discovery_view", Context.MODE_PRIVATE)
 
-    fun lastCamera(): DiscoveryCameraPosition? = runCatching {
+    override fun lastCamera(): DiscoveryCameraPosition? = runCatching {
         val provider = preferences.getString("provider", null)?.let(MapProvider::valueOf) ?: return null
         DiscoveryCameraPosition(
             center = GeoPoint(
@@ -24,7 +24,7 @@ class DiscoveryPreferences(context: Context) {
         ).takeIf { it.zoom.isFinite() && it.bearing.isFinite() && it.tilt.isFinite() }
     }.getOrNull()
 
-    fun saveCamera(camera: DiscoveryCameraPosition) {
+    override fun saveCamera(camera: DiscoveryCameraPosition) {
         preferences.edit {
             putString("provider", camera.provider.name)
             putLong("latitude", camera.center.latitude.toBits())

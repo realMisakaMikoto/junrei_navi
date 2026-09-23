@@ -116,8 +116,7 @@ class DiscoveryRepository(
         val request = synchronized(workLock) {
             if (!foreground) return
             val snapshot = state.value.snapshot ?: return
-            if (snapshot.subjects.none { it.id == subjectId } || subjectId in snapshot.currentSubjectIds) return
-            if (snapshot.points.filter { it.subjectId == subjectId }.all { it.detailsVersion == snapshot.version }) return
+            if (snapshot.subjects.none { it.id == subjectId } || !snapshot.needsSubjectDetails(subjectId)) return
             subjectRequests[subjectId]?.takeUnless { it.isCancelled || it.isCompleted } ?: scope.async(start = CoroutineStart.LAZY) {
                 val version = snapshot.version
                 mutableState.update { it.copy(loadingSubjectIds = it.loadingSubjectIds + subjectId) }
@@ -126,7 +125,7 @@ class DiscoveryRepository(
                     snapshotMutex.withLock {
                         val current = state.value.snapshot ?: return@withLock
                         // The API carries no index generation; page validation must still confirm freshness.
-                        if (current.version == version) publish(DiscoveryParser.merge(current, listOf(detail), "api:$version"))
+                        if (current.version == version) publish(DiscoveryParser.merge(current, listOf(detail)))
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -154,7 +153,8 @@ class DiscoveryRepository(
         val index = request { DiscoveryParser.index(source.index(token)) }
         snapshotMutex.withLock {
             val old = state.value.snapshot
-            val next = if (old?.version == index.version) old else DiscoveryParser.carryDetails(index, old)
+            // The fresh index restores members removed by legacy API folder responses as well.
+            val next = DiscoveryParser.carryDetails(index, old)
             publish(next.copy(checkedAtMillis = now(), endVersionVerified = false))
         }
         var pageFailure = false
@@ -199,7 +199,7 @@ class DiscoveryRepository(
         currentCoroutineContext().ensureActive()
         if (!foreground) throw CancellationException("Discovery is paused")
         lastRequestAt = now()
-        block()
+        block().also { currentCoroutineContext().ensureActive() }
     }
 
     private suspend fun publish(snapshot: DiscoverySnapshot) {

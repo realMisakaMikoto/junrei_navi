@@ -3,7 +3,10 @@ package cn.anitabi.navigator.data.discovery
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.PilgrimagePoint
+import cn.anitabi.navigator.data.images.AnitabiImageReference
 import kotlinx.serialization.Serializable
+
+internal const val DISCOVERY_IMAGE_METADATA_VERSION = AnitabiImageReference.RULE_VERSION
 
 @Serializable
 data class DiscoverySubject(
@@ -34,6 +37,7 @@ data class DiscoveryPoint(
     val source: String? = null,
     val sourceUrl: String? = null,
     val detailsVersion: String? = null,
+    val imageMetadataVersion: Int = 0,
 ) {
     val id: String get() = "$subjectId::$rawId"
     val displayName: String get() = nameCn ?: name ?: "\u672a\u547d\u540d\u5730\u70b9"
@@ -67,6 +71,34 @@ data class DiscoverySnapshot(
     val detailsCurrent: Boolean get() = endVersionVerified &&
         loadedPages.size == pageCount &&
         points.all { it.detailsVersion == version }
+
+    /** API coverage is useful for retry decisions, but does not verify a static generation. */
+    fun needsSubjectDetails(subjectId: Long): Boolean = points.any {
+        it.subjectId == subjectId &&
+            (it.detailsVersion != version && it.detailsVersion != "api:$version" ||
+                it.imageMetadataVersion < DISCOVERY_IMAGE_METADATA_VERSION)
+    }
+
+    internal fun reconcileCompletion(): DiscoverySnapshot {
+        val byId = points.associateBy { it.id }
+        val verifiedSubjects = subjects.filter { subject ->
+            subject.pointIds.all { byId[it]?.detailsVersion == version }
+        }.mapTo(hashSetOf()) { it.id }
+        val completeSubjects = subjects.filter { subject ->
+            subject.pointIds.all {
+                val point = byId[it]
+                point != null && (point.detailsVersion == version || point.detailsVersion == "api:$version")
+            }
+        }.mapTo(hashSetOf()) { it.id }
+        val validPages = loadedPages.filterTo(linkedSetOf()) { page ->
+            page in 0 until pageCount && subjects.drop(page * pageSize).take(pageSize).all { it.id in verifiedSubjects }
+        }
+        return copy(
+            loadedPages = validPages,
+            currentSubjectIds = completeSubjects,
+            endVersionVerified = endVersionVerified && validPages.size == pageCount,
+        )
+    }
 }
 
 enum class DiscoveryError { NETWORK, INVALID_DATA, CACHE, VERSION_CHANGED }
@@ -97,9 +129,11 @@ internal data class DiscoveryPointDetail(
     val source: String? = null,
     val sourceUrl: String? = null,
     val isFolder: Boolean = false,
+    val imageMetadataVersion: Int = DISCOVERY_IMAGE_METADATA_VERSION,
 )
 
 internal data class DiscoverySubjectDetails(
     val subjectId: Long,
     val points: List<DiscoveryPointDetail>,
+    val fromStaticPage: Boolean = false,
 )

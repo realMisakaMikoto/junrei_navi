@@ -69,6 +69,25 @@ class SavedTourPlannerTest {
     }
 
     @Test
+    fun `opening saved planning inputs is passive until user requests refresh`() = runTest(dispatcher) {
+        val fixture = fixture()
+        val saved = fixture.store(plan())
+        fixture.viewModel.configureSaved(saved)
+        advanceUntilIdle()
+        assertFalse(fixture.viewModel.state.value.isLoading)
+        assertNull(fixture.viewModel.state.value.plan)
+        assertTrue(fixture.viewModel.state.value.canGenerate)
+        assertTrue(fixture.road.requests.isEmpty())
+        assertTrue(fixture.transit.queries.isEmpty())
+        assertEquals(0, fixture.dao.writes)
+
+        fixture.viewModel.generate()
+        advanceUntilIdle()
+        assertNotNull(fixture.viewModel.state.value.plan)
+        assertEquals(1, fixture.road.requests.size)
+    }
+
+    @Test
     fun `saved road refresh keeps original start manual order settings and completed progress`() = runTest(dispatcher) {
         val fixture = fixture()
         val original = plan().copy(state = NavigationState.COMPLETED)
@@ -83,6 +102,7 @@ class SavedTourPlannerTest {
         val entityBefore = fixture.dao.entities.getValue(original.id)
 
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
 
         val loading = fixture.viewModel.state.value
         assertTrue(loading.isLoading)
@@ -126,6 +146,7 @@ class SavedTourPlannerTest {
         val entityBefore = fixture.dao.entities.getValue(original.id)
 
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         advanceUntilIdle()
 
         val state = fixture.viewModel.state.value
@@ -159,6 +180,7 @@ class SavedTourPlannerTest {
         fixture.dao.writes = 0
 
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         advanceUntilIdle()
 
         assertEquals(NavigationState.COMPLETED, fixture.viewModel.state.value.plan?.state)
@@ -172,6 +194,7 @@ class SavedTourPlannerTest {
         val fixture = fixture()
         val original = plan().copy(mode = TravelMode.TRANSIT, transitTimeMode = TransitTimeMode.NOW)
         fixture.viewModel.configureSaved(fixture.store(original))
+        fixture.viewModel.generate()
         advanceUntilIdle()
 
         assertEquals("2026-09-19T10:00:00+08:00", fixture.transit.queries.first().departureTime)
@@ -191,6 +214,7 @@ class SavedTourPlannerTest {
         fixture.road.failure = ApiException.BackendUnavailable()
 
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         advanceUntilIdle()
 
         assertNull(fixture.viewModel.state.value.plan)
@@ -217,6 +241,7 @@ class SavedTourPlannerTest {
         fixture.road.release = CompletableDeferred()
 
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         runCurrent()
         assertEquals(1, fixture.road.requests.size)
         fixture.viewModel.configure(Anime(2, "TEST_ONLY_NEW"), saved.plan.selectedPoints)
@@ -263,6 +288,7 @@ class SavedTourPlannerTest {
         val saved = fixture.store(original)
         fixture.road.release = CompletableDeferred()
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         runCurrent()
         val newerProgress = NavigationProgress(tourId = original.id, state = NavigationState.ENDED)
         fixture.repository.saveUnresolved(original, newerProgress)
@@ -284,6 +310,7 @@ class SavedTourPlannerTest {
         val saved = fixture.store(original)
         fixture.road.release = CompletableDeferred()
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         runCurrent()
         val edited = original.copy(orderedPoints = original.orderedPoints.reversed())
         fixture.repository.saveUnresolved(edited)
@@ -311,6 +338,7 @@ class SavedTourPlannerTest {
         val readRelease = CompletableDeferred<Unit>()
         fixture.dao.readRelease = readRelease
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         runCurrent()
         assertTrue(fixture.viewModel.state.value.isLoading)
         assertNull(fixture.dao.readRelease)
@@ -356,6 +384,7 @@ class SavedTourPlannerTest {
         val saved = fixture.store(plan()).copy(routingError = StoredRoutingError.REGION_UNRESOLVED)
 
         fixture.viewModel.configureSaved(saved)
+        fixture.viewModel.generate()
         advanceUntilIdle()
 
         assertNull(fixture.viewModel.state.value.plan)

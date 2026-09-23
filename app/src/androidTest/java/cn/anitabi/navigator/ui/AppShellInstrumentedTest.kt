@@ -83,9 +83,17 @@ class AppShellInstrumentedTest {
     private var originalAmapReady = false
     private var originalAppearance = AppAppearance.SYSTEM
     private var originalCamera: DiscoveryCameraPosition? = null
+    private var originalDraft: cn.anitabi.navigator.core.model.PlannerDraft? = null
 
     @Before
     fun prepareSyntheticApp() {
+        // Each independent UI case starts empty; persistent-draft restoration is tested separately.
+        kotlinx.coroutines.runBlocking {
+            val drafts = application.container.plannerDraftRepository
+            originalDraft = drafts.awaitLoaded().draft
+            drafts.clear()
+            check(drafts.flush())
+        }
         originalOnboarding = settings.hasCompletedOnboarding()
         originalAppearance = settings.appearance()
         originalCamera = application.container.discoveryPreferences.lastCamera()
@@ -105,6 +113,11 @@ class AppShellInstrumentedTest {
 
     @After
     fun restoreSettings() {
+        kotlinx.coroutines.runBlocking {
+            val drafts = application.container.plannerDraftRepository
+            originalDraft?.let(drafts::replace) ?: drafts.clear()
+            check(drafts.flush())
+        }
         settings.setAppearance(originalAppearance)
         application.getSharedPreferences(AppSettingsStore.PREFERENCES_NAME, Context.MODE_PRIVATE)
             .edit().putBoolean(AppSettingsStore.PREFERENCE_ONBOARDING_COMPLETE, originalOnboarding).commit()

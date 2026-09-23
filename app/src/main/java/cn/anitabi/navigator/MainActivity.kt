@@ -33,7 +33,7 @@ class MainActivity : ComponentActivity() {
         SearchViewModel.Factory(
             container.bangumiApi,
             container.pilgrimageRepository,
-            container.tourRepository,
+            container.plannerDraftRepository,
         )
     }
     private val plannerViewModel by viewModels<PlannerViewModel> {
@@ -41,6 +41,7 @@ class MainActivity : ComponentActivity() {
             planner = container.tourPlanner,
             repository = container.tourRepository,
             locationProvider = container.locationProvider,
+            draftRepository = container.plannerDraftRepository,
         )
     }
     private val navigationViewModel by viewModels<NavigationViewModel> {
@@ -53,6 +54,9 @@ class MainActivity : ComponentActivity() {
                     container.discoveryRepository, container.discoveryPreferences,
                     container.locationProvider, container.territoryClassifier::classify,
                     createSavedStateHandle(),
+                    freshLocation = {
+                        container.locationProvider.currentLocationFix(maxAgeMillis = 30_000, maxAccuracyMeters = 5_000.0).coordinate
+                    },
                 )
             }
         }

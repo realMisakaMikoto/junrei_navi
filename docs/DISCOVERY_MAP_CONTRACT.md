@@ -1,5 +1,13 @@
 # Discovery map SDK contract
 
+## September 23 selection and own-location clarification
+
+Viewport selection is valid only for its provider, data/member, filter, camera and measured-layout generation. Movement, commands, preparation, layout change, list mode and disposal invalidate it immediately. The ViewModel rejects late results and performs one selection update from the latest valid immutable snapshot; retained old markers confer no selection authority.
+
+The new own-location indicator is separate from catalog markers and clustering. Only a freshly qualified WGS84 fix classified for the current provider reaches the adapter; AMap display conversion remains official and never overwrites persisted WGS84. Passive location updates and phone-heading changes do not move the camera. Heading is nullable, corrected for screen rotation and local magnetic declination, and stops with the map lifecycle. Google marker rotation is clockwise; AMap is counterclockwise.
+
+The Navigation SDK's GoogleMap custom location source does not function, so native my-location cannot serve as a region-filtered shortcut. Official references, the date of review and remaining native/physical-device verification are in [repair acceptance](FRONTEND_FIX_ACCEPTANCE.md). No Maps SDK dependency or route API was added for this feature.
+
 Reviewed before implementation on 2026-09-15; padding and cached SDK APIs rechecked on 2026-09-17. This document contains no source point coordinates, titles, queries, credentials, route content, or endpoint secrets.
 
 ## Official sources and implementation consequences

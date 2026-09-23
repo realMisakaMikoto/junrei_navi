@@ -1,5 +1,11 @@
 # Frontend redesign requirement and evidence matrix
 
+## September 23 repair work is still open
+
+The user supplied a new F1-F7 repair plan after the accepted redesign, and added the missing own-location dot/phone-heading indicator. Its live checklist is [FRONTEND_FIX_ACCEPTANCE.md](FRONTEND_FIX_ACCEPTANCE.md), with separate [image evidence](IMAGE_LOADING_DIAGNOSIS.md) and [performance evidence](DISCOVERY_LOAD_PERFORMANCE.md). The historical matrix below does not certify these new changes. Each repair commit needs its own CI and protected signed acceptance; a local Debug pass does not satisfy those gates. Draft PR #37 remains open; no merge/release/deployment occurred.
+
+All prior API 26 native AMap and coordinate-baseline evidence limits continue to apply.
+
 Audit date: 2026-09-21. Scope: the complete approved September 15 frontend brief, including its Swift-inspired panel model, all existing pages, data contract, coordinates and acceptance gates, with the user's explicit coordinate-baseline and API 26 coverage substitutions below. The original plan-only restriction was superseded by implementation authorization; personal-device installation and production changes remain separate.
 
 ### Explicit approvals on 2026-09-21

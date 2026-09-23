@@ -53,6 +53,9 @@ class AppContainer internal constructor(
         runtime = FirebaseTelemetryRuntime(context),
     )
     val locationProvider = AndroidLocationProvider(context)
+    val plannerDraftRepository = cn.anitabi.navigator.data.repository.PlannerDraftRepository(
+        cn.anitabi.navigator.data.repository.FilePlannerDraftStorage(java.io.File(appContext.filesDir, "planner-draft")),
+    )
     val amapPrivacyGate = AmapPrivacyGate(
         context = context,
         apiKeyConfigured = BuildConfig.AMAP_API_KEY_CONFIGURED,

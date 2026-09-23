@@ -46,7 +46,7 @@ class FileDiscoveryCache(directory: File) : DiscoveryCache {
 
     private fun readFile(file: File): DiscoverySnapshot? = runCatching {
         if (!file.isFile || file.length() > 128L * 1024 * 1024) return null
-        json.decodeFromString(DiscoverySnapshot.serializer(), file.readText()).takeIf(::valid)
+        json.decodeFromString(DiscoverySnapshot.serializer(), file.readText()).takeIf(::valid)?.reconcileCompletion()
     }.getOrNull()
 
     private fun valid(snapshot: DiscoverySnapshot): Boolean {
