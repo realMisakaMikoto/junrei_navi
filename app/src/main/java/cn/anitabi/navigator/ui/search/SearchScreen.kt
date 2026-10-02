@@ -88,7 +88,9 @@ import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.TerritoryRegion
 import cn.anitabi.navigator.core.model.mapProvider
+import cn.anitabi.navigator.data.images.AnitabiImageVariant
 import cn.anitabi.navigator.data.repository.PilgrimageWarning
+import cn.anitabi.navigator.ui.discovery.DiscoveryImage
 import cn.anitabi.navigator.ui.planner.PlannerRoute
 import cn.anitabi.navigator.ui.planner.PlannerViewModel
 import cn.anitabi.navigator.navigation.NavigationViewModel
@@ -966,14 +968,15 @@ private fun PointList(
                     .padding(horizontal = 8.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
-                AsyncImage(
-                    model = cn.anitabi.navigator.data.images.AnitabiImageReference.request(point.imageUrl, cn.anitabi.navigator.data.images.AnitabiImageVariant.THUMBNAIL),
-                    contentDescription = "${point.name} 巡礼截图",
+                DiscoveryImage(
+                    url = point.imageUrl,
+                    variant = AnitabiImageVariant.THUMBNAIL,
+                    description = "${point.name} 巡礼截图",
                     modifier = Modifier
                         .size(72.dp)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(MaterialTheme.colorScheme.outlineVariant),
-                    contentScale = ContentScale.Crop,
+                        .clip(RoundedCornerShape(8.dp)),
+                    compact = true,
+                    background = MaterialTheme.colorScheme.outlineVariant,
                 )
                 Column(
                     modifier = Modifier

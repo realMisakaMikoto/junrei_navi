@@ -32,6 +32,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadCounter
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadOutcome
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadError
 import com.amap.api.maps.AMap
 import com.amap.api.maps.MapView
 
@@ -46,6 +51,7 @@ internal fun AmapMapView(
     onViewportSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
+    val trace = LocalDiscoveryTrace.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnMapReady = rememberUpdatedState(onMapReady)
     val currentOnUnavailable = rememberUpdatedState(onUnavailable)
@@ -55,20 +61,33 @@ internal fun AmapMapView(
     var runtimeFailure by remember(attempt) { mutableStateOf(false) }
     var savedMapState by rememberSaveable { mutableStateOf<Bundle?>(null) }
     val readiness = remember(privacyReady, attempt) { AmapMapReadiness() }
+    val releaseRecorded = remember(privacyReady, attempt) { java.util.concurrent.atomic.AtomicBoolean(false) }
+    fun recordRelease() {
+        if (trace.enabled && releaseRecorded.compareAndSet(false, true)) trace.increment(DiscoveryLoadCounter.SDK_VIEW_RELEASE_COUNT)
+    }
     val creation: Result<SingleLiveMapLease<MapView>> = remember(privacyReady, attempt) {
         runCatching {
             createAmapMapIfReady(privacyReady, { isAmapNativeMapLibraryAvailable(context) }) {
                 processMapCoordinator.acquire(MapProvider.AMAP) {
                     val view = MapView(context)
+                    trace.increment(DiscoveryLoadCounter.SDK_VIEW_CREATE_COUNT)
+                    trace.mark(DiscoveryLoadPhase.SDK_VIEW_CREATED)
+                    trace.mark(DiscoveryLoadPhase.BASEMAP_RENDER_OBSERVED, DiscoveryLoadOutcome.NOT_OBSERVED)
                     try {
                         view.onCreate(savedMapState)
                         // Register before AndroidView can attach/start the native surface.
                         // The event is retained even if it precedes our lifecycle effect.
                         view.map.setOnMapLoadedListener {
-                            view.post { readiness.onMapLoaded() }
+                            view.post {
+                                if (!readiness.isClosed) {
+                                    trace.mark(DiscoveryLoadPhase.BASEMAP_RENDER_OBSERVED)
+                                    readiness.onMapLoaded()
+                                }
+                            }
                         }
                         view
                     } catch (error: Throwable) {
+                        recordRelease()
                         runCatching(view::onDestroy)
                             .onFailure { destroyError ->
                                 logAmapFailure("ON_DESTROY_AFTER_CREATE_FAILURE", destroyError)
@@ -79,6 +98,7 @@ internal fun AmapMapView(
                     // A provider switch can retire this lease before its DisposableEffect runs.
                     // Still release the constructed SDK view in that narrow lifecycle window.
                     lease.installDestroyAction {
+                        recordRelease()
                         readiness.close()
                         runCatching { lease.value.map.setOnMapLoadedListener(null) }
                         runCatching(lease.value::onDestroy)
@@ -93,7 +113,10 @@ internal fun AmapMapView(
     val unavailable = mapView == null || runtimeFailure
 
     LaunchedEffect(unavailable) {
-        if (unavailable) currentOnUnavailable.value()
+        if (unavailable) {
+            trace.mark(DiscoveryLoadPhase.SDK_READY, DiscoveryLoadOutcome.FAILED, DiscoveryLoadError.SDK)
+            currentOnUnavailable.value()
+        }
     }
 
     if (unavailable) {
@@ -163,6 +186,7 @@ internal fun AmapMapView(
                 if (!disposed) {
                     checkNotNull(mapView.map.projection) { "AMap projection is not ready after map loading" }
                     readyMap = mapView.map
+                    trace.mark(DiscoveryLoadPhase.SDK_READY)
                     currentOnMapReady.value(mapView.map)
                 }
             }
@@ -185,6 +209,7 @@ internal fun AmapMapView(
         lifecycleOwner.lifecycle.addObserver(observer)
         mapView.addOnAttachStateChangeListener(attachListener)
         lease.installDestroyAction {
+            recordRelease()
             disposed = true
             readiness.close()
             runCatching { mapView.map.setOnMapLoadedListener(null) }

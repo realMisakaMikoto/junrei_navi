@@ -63,6 +63,12 @@ val releaseSigningValues = listOf(
 )
 val releaseSigningReady = releaseSigningValues.all { it != null }
 val signInternalTestApks = signingValue("ANITABI_SIGN_INTERNAL_TEST_APKS") == "true"
+val discoveryProfiling = providers.gradleProperty("ANITABI_DISCOVERY_PROFILING").orNull == "true"
+val draftRecoveryFixture = providers.gradleProperty("ANITABI_DRAFT_RECOVERY_FIXTURE").orNull == "true"
+val discoveryMeasurement = providers.gradleProperty("ANITABI_DISCOVERY_MEASUREMENT").orNull == "true"
+if (discoveryMeasurement && (!discoveryProfiling || draftRecoveryFixture)) {
+    throw GradleException("Discovery measurement requires profiling and cannot include the draft recovery fixture")
+}
 if (signInternalTestApks && !releaseSigningReady) {
     throw GradleException("Internal signed tests require the complete existing release signing configuration")
 }
@@ -92,6 +98,10 @@ android {
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey.ifBlank { "ANITABI_AMAP_KEY_MISSING" }
         buildConfigField("boolean", "AMAP_API_KEY_CONFIGURED", amapApiKeyConfigured.toString())
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
+        buildConfigField("boolean", "DISCOVERY_PROFILING", discoveryProfiling.toString())
+        buildConfigField("boolean", "DRAFT_RECOVERY_FIXTURE", "false")
+        buildConfigField("boolean", "DISCOVERY_MEASUREMENT", "false")
+        manifestPlaceholders["DISCOVERY_PROFILING"] = discoveryProfiling.toString()
     }
 
     signingConfigs {
@@ -107,9 +117,14 @@ android {
 
     buildTypes {
         getByName("debug") {
+            buildConfigField("boolean", "DRAFT_RECOVERY_FIXTURE", draftRecoveryFixture.toString())
+            manifestPlaceholders["DRAFT_RECOVERY_FIXTURE"] = draftRecoveryFixture.toString()
+            manifestPlaceholders["DEBUG_APPLICATION_NAME"] = if (draftRecoveryFixture)
+                "cn.anitabi.navigator.recovery.PlannerRecoveryApplication" else "cn.anitabi.navigator.AnitabiApplication"
             if (signInternalTestApks) signingConfig = signingConfigs.getByName("release")
         }
         release {
+            buildConfigField("boolean", "DISCOVERY_MEASUREMENT", discoveryMeasurement.toString())
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -136,6 +151,12 @@ android {
     }
 
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
+    if (discoveryMeasurement) {
+        sourceSets.getByName("release") {
+            java.srcDir("src/discoveryMeasurement/java")
+            manifest.srcFile("src/discoveryMeasurement/AndroidManifest.xml")
+        }
+    }
 }
 
 gradle.taskGraph.whenReady {
@@ -146,6 +167,12 @@ gradle.taskGraph.whenReady {
         throw GradleException(
             "Release signing is not configured. Keep the keystore outside the workspace and set ANITABI_* values.",
         )
+    }
+    if (requestsReleaseArtifact && draftRecoveryFixture) {
+        throw GradleException("The draft recovery fixture is restricted to dedicated Debug test artifacts")
+    }
+    if (requestsReleaseArtifact && discoveryMeasurement && !signInternalTestApks) {
+        throw GradleException("Discovery measurement artifacts require the protected internal signing configuration")
     }
     if (requestsReleaseArtifact && navigationApiKey.isBlank()) {
         throw GradleException(

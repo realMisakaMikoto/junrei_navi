@@ -5,6 +5,7 @@ internal class AmapMapReadiness {
     var loaded = false
         private set
     private var closed = false
+    val isClosed: Boolean get() = closed
     private var onReady: (() -> Unit)? = null
 
     fun onMapLoaded() {

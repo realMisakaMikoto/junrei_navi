@@ -32,6 +32,7 @@ import cn.anitabi.navigator.core.region.JapanRegionDataException
 import cn.anitabi.navigator.core.region.JourneyProviderResolutionException
 import cn.anitabi.navigator.core.region.TerritoryRegionDataException
 import cn.anitabi.navigator.data.network.ApiException
+import cn.anitabi.navigator.data.images.samePlanningPoints
 import cn.anitabi.navigator.data.repository.TourRepository
 import cn.anitabi.navigator.data.repository.ConcurrentTourUpdateException
 import cn.anitabi.navigator.data.repository.SavedTour
@@ -163,13 +164,6 @@ class PlannerViewModel(
         return id
     }
 
-    suspend fun finishDraft(): Boolean {
-        val drafts = draftRepository ?: return true
-        val id = state.value.draftId ?: return true
-        drafts.clear(id)
-        return drafts.flush()
-    }
-
     private fun showDraftProblem(problem: PlannerDraftProblem) {
         restoredTour = null
         val message = when (problem) {
@@ -214,6 +208,21 @@ class PlannerViewModel(
             }
         }
         appliedDraftRevision = draftRepository?.state?.value?.revision ?: -1
+    }
+
+    private suspend fun matchingDraftRevision(inputs: PlannerUiState): Long? {
+        val stored = draftRepository?.awaitLoaded() ?: return null
+        val draft = stored.draft ?: return null
+        if (draft.draftId != inputs.draftId || draft.displayAnime != inputs.anime || !draft.selectedPoints.samePlanningPoints(inputs.selectedPoints)) return null
+        return stored.revision.takeIf { inputs.toDraft(draft).withValidEndpointOrder() == draft }
+    }
+
+    private suspend fun linkSavedGeneration(inputs: PlannerUiState, revision: Long?, tourId: String) {
+        val drafts = draftRepository ?: return
+        val id = inputs.draftId ?: return
+        if (revision == null || !drafts.linkGeneratedTour(id, revision, tourId)) return
+        check(drafts.flush(id)) { "行程已保存，但草稿关联未能保存，请检查设备存储后重试" }
+        appliedDraftRevision = drafts.state.value.revision
     }
 
     fun configure(anime: Anime, points: List<PilgrimagePoint>) {
@@ -549,6 +558,7 @@ class PlannerViewModel(
         planningJob = viewModelScope.launch {
             var fallbackRequest: AmapExternalFallbackRequest? = null
             try {
+                val draftRevision = matchingDraftRevision(current)
                 val startPoint = current.startPointId?.let { id -> current.selectedPoints.single { it.id == id } }
                 val startCoordinate = if (current.useCurrentLocation) {
                     locationProvider.currentLocation()
@@ -631,6 +641,8 @@ class PlannerViewModel(
                 }
                 if (generation != planningGeneration) return@launch
                 repository.save(plan)
+                if (generation != planningGeneration) return@launch
+                linkSavedGeneration(current, draftRevision, plan.id)
                 if (generation != planningGeneration) return@launch
                 pendingAmapExternalFallback = null
                 mutableState.update {
@@ -723,6 +735,7 @@ class PlannerViewModel(
                 null
             }
             try {
+                val draftRevision = matchingDraftRevision(current)
                 val planForRebuild = if (
                     plan.mode == TravelMode.TRANSIT && plan.transitTimeMode == TransitTimeMode.NOW
                 ) {
@@ -737,6 +750,8 @@ class PlannerViewModel(
                 val updated = planner.rebuild(planForRebuild, current.draftOrder)
                 if (generation != planningGeneration) return@launch
                 repository.save(updated)
+                if (generation != planningGeneration) return@launch
+                linkSavedGeneration(current, draftRevision, updated.id)
                 if (generation == planningGeneration) {
                     pendingAmapExternalFallback = null
                     mutableState.update {
@@ -761,6 +776,7 @@ class PlannerViewModel(
     fun useAmapExternalFallback() {
         val request = pendingAmapExternalFallback ?: return
         if (state.value.isLoading || !state.value.amapExternalFallbackAvailable) return
+        val current = state.value
         pendingAmapExternalFallback = null
         mutableState.update {
             it.copy(
@@ -774,9 +790,12 @@ class PlannerViewModel(
         planningJob?.cancel()
         planningJob = viewModelScope.launch {
             try {
+                val draftRevision = matchingDraftRevision(current)
                 val fallback = planner.planAmapExternalFallback(request)
                 if (generation != planningGeneration) return@launch
                 repository.save(fallback)
+                if (generation != planningGeneration) return@launch
+                linkSavedGeneration(current, draftRevision, fallback.id)
                 if (generation != planningGeneration) return@launch
                 mutableState.update {
                     it.copy(
@@ -1060,7 +1079,7 @@ private fun PlannerDraft.matchesSavedInputs(saved: SavedTour): Boolean {
     val scheduleMatches = mode != TravelMode.TRANSIT || transitTimeMode == TransitTimeMode.NOW ||
         anchor != null && anchor.toLocalDate() == LocalDate.parse(transitDate) && anchor.toLocalTime() == LocalTime.parse(transitTime)
     return sourceTourId == stored.id && selectedAnimes == stored.selectedAnimes &&
-        selectedPoints == stored.selectedPoints && manualOrderPointIds == saved.plan.orderedPoints.map(PilgrimagePoint::id) &&
+        selectedPoints.samePlanningPoints(stored.selectedPoints) && manualOrderPointIds == saved.plan.orderedPoints.map(PilgrimagePoint::id) &&
         savedStart == stored.start && startPointId == stored.startPointId && mode == stored.mode &&
         objective == stored.objective && endPolicy == stored.endPolicy && fixedEndPointId == stored.fixedEndPointId &&
         dwellMinutesInput == stored.dwellMinutes.toString() && transitTimeMode == saved.plan.transitTimeMode && scheduleMatches &&

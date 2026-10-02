@@ -7,12 +7,16 @@ import coil3.ImageLoader
 import coil3.SingletonImageLoader
 
 open class AnitabiApplication : Application(), SingletonImageLoader.Factory {
+    val discoveryDiagnostics = cn.anitabi.navigator.diagnostics.DiscoveryDiagnostics(BuildConfig.DISCOVERY_PROFILING)
     val container by lazy { createContainer() }
 
     protected open fun createContainer(): AppContainer = AppContainer(this)
+    protected open fun initializeContainerOnCreate(): Boolean = true
 
     override fun onCreate() {
         super.onCreate()
+        discoveryDiagnostics.trace.mark(cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase.LAUNCH)
+        if (!initializeContainerOnCreate()) return
         container.telemetryConsentController.applyStoredConsent()
         container.amapPrivacyGate.prepareIfAllowed(
             container.appSettingsStore.hasCurrentAmapPrivacyConsent(),

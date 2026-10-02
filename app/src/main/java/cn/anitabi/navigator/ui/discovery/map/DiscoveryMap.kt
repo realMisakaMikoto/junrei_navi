@@ -17,13 +17,24 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.AnitabiApplication
+import cn.anitabi.navigator.BuildConfig
+import cn.anitabi.navigator.diagnostics.DiscoveryVisualFrame
+import cn.anitabi.navigator.diagnostics.DiscoveryVisualMarker
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.data.images.AnitabiImageReference
 import cn.anitabi.navigator.data.images.AnitabiImageVariant
 import cn.anitabi.navigator.data.images.ImageFailureBackoff
 import cn.anitabi.navigator.data.images.imageFailure
+import cn.anitabi.navigator.data.images.retryVisibleImages
 import cn.anitabi.navigator.ui.discovery.DiscoveryViewportToken
 import cn.anitabi.navigator.ui.discovery.DiscoveryViewportInvalidation
+import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadCounter
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadOutcome
+import cn.anitabi.navigator.data.discovery.measure
 import cn.anitabi.navigator.ui.map.AmapMapView
 import cn.anitabi.navigator.ui.map.NavigationMapView
 import cn.anitabi.navigator.ui.map.isAmapMapCreationReady
@@ -35,12 +46,8 @@ import coil3.request.allowHardware
 import coil3.toBitmap
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.ensureActive
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Semaphore
-import kotlinx.coroutines.sync.withPermit
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.yield
 import kotlin.coroutines.coroutineContext
@@ -73,12 +80,15 @@ fun DiscoveryMap(
     imageRetryRevision: Int = 0,
     viewportToken: DiscoveryViewportToken? = null,
     onViewportInvalidated: (DiscoveryViewportInvalidation) -> Unit = {},
-    onViewportCalculated: (DiscoveryViewportToken, Set<String>) -> Unit = { _, _ -> },
+    onViewportCalculated: (DiscoveryViewportToken, Set<String>) -> Boolean = { _, _ -> false },
     userLocation: GeoPoint? = null,
     userLocationProvider: MapProvider? = null,
     userHeading: Float? = null,
 ) {
     val context = LocalContext.current
+    val trace = LocalDiscoveryTrace.current
+    val diagnostics = if (BuildConfig.DISCOVERY_MEASUREMENT)
+        (context.applicationContext as? AnitabiApplication)?.discoveryDiagnostics else null
     val fontDensity = LocalDensity.current
     val density = fontDensity.density
     val currentPoints = rememberUpdatedState(points)
@@ -110,6 +120,9 @@ fun DiscoveryMap(
     val currentDisplayPoints = rememberUpdatedState(displayPoints)
     val generation = remember(provider) { DiscoveryRequestGeneration() }
     val appliedMarkers = remember(adapter) { mutableMapOf<String, MarkerAppearance>() }
+    val visualMarkers = remember(adapter) {
+        if (BuildConfig.DISCOVERY_MEASUREMENT) mutableMapOf<String, DiscoveryVisualMarker>() else null
+    }
     val images = remember { object : LruCache<String, Bitmap>(8 * 1024 * 1024) {
         override fun sizeOf(key: String, value: Bitmap): Int = value.allocationByteCount
     } }
@@ -210,6 +223,8 @@ fun DiscoveryMap(
             pendingClusterGeometry = null
             generation.invalidate()
             currentInvalidated.value(DiscoveryViewportInvalidation.MAP_LIFECYCLE)
+            visualMarkers?.clear()
+            map?.let { diagnostics?.clearVisualFrame(it) }
             // A provider switch may have destroyed the old map lease before this effect.
             runCatching { map?.close() }
         }
@@ -227,13 +242,16 @@ fun DiscoveryMap(
         try {
             val source = currentPoints.value.filter { it.provider == provider }
             val converted = LinkedHashMap<String, GeoPoint>(source.size)
-            source.forEachCooperatively { point ->
+            trace.measure(DiscoveryLoadPhase.CONVERT, source.size.toLong()) { source.forEachCooperatively(trace) { point ->
                 require(point.id !in converted) { "Discovery IDs must be unique" }
                 converted[point.id] = map.displayCoordinate(point.id, point.coordinate)
-            }
+            } }
+            trace.increment(DiscoveryLoadCounter.INDEX_REBUILD_COUNT)
             val rebuilt = withContext(Dispatchers.Default) {
                 val workerContext = coroutineContext
-                DiscoverySpatialIndex(DiscoveryIndexKey(dataVersion, provider), converted.map { IndexedDiscoveryPoint(it.key, it.value) }) { workerContext.ensureActive() }
+                trace.measure(DiscoveryLoadPhase.INDEX_BUILD, converted.size.toLong()) {
+                    DiscoverySpatialIndex(DiscoveryIndexKey(dataVersion, provider), converted.map { IndexedDiscoveryPoint(it.key, it.value) }) { workerContext.ensureActive() }
+                }
             }
             map.trimCoordinates(converted.keys)
             displayPoints = converted
@@ -322,20 +340,25 @@ fun DiscoveryMap(
         if (cameraMoving || pendingCommand != null || (cameraCommand != null && consumedCommand != cameraCommand.sequence)) return@LaunchedEffect
         val selectionToken = viewportToken
         val token = generation.next(spatialIndex.key)
+        var readySpan: DiscoveryLoadTrace.Span? = null
+        var readyOutcome = DiscoveryLoadOutcome.CANCELLED
+        var readyCount: Long? = null
         try {
-            delay(300)
-            if (!generation.accepts(token)) return@LaunchedEffect
             val bounds = map.bounds()
             val camera = map.camera()
             val content = padding.content(width, height)
+            val project = map.projector()
+            // The same settled input/token owns both ends; debounce remains part of this work.
+            if (selectionToken != null) readySpan = trace.begin(DiscoveryLoadPhase.READY_VIEWPORT_SELECTION)
+            delay(300)
+            if (!generation.accepts(token)) return@LaunchedEffect
             val pointMetadata = withContext(Dispatchers.Default) { points.filter { it.provider == provider }.associateBy { it.id } }
             val candidates = withContext(Dispatchers.Default) {
                 val workerContext = coroutineContext
                 spatialIndex.query(bounds) { workerContext.ensureActive() }.filter { it.id in pointMetadata }
             }
-            val project = map.projector()
             val projected = ArrayList<ProjectedDiscoveryPoint>(candidates.size)
-            candidates.forEachCooperatively { point ->
+            candidates.forEachCooperatively(trace) { point ->
                 if (!generation.accepts(token)) return@LaunchedEffect
                 projected += ProjectedDiscoveryPoint(point.id, project(point.coordinate))
             }
@@ -353,10 +376,17 @@ fun DiscoveryMap(
                 clusterToken = token
                 clusterInputs = calculationInputs
                 currentVisible.value(result.flatMap { it.memberIds }.toSet())
-                selectionToken?.let { currentViewportCalculated.value(it, result.flatMap { cluster -> cluster.memberIds }.toSet()) }
+                selectionToken?.let {
+                    val ids = result.flatMap { cluster -> cluster.memberIds }.toSet()
+                    if (currentViewportCalculated.value(it, ids)) {
+                        readyOutcome = if (ids.isEmpty()) DiscoveryLoadOutcome.EMPTY else DiscoveryLoadOutcome.OBSERVED
+                        readyCount = ids.size.toLong()
+                    }
+                }
             }
         } catch (error: CancellationException) { throw error }
-        catch (_: RuntimeException) { currentUnavailable.value() }
+        catch (_: RuntimeException) { readyOutcome = DiscoveryLoadOutcome.FAILED; currentUnavailable.value() }
+        finally { trace.end(readySpan, readyOutcome, itemCount = readyCount) }
     }
 
     val wantedImages = remember(clusters, imagesEnabled) {
@@ -365,40 +395,31 @@ fun DiscoveryMap(
     }
     var appliedImageRetry by remember { mutableIntStateOf(imageRetryRevision) }
     LaunchedEffect(wantedImages, imageRetryRevision, imagesEnabled) {
-        if (!imagesEnabled) return@LaunchedEffect
+        if (!imagesEnabled) {
+            failedImages.retain(emptySet())
+            return@LaunchedEffect
+        }
         val wanted = wantedImages
-        failedImages.retain(wanted)
         if (appliedImageRetry != imageRetryRevision) {
             failedImages.retry(wanted)
             appliedImageRetry = imageRetryRevision
         }
-        val slots = Semaphore(3)
-        // A successful large viewport must not endlessly refetch images evicted by the LRU.
-        val completed = wanted.filterTo(hashSetOf()) { images.get(it) != null }
-        while (true) {
-            coroutineScope {
-                wanted.forEach { url ->
-                    if (url in completed || failedImages.remainingMillis(url, SystemClock.elapsedRealtime()) > 0) return@forEach
-                    launch { slots.withPermit {
-                        val result = SingletonImageLoader.get(context).execute(
-                            ImageRequest.Builder(context).data(url).size(240, 180).allowHardware(false).build(),
-                        )
-                        ensureActive()
-                        if (result is SuccessResult) {
-                            completed.add(url)
-                            failedImages.clear(url)
-                            images.put(url, result.image.toBitmap())
-                            imageRevision++
-                        } else if (result is ErrorResult) {
-                            if (result.throwable is CancellationException) throw result.throwable
-                            failedImages.record(url, imageFailure(result.throwable), SystemClock.elapsedRealtime())
-                        }
-                    } }
+        retryVisibleImages(wanted, failedImages, cached = { images.get(it) != null }, now = SystemClock::elapsedRealtime) { url ->
+            val result = SingletonImageLoader.get(context).execute(
+                ImageRequest.Builder(context).data(url).size(240, 180).allowHardware(false).build(),
+            )
+            ensureActive()
+            when (result) {
+                is SuccessResult -> {
+                    images.put(url, result.image.toBitmap())
+                    imageRevision++
+                    null
+                }
+                is ErrorResult -> {
+                    if (result.throwable is CancellationException) throw result.throwable
+                    imageFailure(result.throwable)
                 }
             }
-            val remaining = wanted - completed
-            if (remaining.isEmpty()) break
-            delay(remaining.minOf { failedImages.remainingMillis(it, SystemClock.elapsedRealtime()) }.coerceAtLeast(1_000))
         }
     }
 
@@ -412,12 +433,14 @@ fun DiscoveryMap(
         val metadata = withContext(Dispatchers.Default) { points.associateBy { it.id } }
         val nextIds = clusters.mapTo(hashSetOf()) { it.id }
         try {
-            discoveryMarkerDelta(appliedMarkers.keys, nextIds).removed.toList().forEachCooperatively { id ->
+            trace.measure(DiscoveryLoadPhase.MARKER_UPDATE, clusters.size.toLong()) {
+            discoveryMarkerDelta(appliedMarkers.keys, nextIds).removed.toList().forEachCooperatively(trace) { id ->
                 if (!current()) return@LaunchedEffect
                 map.remove(id)
                 appliedMarkers.remove(id)
+                visualMarkers?.remove(id)
             }
-            clusters.forEachCooperatively { cluster ->
+            clusters.forEachCooperatively(trace) { cluster ->
                 if (!current()) return@LaunchedEffect
                 val point = metadata[cluster.anchorId] ?: return@forEachCooperatively
                 val coordinate = displayPoints[cluster.anchorId] ?: return@forEachCooperatively
@@ -429,8 +452,25 @@ fun DiscoveryMap(
                     val artwork = discoveryMarkerArtwork(cluster, point, image, fontDensity, darkTheme)
                     val title = if (cluster.memberIds.size > 1) "${cluster.memberIds.size} \u4e2a\u5730\u70b9\uff0c${point.title}" else point.title
                     map.upsert(cluster.id, coordinate, title, artwork, cluster.selected)
+                    visualMarkers?.set(cluster.id, DiscoveryVisualMarker(coordinate, artwork,
+                        cluster.memberIds.size, image != null))
+                    trace.increment(DiscoveryLoadCounter.MARKER_UPDATE_COUNT)
                     appliedMarkers[cluster.id] = appearance
                 }
+            }
+            }
+            if (current()) {
+                trace.mark(DiscoveryLoadPhase.VIEWPORT_MARKERS_COMMITTED,
+                    if (clusters.isEmpty()) DiscoveryLoadOutcome.EMPTY else DiscoveryLoadOutcome.OBSERVED,
+                    itemCount = clusters.sumOf { it.memberIds.size }.toLong())
+                val imageCount = appliedMarkers.values.count { it.image != null }
+                trace.mark(DiscoveryLoadPhase.IMAGE_MARKERS_COMMITTED,
+                    if (imageCount == 0) DiscoveryLoadOutcome.EMPTY else DiscoveryLoadOutcome.OBSERVED,
+                    itemCount = imageCount.toLong())
+                if (visualMarkers != null) diagnostics?.publishVisualFrame(
+                    DiscoveryVisualFrame(map, viewportToken, padding.content(width, height), width, height,
+                        visualMarkers.values.toList(), ::current),
+                )
             }
         } catch (error: CancellationException) { throw error }
         catch (_: RuntimeException) { currentUnavailable.value() }
@@ -445,14 +485,23 @@ private data class MarkerAppearance(
 
 
 /** Bound each stretch of SDK work; no work is dropped to meet the frame budget. */
-private suspend inline fun <T> List<T>.forEachCooperatively(action: (T) -> Unit) {
+private suspend inline fun <T> List<T>.forEachCooperatively(trace: DiscoveryLoadTrace, action: (T) -> Unit) {
     var started = SystemClock.uptimeMillis()
-    for (item in this) {
+    var segment = if (trace.enabled) System.nanoTime() else null
+    var workNanos = 0L
+    var segments = 0L
+    try { for (item in this) {
         coroutineContext.ensureActive()
         action(item)
         if (SystemClock.uptimeMillis() - started >= 4) {
+            segment?.let { workNanos += System.nanoTime() - it; segments++; segment = null }
             yield()
             started = SystemClock.uptimeMillis()
+            if (trace.enabled) segment = System.nanoTime()
         }
+    } } finally {
+        segment?.let { workNanos += System.nanoTime() - it; segments++ }
+        trace.increment(DiscoveryLoadCounter.MAIN_THREAD_SEGMENT_COUNT, segments)
+        trace.increment(DiscoveryLoadCounter.MAIN_THREAD_WORK_NANOS, workNanos)
     }
 }

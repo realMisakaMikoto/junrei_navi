@@ -9,6 +9,7 @@ import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.StoredTourV2
 import cn.anitabi.navigator.data.network.ApiException
+import cn.anitabi.navigator.data.images.withMissingAnitabiImage
 import cn.anitabi.navigator.data.network.bangumi.BangumiApi
 import cn.anitabi.navigator.data.repository.PilgrimageData
 import cn.anitabi.navigator.data.repository.PilgrimageRepository
@@ -345,14 +346,21 @@ class SearchViewModel(
 
 internal fun mergeLoadedSubject(existing: PilgrimageData?, loaded: PilgrimageData): PilgrimageData {
     if (existing == null) return loaded
-    val points = loaded.points.associateBy(PilgrimagePoint::id) + existing.points.associateBy(PilgrimagePoint::id)
+    val points = loaded.points.associateBy(PilgrimagePoint::id).toMutableMap()
+    existing.points.forEach { point -> points[point.id] = point.withMissingAnitabiImage(points[point.id]?.imageUrl) }
     return loaded.copy(points = points.values.toList(), expectedPointCount = maxOf(loaded.expectedPointCount, points.size))
 }
 
 internal fun SearchUiState.withDiscoveryPoints(anime: Anime, points: List<PilgrimagePoint>): SearchUiState {
     val existing = selectedAnimeData[anime.subjectId]
-    val combined = points.associateBy(PilgrimagePoint::id) +
-        existing?.points.orEmpty().associateBy(PilgrimagePoint::id)
+    val combined = existing?.points.orEmpty().associateBy(PilgrimagePoint::id).toMutableMap()
+    points.forEach { point ->
+        if ("${anime.subjectId}::${point.id}" !in selectedPointIds || point.id !in combined) {
+            combined[point.id] = point
+        } else {
+            combined[point.id] = combined.getValue(point.id).withMissingAnitabiImage(point.imageUrl)
+        }
+    }
     val data = PilgrimageData(
         anime = existing?.anime ?: anime,
         points = combined.values.toList(),
@@ -408,7 +416,8 @@ internal fun restoreSearchSelection(
             point.copy(id = rawId, name = point.name.removePrefix("《${anime.nameCn ?: anime.name}》· "))
         }
         // User-owned coordinates win over refreshed public cache, including missing source points.
-        val points = cache?.points.orEmpty().associateBy(PilgrimagePoint::id) + savedPoints.associateBy(PilgrimagePoint::id)
+        val points = cache?.points.orEmpty().associateBy(PilgrimagePoint::id).toMutableMap()
+        savedPoints.forEach { point -> points[point.id] = point.withMissingAnitabiImage(points[point.id]?.imageUrl) }
         anime.subjectId to PilgrimageData(anime, points.values.toList(), maxOf(cache?.expectedPointCount ?: 0, points.size), cache?.warnings.orEmpty())
     }
     val availablePointIds = mergePilgrimageData(animeData.values)

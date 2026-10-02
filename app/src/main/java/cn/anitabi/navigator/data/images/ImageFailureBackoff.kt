@@ -24,8 +24,10 @@ fun imageFailure(error: Throwable): ImageFailure = when (error) {
 internal class ImageFailureBackoff(private val capacity: Int = 256) {
     private data class Failure(val attempts: Int, val retryAt: Long)
     private val failures = linkedMapOf<String, Failure>()
+    private var retainedKeys: Set<String>? = null
     fun remainingMillis(key: String, now: Long): Long = ((failures[key]?.retryAt ?: now) - now).coerceAtLeast(0)
     fun record(key: String, kind: ImageFailure, now: Long) {
+        if (retainedKeys?.contains(key) == false) return
         val attempts = ((failures[key]?.attempts ?: 0) + 1).coerceAtMost(6)
         val delay = when (kind) {
             ImageFailure.RESOURCE, ImageFailure.ACCESS, ImageFailure.DECODE -> 10 * 60_000L
@@ -33,10 +35,14 @@ internal class ImageFailureBackoff(private val capacity: Int = 256) {
         }
         failures.remove(key)
         failures[key] = Failure(attempts, now + delay)
-        while (failures.size > capacity) failures.remove(failures.keys.first())
+        // The visible decoration set bounds scoped records; evicting it would bypass backoff.
+        if (retainedKeys == null) while (failures.size > capacity) failures.remove(failures.keys.first())
     }
     fun clear(key: String) { failures.remove(key) }
     fun retry(keys: Set<String>) { keys.forEach(failures::remove) }
-    fun retain(keys: Set<String>) { failures.keys.retainAll(keys) }
+    fun retain(keys: Set<String>) {
+        retainedKeys = keys.toSet()
+        failures.keys.retainAll(keys)
+    }
     val size: Int get() = failures.size
 }

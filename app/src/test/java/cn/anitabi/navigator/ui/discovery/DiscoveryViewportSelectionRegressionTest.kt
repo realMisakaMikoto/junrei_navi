@@ -2,6 +2,7 @@ package cn.anitabi.navigator.ui.discovery
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
@@ -17,6 +18,8 @@ import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -38,11 +41,16 @@ import org.junit.Test
 class DiscoveryViewportSelectionRegressionTest {
     private val dispatcher = StandardTestDispatcher()
     private val owners = mutableListOf<ViewModelStore>()
+    private val ownerJobs = mutableListOf<Job>()
     private val location = CompletableDeferred<GeoPoint>()
 
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
     @After fun tearDown() {
-        owners.forEach(ViewModelStore::clear)
+        runTest(dispatcher) {
+            owners.forEach(ViewModelStore::clear)
+            // Await worker cancellation before removing the dispatcher used by their continuations.
+            ownerJobs.joinAll()
+        }
         Dispatchers.resetMain()
     }
 
@@ -251,6 +259,7 @@ class DiscoveryViewportSelectionRegressionTest {
             override suspend fun currentLocation(): GeoPoint = location.await()
         }, { TerritoryRegion.OTHER }, SavedStateHandle())
         owners += ViewModelStore().apply { put("viewport", vm) }
+        ownerJobs += requireNotNull(vm.viewModelScope.coroutineContext[Job])
         vm.state.first { it.mapPoints.size == snapshot.points.size }
         val ids = snapshot.points.map { it.id }.toSet()
         assertTrue(vm.viewportCalculated(vm.state.value.viewportToken, ids))

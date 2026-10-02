@@ -211,9 +211,9 @@ class FrontendRemainingFlowsTest {
             add(object : Interceptor {
                 override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
                     val url = chain.request.data
-                    check(url == IMAGE_OK || url == IMAGE_FAIL) { "Unexpected image fixture request" }
+                    check(url == "$IMAGE_OK?plan=h360" || url == "$IMAGE_FAIL?plan=h360") { "Unexpected image fixture request or size" }
                     requests.incrementAndGet()
-                    return if (url == IMAGE_FAIL) ErrorResult(
+                    return if (url == "$IMAGE_FAIL?plan=h360") ErrorResult(
                         image = null, request = chain.request, throwable = IOException("Synthetic image failure"),
                     ) else SuccessResult(
                         image = Bitmap.createBitmap(160, 90, Bitmap.Config.ARGB_8888)
@@ -298,7 +298,7 @@ class FrontendRemainingFlowsTest {
         const val CANCEL = "\u53d6\u6d88"
         const val EDIT_FAILED = "\u65e0\u6cd5\u4fdd\u5b58\u540e\u7eed\u70b9\uff0c\u8bf7\u4fdd\u6301\u5df2\u5b8c\u6210\u70b9\u548c\u5f53\u524d\u70b9\u4e0d\u53d8"
         const val CLOSE_IMAGE = "\u5173\u95ed\u56fe\u7247"
-        const val IMAGE_FAILED = "\u56fe\u7247\u6682\u65f6\u65e0\u6cd5\u52a0\u8f7d"
+        const val IMAGE_FAILED = "\u56fe\u7247\u8fde\u63a5\u5931\u8d25\uff0c\u8bf7\u68c0\u67e5\u7f51\u7edc\u540e\u91cd\u8bd5"
         const val IMAGE_OK = "https://image.anitabi.cn/synthetic-frontend-image.png"
         const val IMAGE_FAIL = "https://image.anitabi.cn/synthetic-frontend-failed.png"
     }

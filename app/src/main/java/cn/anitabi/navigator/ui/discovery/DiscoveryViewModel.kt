@@ -14,6 +14,11 @@ import cn.anitabi.navigator.data.discovery.DiscoveryPoint
 import cn.anitabi.navigator.data.discovery.DiscoveryRepository
 import cn.anitabi.navigator.data.discovery.DiscoverySnapshot
 import cn.anitabi.navigator.data.discovery.DiscoveryState
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadOutcome
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadCounter
+import cn.anitabi.navigator.data.discovery.measure
 import cn.anitabi.navigator.navigation.CurrentLocationProvider
 import cn.anitabi.navigator.navigation.MissingLocationPermissionException
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraCommand
@@ -76,6 +81,7 @@ class DiscoveryViewModel(
     private val classifyTerritory: (GeoPoint) -> TerritoryRegion?,
     private val savedState: SavedStateHandle,
     private val freshLocation: suspend () -> GeoPoint = locationProvider::currentLocation,
+    private val trace: DiscoveryLoadTrace = DiscoveryLoadTrace(),
     private val preparationDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(DiscoveryUiState(
@@ -118,7 +124,7 @@ class DiscoveryViewModel(
                 }
                 val prepared = if (snapshot == null) null else if (previous?.snapshot === snapshot) previous else
                     withContext(preparationDispatcher) {
-                        prepareDiscoveryData(snapshot, previous, classifyTerritory) { coroutineContext.ensureActive() }
+                        prepareDiscoveryData(snapshot, previous, classifyTerritory, trace) { coroutineContext.ensureActive() }
                     }
                 // Commit only after withContext's cancellation check; workers never mutate shared caches.
                 preparedData = prepared
@@ -290,7 +296,10 @@ class DiscoveryViewModel(
     fun viewportCalculated(token: DiscoveryViewportToken, ids: Set<String>): Boolean {
         val current = state.value
         if (!current.viewportIsCurrent(token) || !validViewportMembers(current, ids)) return false
-        return mutableState.compareAndSet(current, current.copy(viewportSnapshot = DiscoveryViewportSnapshot(token, ids)))
+        val accepted = mutableState.compareAndSet(current, current.copy(viewportSnapshot = DiscoveryViewportSnapshot(token, ids)))
+        if (accepted) trace.mark(DiscoveryLoadPhase.VIEWPORT_SELECTION_READY,
+            if (ids.isEmpty()) DiscoveryLoadOutcome.EMPTY else DiscoveryLoadOutcome.OBSERVED, itemCount = ids.size.toLong())
+        return accepted
     }
 
     /** No suspension: validation and the one selection update share this latest UI snapshot. */
@@ -467,6 +476,7 @@ internal fun prepareDiscoveryData(
     snapshot: DiscoverySnapshot,
     previous: PreparedDiscoveryData?,
     classifyTerritory: (GeoPoint) -> TerritoryRegion?,
+    trace: DiscoveryLoadTrace = DiscoveryLoadTrace(),
     checkCancellation: () -> Unit = {},
 ): PreparedDiscoveryData {
     checkCancellation()
@@ -474,15 +484,20 @@ internal fun prepareDiscoveryData(
         previous.snapshot.points === snapshot.points && previous.snapshot.subjects === snapshot.subjects
     ) return previous.copy(snapshot = snapshot)
     val sameGeneration = previous?.snapshot?.version == snapshot.version
-    val providers = snapshot.points.associate { point ->
+    var classified = 0L
+    val providers = trace.measure(DiscoveryLoadPhase.CLASSIFY, snapshot.points.size.toLong()) { snapshot.points.associate { point ->
         checkCancellation()
         val canReuse = sameGeneration && previous!!.pointsById[point.id]?.coordinate == point.coordinate &&
             point.id in previous.providersByPoint
-        point.id to if (canReuse) previous!!.providersByPoint[point.id] else classifyTerritory(point.coordinate)?.mapProvider
-    }
+        point.id to if (canReuse) previous!!.providersByPoint[point.id] else {
+            classified++
+            classifyTerritory(point.coordinate)?.mapProvider
+        }
+    } }
+    trace.increment(DiscoveryLoadCounter.CLASSIFIED_POINT_COUNT, classified)
     val subjects = snapshot.subjects.associateBy { it.id }
     val pointsById = LinkedHashMap<String, DiscoveryPoint>(snapshot.points.size)
-    val mapPoints = snapshot.points.mapNotNull { point ->
+    val mapPoints = trace.measure(DiscoveryLoadPhase.MAP_POINT_PREPARE, snapshot.points.size.toLong()) { snapshot.points.mapNotNull { point ->
         checkCancellation()
         pointsById[point.id] = point
         val provider = providers[point.id] ?: return@mapNotNull null
@@ -493,7 +508,7 @@ internal fun prepareDiscoveryData(
             colorArgb = subjectColor(subject?.color, point.subjectId),
             imageUrl = point.imageUrl, subjectImageUrl = subject?.anime?.imageUrl,
         )
-    }
+    } }
     // Cache repair can restore members or correct coordinates within the same source generation.
     val membershipChanged = previous == null || !sameGeneration || previous.pointsById.keys != pointsById.keys ||
         pointsById.any { (id, point) -> previous.pointsById[id]?.coordinate != point.coordinate } ||
@@ -501,7 +516,9 @@ internal fun prepareDiscoveryData(
     val revision = (previous?.membershipRevision ?: 0) + if (membershipChanged) 1 else 0
     return PreparedDiscoveryData(
         snapshot, providers, mapPoints, pointsById, mapPoints.mapTo(linkedSetOf()) { it.provider },
-        DiscoverySearchIndex(snapshot, checkCancellation), revision,
+        trace.measure(DiscoveryLoadPhase.SEARCH_INDEX_BUILD, snapshot.points.size.toLong()) {
+            DiscoverySearchIndex(snapshot, checkCancellation)
+        }, revision,
     )
 }
 

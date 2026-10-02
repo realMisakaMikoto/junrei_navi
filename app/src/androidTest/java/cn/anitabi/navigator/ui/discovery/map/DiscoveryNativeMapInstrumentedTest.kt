@@ -29,6 +29,12 @@ import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.TestAnitabiApplication
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadOutcome
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadTraceConfig
+import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
+import cn.anitabi.navigator.ui.discovery.DiscoveryViewportToken
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
 import cn.anitabi.navigator.ui.map.AmapMapView
 import cn.anitabi.navigator.ui.map.isAmapNativeMapLibraryAvailable
@@ -116,6 +122,87 @@ class DiscoveryNativeMapInstrumentedTest {
 
     @Test
     fun googleProjectionAndBitmapAnchorSurvivePresentationChanges() = verifyProvider(MapProvider.GOOGLE)
+
+    @Test
+    fun googleReadyViewportSpanRequiresAcceptedCurrentTokenAndIncludesDebounce() {
+        // Compose schedules LaunchedEffect delays in virtual time; this tests span placement, not device speed.
+        val trace = DiscoveryLoadTrace(DiscoveryLoadTraceConfig(enabled = true),
+            nanoTime = { composeRule.mainClock.currentTime * 1_000_000L })
+        val harness = Harness(MapProvider.GOOGLE, trace)
+        val receivedToken = AtomicReference<DiscoveryViewportToken>()
+        harness.viewportToken = DiscoveryViewportToken(dataVersion = "synthetic-ready", generation = 1)
+        harness.viewportCalculated = { token, ids ->
+            receivedToken.set(token)
+            token == harness.viewportToken && ids == setOf(POINT_ID)
+        }
+        show(harness)
+        awaitPoint(harness)
+        composeRule.waitUntil(10_000) {
+            trace.snapshot().stageEvents.any {
+                it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION && it.outcome == DiscoveryLoadOutcome.OBSERVED
+            }
+        }
+        val accepted = trace.snapshot().stageEvents.single { it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION }
+        val indexReady = trace.snapshot().stageEvents.single { it.phase == DiscoveryLoadPhase.INDEX_BUILD }
+        assertEquals(harness.viewportToken, receivedToken.get())
+        assertEquals(1L, accepted.itemCount)
+        assertTrue("Ready input timing must retain the existing debounce", requireNotNull(accepted.durationNanos) >= 300_000_000L)
+        assertTrue("Index preparation must precede ready input", accepted.offsetNanos - accepted.durationNanos!! >= indexReady.offsetNanos)
+        val beforeRejection = composeRule.runOnIdle {
+            val lastSequence = trace.snapshot().events.last().sequence
+            harness.viewportCalculated = { token, _ -> receivedToken.set(token); false }
+            harness.viewportToken = harness.viewportToken!!.copy(generation = 2)
+            lastSequence
+        }
+        composeRule.waitUntil(10_000) {
+            val snapshot = trace.snapshot()
+            receivedToken.get() == harness.viewportToken && snapshot.events.any {
+                it.sequence > beforeRejection && it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION &&
+                    it.outcome == DiscoveryLoadOutcome.CANCELLED
+            } && snapshot.pendingSpans.none { it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION }
+        }
+        val rejected = trace.snapshot()
+        assertEquals(harness.viewportToken, receivedToken.get())
+        assertFalse(rejected.events.any {
+            it.sequence > beforeRejection && it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION &&
+                it.outcome == DiscoveryLoadOutcome.OBSERVED
+        })
+        assertTrue(rejected.pendingSpans.none { it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION })
+    }
+
+    @Test
+    fun googleReadyViewportSpanClosesWhenMapDetachesDuringDebounce() {
+        val trace = DiscoveryLoadTrace(DiscoveryLoadTraceConfig(enabled = true),
+            nanoTime = { composeRule.mainClock.currentTime * 1_000_000L })
+        val harness = Harness(MapProvider.GOOGLE, trace)
+        val callbacks = AtomicInteger()
+        harness.viewportCalculated = { _, _ -> callbacks.incrementAndGet(); true }
+        show(harness)
+        awaitPoint(harness)
+        composeRule.mainClock.autoAdvance = false
+        try {
+            InstrumentationRegistry.getInstrumentation().runOnMainSync {
+                harness.viewportToken = DiscoveryViewportToken(dataVersion = "synthetic-ready", generation = 1)
+            }
+            composeRule.mainClock.advanceTimeByFrame()
+            composeRule.mainClock.advanceTimeByFrame()
+            composeRule.waitForIdle()
+            assertTrue(trace.snapshot().pendingSpans.any { it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION })
+            InstrumentationRegistry.getInstrumentation().runOnMainSync { harness.showMap = false }
+            composeRule.mainClock.advanceTimeByFrame()
+            composeRule.waitForIdle()
+            assertEquals(0, callbacks.get())
+            val cancelled = trace.snapshot()
+            assertTrue(cancelled.events.any {
+                it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION && it.outcome == DiscoveryLoadOutcome.CANCELLED
+            })
+            assertTrue(cancelled.pendingSpans.none { it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION })
+            assertFalse(cancelled.events.any {
+                it.phase == DiscoveryLoadPhase.READY_VIEWPORT_SELECTION && it.outcome == DiscoveryLoadOutcome.OBSERVED
+            })
+        } finally { composeRule.mainClock.autoAdvance = true }
+        composeRule.runOnIdle { assertTrue(nativeViews(harness.root).isEmpty()) }
+    }
 
     @Test
     fun googleNativeClusterTapZoomsThenReturnsAllOverlapMembersAtSdkMaximum() {
@@ -630,7 +717,8 @@ class DiscoveryNativeMapInstrumentedTest {
             val root = LocalView.current.rootView
             val presentationRevision = harness.presentationRevision
             SideEffect { harness.root = root }
-            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, harness.fontScale)) {
+            CompositionLocalProvider(LocalDensity provides Density(LocalDensity.current.density, harness.fontScale),
+                LocalDiscoveryTrace provides harness.trace) {
               AnitabiTheme(if (harness.dark) AppAppearance.DARK else AppAppearance.LIGHT) {
                 if (harness.showMap) DiscoveryMap(
                     dataVersion = "synthetic-native-${harness.provider}", points = harness.points,
@@ -647,6 +735,8 @@ class DiscoveryNativeMapInstrumentedTest {
                     onManualMove = { harness.idleAtLastManualMove = harness.cameraIdleCount; harness.manualMoves++ },
                     onUnavailable = { harness.unavailable = true },
                     onCameraCommandApplied = { sequence, _ -> harness.applied += sequence },
+                    viewportToken = harness.viewportToken,
+                    onViewportCalculated = { token, ids -> harness.viewportCalculated(token, ids) },
                     modifier = Modifier.fillMaxSize().testTag(MAP_TAG),
                 )
               }
@@ -867,7 +957,7 @@ class DiscoveryNativeMapInstrumentedTest {
         } finally { if (crop !== screenshot) crop.recycle() }
     }
 
-    private class Harness(initialProvider: MapProvider) {
+    private class Harness(initialProvider: MapProvider, val trace: DiscoveryLoadTrace = DiscoveryLoadTrace()) {
         lateinit var root: View
         var provider by mutableStateOf(initialProvider)
         var points by mutableStateOf(fixturePoints(initialProvider))
@@ -880,6 +970,8 @@ class DiscoveryNativeMapInstrumentedTest {
         var padding by mutableStateOf(PADDING)
         var cameraCommand by mutableStateOf<DiscoveryCameraCommand>(DiscoveryCameraCommand.Focus(1L, POINT_ID))
         var presentationRevision by mutableStateOf(0)
+        var viewportToken by mutableStateOf<DiscoveryViewportToken?>(null)
+        var viewportCalculated: (DiscoveryViewportToken, Set<String>) -> Boolean = { _, _ -> false }
         var googleMap: GoogleMap? = null
         var pointClick: ((String) -> Unit)? = null
         var overlapClick: (List<String>) -> Unit = { error("Unexpected synthetic overlap") }

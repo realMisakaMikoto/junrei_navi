@@ -53,6 +53,11 @@ import cn.anitabi.navigator.ui.discovery.map.DiscoveryMapPadding
 import cn.anitabi.navigator.ui.search.SearchViewModel
 import cn.anitabi.navigator.ui.theme.MapSurfaceTheme
 import cn.anitabi.navigator.data.images.AnitabiImageVariant
+import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadCounter
+import cn.anitabi.navigator.data.discovery.measure
+import androidx.compose.ui.draw.drawWithContent
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
 
@@ -162,11 +167,21 @@ internal fun DiscoveryScreen(
     onCameraCommandApplied: (Long, cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition) -> Unit = { _, _ -> },
     onRetryDetails: (Long) -> Unit = { onRefresh() },
     onViewportInvalidated: (DiscoveryViewportInvalidation) -> Unit = {},
-    onViewportCalculated: (DiscoveryViewportToken, Set<String>) -> Unit = { _, _ -> },
+    onViewportCalculated: (DiscoveryViewportToken, Set<String>) -> Boolean = { _, _ -> false },
 ) {
     BackHandler(state.panel.canGoBack, onBackPanel)
+    val trace = LocalDiscoveryTrace.current
+    val shellDrawn = remember(state.listMode) { java.util.concurrent.atomic.AtomicBoolean(false) }
+    DisposableEffect(state.listMode) {
+        if (!state.listMode) trace.mark(DiscoveryLoadPhase.DISCOVERY_ENTER)
+        onDispose { }
+    }
     MapSurfaceTheme {
-        BoxWithConstraints(Modifier.fillMaxSize().testTag("discovery-screen")) {
+        BoxWithConstraints(Modifier.fillMaxSize().testTag("discovery-screen").drawWithContent {
+            drawContent()
+            // Application shell draw commands only; native basemap rendering is a separate event.
+            if (!state.listMode && shellDrawn.compareAndSet(false, true)) trace.mark(DiscoveryLoadPhase.SHELL_DRAWN)
+        }) {
             val wide = maxWidth >= 840.dp || maxWidth > maxHeight
             val density = LocalDensity.current
             val sidePanel = wide && !state.listMode
@@ -392,6 +407,7 @@ private fun DiscoveryPanelContent(
     onMinimumHeight: (Int) -> Unit,
 ) {
     val panel = state.panel.current
+    val trace = LocalDiscoveryTrace.current
     val subjects = remember(state.data.snapshot?.subjects) { state.data.snapshot?.subjects.orEmpty().associateBy { it.id } }
     val point = (panel as? DiscoveryPanel.Point)?.pointId?.let(state.pointsById::get)
     val subject = (panel as? DiscoveryPanel.Subject)?.subjectId?.let(subjects::get)
@@ -400,7 +416,13 @@ private fun DiscoveryPanelContent(
     val visiblePoints = remember(state.pointsById, state.visibleIds, state.filters, state.listMode, state.nearby, state.location) {
         val source = if (state.listMode || state.nearby) state.pointsById.values else state.visibleIds.mapNotNull(state.pointsById::get)
         val filtered = source.filter { state.filters.isEmpty() || it.subjectId in state.filters }
-        if (state.nearby && state.location != null) filtered.sortedBy { TourOptimizer.haversineMeters(state.location, it.coordinate) } else filtered
+        if (state.nearby && state.location != null) {
+            trace.increment(DiscoveryLoadCounter.NEARBY_SORT_COUNT)
+            var computations = 0L
+            try { trace.measure(DiscoveryLoadPhase.NEARBY_SORT, filtered.size.toLong()) {
+                filtered.sortedBy { computations++; TourOptimizer.haversineMeters(state.location, it.coordinate) }
+            } } finally { trace.increment(DiscoveryLoadCounter.DISTANCE_COMPUTATION_COUNT, computations) }
+        } else filtered
     }
     val title = when (panel) {
         is DiscoveryPanel.Point -> point?.displayName ?: "地点暂不可用"
@@ -507,7 +529,10 @@ private fun DiscoveryPanelContent(
                             } else items(visiblePoints, key = { it.id }) { entry ->
                                 DiscoveryPointRow(entry, subjects[entry.subjectId]?.name, entry.id in selectedIds,
                                     onOpen = { onPoint(entry) }, onToggle = { onTogglePoint(entry) },
-                                    distance = if (state.nearby) state.location?.let { straightLineDistance(TourOptimizer.haversineMeters(it, entry.coordinate)) } else null)
+                                    distance = if (state.nearby) state.location?.let {
+                                        trace.increment(DiscoveryLoadCounter.DISTANCE_COMPUTATION_COUNT)
+                                        straightLineDistance(TourOptimizer.haversineMeters(it, entry.coordinate))
+                                    } else null)
                             }
                         }
                         is DiscoveryPanel.Subject -> if (subject != null) {

@@ -19,6 +19,9 @@ import cn.anitabi.navigator.data.local.TourPlanEntity
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
@@ -36,6 +39,10 @@ class TourRepository(
     private val resolvedRoutes = ConcurrentHashMap<String, TourPlan>()
     private val resolvedProgress = ConcurrentHashMap<String, NavigationProgress>()
     private val writeMutex = Mutex()
+    private val mutablePersistedChanges = MutableStateFlow(0L)
+    /** Local invalidation signal after a successful write operation; carries no journey contents. */
+    val persistedChanges: StateFlow<Long> = mutablePersistedChanges.asStateFlow()
+    private var wroteDuringOperation = false
     private val runtimeProgressVersion = AtomicLong()
     private val runtimeProgress = AtomicReference<RuntimeProgressStamp?>()
 
@@ -235,7 +242,14 @@ class TourRepository(
     }
 
     private suspend fun <T> writeAtomically(block: suspend () -> T): T = writeMutex.withLock {
-        withContext(NonCancellable) { block() }
+        withContext(NonCancellable) {
+            wroteDuringOperation = false
+            try {
+                block().also {
+                    if (wroteDuringOperation) mutablePersistedChanges.value += 1
+                }
+            } finally { wroteDuringOperation = false }
+        }
     }
 
     private fun publishResolved(plan: TourPlan, progress: NavigationProgress?) {
@@ -260,6 +274,7 @@ class TourRepository(
         )
         try {
             dao.upsert(entity)
+            wroteDuringOperation = true
         } catch (failure: Throwable) {
             resolvedRoutes.remove(plan.id)
             resolvedProgress.remove(plan.id)

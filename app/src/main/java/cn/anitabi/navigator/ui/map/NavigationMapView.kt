@@ -30,6 +30,11 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadCounter
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadOutcome
+import cn.anitabi.navigator.data.discovery.DiscoveryLoadError
 import com.google.android.gms.maps.GoogleMap
 import com.google.android.gms.maps.model.MapColorScheme
 import com.google.android.libraries.navigation.ForceNightMode
@@ -50,6 +55,7 @@ fun NavigationMapView(
     onViewportSizeChanged: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
     val context = LocalContext.current
+    val trace = LocalDiscoveryTrace.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val currentOnMapReady = rememberUpdatedState(onMapReady)
     val currentOnUnavailable = rememberUpdatedState(onUnavailable)
@@ -57,10 +63,18 @@ fun NavigationMapView(
     val darkTheme = MaterialTheme.colorScheme.background.luminance() < .5f
     var attempt by remember(navigationUiEnabled) { mutableIntStateOf(0) }
     var runtimeFailure by remember(navigationUiEnabled, attempt) { mutableStateOf(false) }
+    val releaseRecorded = remember(navigationUiEnabled, attempt) { java.util.concurrent.atomic.AtomicBoolean(false) }
+    fun recordRelease() {
+        if (trace.enabled && releaseRecorded.compareAndSet(false, true)) trace.increment(DiscoveryLoadCounter.SDK_VIEW_RELEASE_COUNT)
+    }
     val creation = remember(navigationUiEnabled, attempt) {
         runCatching {
             processMapCoordinator.acquire(MapProvider.GOOGLE) { NavigationView(context) }.also { lease ->
+                trace.increment(DiscoveryLoadCounter.SDK_VIEW_CREATE_COUNT)
+                trace.mark(DiscoveryLoadPhase.SDK_VIEW_CREATED)
+                trace.mark(DiscoveryLoadPhase.BASEMAP_RENDER_OBSERVED, DiscoveryLoadOutcome.NOT_OBSERVED)
                 lease.installDestroyAction {
+                    recordRelease()
                     runCatching(lease.value::onDestroy)
                         .onFailure { error -> logMapFailure("ON_DESTROY_BEFORE_ATTACH", error) }
                 }
@@ -73,7 +87,10 @@ fun NavigationMapView(
     val unavailable = navigationView == null || runtimeFailure
 
     LaunchedEffect(unavailable) {
-        if (unavailable) currentOnUnavailable.value()
+        if (unavailable) {
+            trace.mark(DiscoveryLoadPhase.SDK_READY, DiscoveryLoadOutcome.FAILED, DiscoveryLoadError.SDK)
+            currentOnUnavailable.value()
+        }
     }
 
     if (unavailable) {
@@ -168,6 +185,10 @@ fun NavigationMapView(
                     if (disposed) return@getMapAsync
                     try {
                         readyMap = map
+                        trace.mark(DiscoveryLoadPhase.SDK_READY)
+                        if (trace.enabled) map.setOnMapLoadedCallback {
+                            if (!disposed && !lease.isDestroyed) trace.mark(DiscoveryLoadPhase.BASEMAP_RENDER_OBSERVED)
+                        }
                         currentOnMapReady.value(map)
                     } catch (error: RuntimeException) {
                         logMapFailure("MAP_READY_CALLBACK", error)
@@ -228,6 +249,7 @@ fun NavigationMapView(
         activateAttachedView()
 
         lease.installDestroyAction {
+            recordRelease()
             disposed = true
             lifecycleOwner.lifecycle.removeObserver(observer)
             navigationView.removeOnAttachStateChangeListener(attachListener)

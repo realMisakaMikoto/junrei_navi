@@ -11,6 +11,10 @@ enum class DiscoveryLoadPhase {
     CLASSIFY, CONVERT, INDEX_BUILD, FIRST_VIEWPORT_POINTS_DRAWN, VIEWPORT_SELECTION_READY,
     FIRST_VISIBLE_IMAGE, VISIBLE_IMAGES_SETTLED, DETAILS_SYNC_COMPLETE, CACHE_WRITE,
     SNAPSHOT_LOCK_WAIT, NEARBY_SORT, IMAGE_DECODE, MARKER_UPDATE, MAIN_THREAD_WORK, SDK_NETWORK,
+    JSON_PARSE, PAGE_PARSE, SUBJECT_PARSE, APP_CONTAINER_INIT, REGION_ASSET_READ, FRAME_DURATION,
+    VIEWPORT_MARKERS_COMMITTED, IMAGE_MARKERS_COMMITTED,
+    SEARCH_INDEX_BUILD, MAP_POINT_PREPARE,
+    IMAGE_LOAD, IMAGE_FETCH, READY_VIEWPORT_SELECTION,
 }
 
 @Serializable
@@ -36,6 +40,12 @@ enum class DiscoveryLoadCounter {
     FRAME_COUNT, FRAME_TOTAL_DURATION_NANOS, FIRST_DRAW_FRAME_COUNT, FRAME_REPORT_DROPPED_COUNT,
     JAVA_HEAP_SAMPLE_COUNT, JAVA_HEAP_PEAK_BYTES, NATIVE_HEAP_SAMPLE_COUNT, NATIVE_HEAP_PEAK_BYTES,
     PSS_SAMPLE_COUNT, PSS_PEAK_BYTES,
+    CACHE_READ_BYTES, CACHE_READ_HIT_COUNT, FRAME_UNKNOWN_DELAY_NANOS, FRAME_LAYOUT_MEASURE_NANOS,
+    FRAME_DRAW_NANOS,
+    IMAGE_REQUEST_COUNT, IMAGE_MEMORY_HIT_COUNT, IMAGE_DISK_HIT_COUNT,
+    CLASSIFIED_POINT_COUNT,
+    IMAGE_SUCCESS_COUNT, IMAGE_ERROR_COUNT, IMAGE_CANCEL_COUNT,
+    MAIN_THREAD_SEGMENT_COUNT, MAIN_THREAD_WORK_NANOS,
 }
 
 data class DiscoveryLoadTraceConfig(val enabled: Boolean = false, val maxEvents: Int = 512, val maxSpans: Int = 64) {
@@ -66,6 +76,7 @@ data class DiscoveryLoadRequestSummary(
     val outcomes: Map<DiscoveryLoadOutcome, Long> = emptyMap(),
     val caches: Map<DiscoveryLoadCache, Long> = emptyMap(),
     val errors: Map<DiscoveryLoadError, Long> = emptyMap(),
+    val statusCodes: Map<Int, Long> = emptyMap(),
     val receivedBytes: Long? = null,
     val knownByteCount: Long = 0,
     val unknownByteCount: Long = 0,
@@ -85,6 +96,8 @@ data class DiscoveryLoadSnapshot(
     val droppedEvents: Long,
     val droppedSpans: Long,
     val listenerFailureCount: Long,
+    /** First observed event per phase, or its first unavailable/failure event until observed. */
+    val stageEvents: List<DiscoveryLoadEvent> = emptyList(),
 )
 
 /**
@@ -98,22 +111,43 @@ class DiscoveryLoadTrace(
     private val nanoTime: () -> Long = System::nanoTime,
     private val listener: ((DiscoveryLoadEvent) -> Unit)? = null,
 ) {
+    val enabled: Boolean get() = config.enabled
+
     class Span internal constructor(
         internal val phase: DiscoveryLoadPhase,
         internal val startOffsetNanos: Long,
     )
 
     private val lock = Any()
-    private val origin = if (config.enabled) nanoTime() else null
+    private var origin = if (config.enabled) nanoTime() else null
     private var lastOffset = 0L
     private var sequence = 0L
     private val events = ArrayDeque<DiscoveryLoadEvent>()
+    private val stageEvents = linkedMapOf<DiscoveryLoadPhase, DiscoveryLoadEvent>()
     private val spans = linkedSetOf<Span>()
     private val counters = linkedMapOf<DiscoveryLoadCounter, Long>()
     private val requests = linkedMapOf<DiscoveryLoadEndpoint, DiscoveryLoadRequestSummary>()
     private var droppedEvents = 0L
     private var droppedSpans = 0L
     private var listenerFailures = 0L
+
+    /** Start another interval only after the harness has stopped prior work. Old span tokens expire. */
+    fun reset() {
+        if (!config.enabled) return
+        synchronized(lock) {
+            origin = nanoTime()
+            lastOffset = 0
+            sequence = 0
+            events.clear()
+            stageEvents.clear()
+            spans.clear()
+            counters.clear()
+            requests.clear()
+            droppedEvents = 0
+            droppedSpans = 0
+            listenerFailures = 0
+        }
+    }
 
     fun begin(phase: DiscoveryLoadPhase): Span? {
         if (!config.enabled) return null
@@ -163,10 +197,12 @@ class DiscoveryLoadTrace(
         receivedBytes: Long? = null,
         cache: DiscoveryLoadCache = DiscoveryLoadCache.UNKNOWN,
         error: DiscoveryLoadError? = null,
+        statusCode: Int? = null,
     ) {
         if (!config.enabled) return
         require(endpoint != DiscoveryLoadEndpoint.SDK_UNOBSERVED && !outcome.isUnavailable())
         require(receivedBytes == null || receivedBytes >= 0)
+        require(statusCode == null || statusCode in 100..599)
         validate(outcome, error, null)
         synchronized(lock) {
             val current = requests[endpoint] ?: DiscoveryLoadRequestSummary(endpoint)
@@ -175,6 +211,7 @@ class DiscoveryLoadTrace(
                 outcomes = current.outcomes.incremented(outcome),
                 caches = current.caches.incremented(cache),
                 errors = if (outcome == DiscoveryLoadOutcome.FAILED) current.errors.incremented(error ?: DiscoveryLoadError.UNKNOWN) else current.errors,
+                statusCodes = if (statusCode != null) current.statusCodes.incremented(statusCode) else current.statusCodes,
                 receivedBytes = receivedBytes?.let { (current.receivedBytes ?: 0) + it } ?: current.receivedBytes,
                 knownByteCount = current.knownByteCount + if (receivedBytes != null) 1 else 0,
                 unknownByteCount = current.unknownByteCount + if (receivedBytes == null) 1 else 0,
@@ -200,6 +237,7 @@ class DiscoveryLoadTrace(
             events = events.toList(), pendingSpans = spans.map { DiscoveryLoadPendingSpan(it.phase, it.startOffsetNanos) },
             counters = counters.toMap(), requests = DiscoveryLoadEndpoint.entries.map { requests[it] ?: DiscoveryLoadRequestSummary(it) },
             droppedEvents = droppedEvents, droppedSpans = droppedSpans, listenerFailureCount = listenerFailures,
+            stageEvents = stageEvents.values.sortedBy { it.sequence },
         )
     }
 
@@ -218,7 +256,13 @@ class DiscoveryLoadTrace(
         durationNanos: Long?, error: DiscoveryLoadError?, itemCount: Long?,
     ): DiscoveryLoadEvent {
         if (events.size == config.maxEvents) { events.removeFirst(); droppedEvents += 1 }
-        return DiscoveryLoadEvent(++sequence, phase, now, outcome, durationNanos, error, itemCount).also(events::addLast)
+        return DiscoveryLoadEvent(++sequence, phase, now, outcome, durationNanos, error, itemCount).also { event ->
+            events.addLast(event)
+            val previous = stageEvents[phase]
+            if (previous == null || previous.outcome != DiscoveryLoadOutcome.OBSERVED && outcome == DiscoveryLoadOutcome.OBSERVED) {
+                stageEvents[phase] = event
+            }
+        }
     }
 
     private fun notifyListener(event: DiscoveryLoadEvent) {

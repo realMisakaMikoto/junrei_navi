@@ -3,6 +3,8 @@ package cn.anitabi.navigator.ui.planner
 import cn.anitabi.navigator.core.model.Anime
 import cn.anitabi.navigator.core.model.EndPolicy
 import cn.anitabi.navigator.core.model.GeoPoint
+import cn.anitabi.navigator.core.model.NavigationProgress
+import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.PilgrimagePoint
 import cn.anitabi.navigator.core.model.RouteObjective
 import cn.anitabi.navigator.core.model.TourPlan
@@ -226,6 +228,31 @@ class PlannerDraftRecoveryRegressionTest {
     }
 
     @Test
+    fun `saved tour draft accepts image only supplement without changing formal inputs or progress`() = runTest(dispatcher) {
+        saveOldTour()
+        val repository = TourRepository(dao, json)
+        val saved = requireNotNull(repository.getMostRecent())
+        val shared = drafts()
+        val original = plannerOwner(shared)
+        val id = requireNotNull(original.prepareSavedDraft(saved))
+        val before = requireNotNull(shared.state.value.draft)
+        val images = before.selectedPoints.associate { it.id to "https://image.anitabi.cn/points/test-only.png?v=2" }
+        assertTrue(shared.supplementPointImages(id, images))
+        assertTrue(shared.flush(id))
+
+        val restored = plannerOwner(shared)
+        restored.restoreDraft(id)
+        advanceUntilIdle()
+
+        assertTrue(restored.state.value.canGenerate)
+        assertNull(restored.state.value.draftRecoveryError)
+        assertNull(restored.state.value.plan)
+        assertEquals(saved.storedTour.id, restored.state.value.restoredTourId)
+        assertEquals(before.selectedPoints.map { it.copy(imageUrl = images.getValue(it.id)) }, restored.state.value.selectedPoints)
+        assertEquals(saved, repository.get(saved.storedTour.id))
+    }
+
+    @Test
     fun `unchanged saved transit schedule restores in its draft zone after the device zone changes`() = runTest(dispatcher) {
         saveOldTour()
         val repository = TourRepository(dao, json)
@@ -360,6 +387,123 @@ class PlannerDraftRecoveryRegressionTest {
         assertTrue(restored.state.value.canGenerate)
     }
 
+    @Test
+    fun `successful formal generation links its inputs and completion removes only the draft`() = runTest(dispatcher) {
+        val formal = TourRepository(dao, json)
+        val shared = drafts { id -> formal.get(id)?.storedTour?.navigationState == NavigationState.COMPLETED }
+        val owner = plannerOwner(shared, roadProvider = successfulRoad())
+        owner.configure(anime, points)
+        owner.generate()
+        advanceUntilIdle()
+        val plan = requireNotNull(owner.state.value.plan)
+        assertEquals(plan.id, shared.state.value.draft?.generatedTourId)
+        val progress = NavigationProgress(tourId = plan.id, state = NavigationState.COMPLETED)
+        formal.saveUnresolved(plan.copy(state = NavigationState.COMPLETED), progress)
+        val savedBefore = formal.get(plan.id)
+        assertTrue(shared.completeGeneratedTour(plan.id, progress.state))
+        assertNull(shared.state.value.draft)
+        assertEquals(savedBefore, formal.get(plan.id))
+        assertNull(drafts().awaitLoaded().draft)
+    }
+
+    @Test
+    fun `generation failure never grants an old tour permission to clear current draft`() = runTest(dispatcher) {
+        val shared = drafts()
+        val owner = plannerOwner(shared)
+        owner.configure(anime, points)
+        owner.generate()
+        advanceUntilIdle()
+        assertNull(owner.state.value.plan)
+        assertNull(shared.state.value.draft?.generatedTourId)
+        assertFalse(shared.completeGeneratedTour("TEST_ONLY_OLD_TOUR", NavigationState.ENDED))
+        assertNotNull(shared.state.value.draft)
+        assertTrue(dao.entities.isEmpty())
+    }
+
+    @Test
+    fun `successful old generation cannot bind or clear a draft edited during route request`() = runTest(dispatcher) {
+        val shared = drafts()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val delegate = successfulRoad()
+        val road = object : RoadRoutingProvider by delegate {
+            override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute {
+                entered.complete(Unit)
+                release.await()
+                return delegate.directions(mode, points)
+            }
+        }
+        val owner = plannerOwner(shared, roadProvider = road)
+        owner.configure(anime, points)
+        owner.generate()
+        entered.await()
+        val id = requireNotNull(owner.state.value.draftId)
+        shared.update(id) { it.copy(dwellMinutesInput = "31") }
+        release.complete(Unit)
+        advanceUntilIdle()
+        val plan = requireNotNull(owner.state.value.plan)
+        assertNull(shared.state.value.draft?.generatedTourId)
+        assertFalse(shared.completeGeneratedTour(plan.id, NavigationState.COMPLETED))
+        assertEquals("31", shared.state.value.draft?.dwellMinutesInput)
+    }
+
+    @Test
+    fun `generation binds matching inputs when display image metadata changes before planning`() = runTest(dispatcher) {
+        val shared = drafts()
+        val owner = plannerOwner(shared, roadProvider = successfulRoad())
+        owner.configure(anime, points)
+        val id = requireNotNull(owner.flushDraft())
+        assertTrue(shared.supplementPointImages(id, points.associate { it.id to "https://image.anitabi.cn/points/test-only.png" }))
+        val supplemented = requireNotNull(shared.state.value.draft).selectedPoints
+
+        owner.generate()
+        advanceUntilIdle()
+
+        val plan = requireNotNull(owner.state.value.plan)
+        assertEquals(plan.id, shared.state.value.draft?.generatedTourId)
+        assertEquals(supplemented, shared.state.value.draft?.selectedPoints)
+        assertEquals(points, plan.selectedPoints)
+        assertEquals(1, dao.entities.size)
+    }
+
+    @Test
+    fun `generation binds matching inputs when images arrive during the route request`() = runTest(dispatcher) {
+        val shared = drafts()
+        val entered = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        val delegate = successfulRoad()
+        val road = object : RoadRoutingProvider by delegate {
+            override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute {
+                entered.complete(Unit)
+                release.await()
+                return delegate.directions(mode, points)
+            }
+        }
+        val owner = plannerOwner(shared, roadProvider = road)
+        owner.configure(anime, points)
+        owner.generate()
+        entered.await()
+        val id = requireNotNull(owner.state.value.draftId)
+        assertTrue(shared.supplementPointImages(id, points.associate { it.id to "https://image.anitabi.cn/points/test-only.png" }))
+        release.complete(Unit)
+        advanceUntilIdle()
+
+        val plan = requireNotNull(owner.state.value.plan)
+        assertEquals(plan.id, shared.state.value.draft?.generatedTourId)
+        assertEquals(points.map { it.copy(imageUrl = "https://image.anitabi.cn/points/test-only.png") }, shared.state.value.draft?.selectedPoints)
+        assertEquals(1, dao.entities.size)
+    }
+
+    private fun successfulRoad(): RoadRoutingProvider = object : RoadRoutingProvider {
+        override suspend fun matrix(mode: TravelMode, points: List<GeoPoint>, objective: RouteObjective): TravelMatrix {
+            val values = List(points.size) { from -> List<Double?>(points.size) { to -> kotlin.math.abs(from - to).toDouble() } }
+            return TravelMatrix(values, values)
+        }
+        override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute = RoadRoute(
+            points.zipWithNext().map { (a, b) -> RoadRouteSegment(listOf(a, b), emptyList(), 10.0, 10.0) },
+        )
+    }
+
     private fun searchOwner(draftRepository: PlannerDraftRepository = drafts()): SearchViewModel {
         val http = ApiHttpClient(UserAgentInterceptor("TEST_ONLY", "1", "mailto:test@example.invalid"))
         return SearchViewModel(
@@ -394,9 +538,9 @@ class PlannerDraftRecoveryRegressionTest {
         draftRepository = draftRepository,
     )
 
-    private fun drafts(): PlannerDraftRepository {
+    private fun drafts(isComplete: suspend (String) -> Boolean = { false }): PlannerDraftRepository {
         val scope = CoroutineScope(SupervisorJob() + dispatcher).also(scopes::add)
-        return PlannerDraftRepository(FilePlannerDraftStorage(temporary.root, dispatcher), scope)
+        return PlannerDraftRepository(FilePlannerDraftStorage(temporary.root, dispatcher), scope, isTourComplete = isComplete)
     }
 
     private suspend fun saveOldTour() {

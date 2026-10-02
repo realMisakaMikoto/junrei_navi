@@ -1,10 +1,14 @@
 # Frontend redesign requirement and evidence matrix
 
-## September 23 repair work is still open
+## October 2 repair work is still open
 
 The user supplied a new F1-F7 repair plan after the accepted redesign, and added the missing own-location dot/phone-heading indicator. Its live checklist is [FRONTEND_FIX_ACCEPTANCE.md](FRONTEND_FIX_ACCEPTANCE.md), with separate [image evidence](IMAGE_LOADING_DIAGNOSIS.md) and [performance evidence](DISCOVERY_LOAD_PERFORMANCE.md). The historical matrix below does not certify these new changes. Each repair commit needs its own CI and protected signed acceptance; a local Debug pass does not satisfy those gates. Draft PR #37 remains open; no merge/release/deployment occurred.
 
 All prior API 26 native AMap and coordinate-baseline evidence limits continue to apply.
+
+The latest local repair evidence includes real public-image Android decoding/UI pixels and five actual background-process recovery cases on the dedicated API26 emulator. They have separate APK hashes in the repair checklist. CI `35886806901` at `68d7457` failed one legacy image-loader fixture assertion per API; its corrected case passed locally, with new CI still pending. F5/F6 performance measurements and new signed native acceptance remain open.
+
+The October 2 normal build has 602 passing JVM cases, including visible retry overflow, missing image supplementation without changing draft ownership, persisted completion and pause/resume boundaries. Its exact API26 APK pair separately passes a real Google SDK location/heading case with synthetic inputs and a controlled-HTTPS search-thumbnail retry/pixel case. Later ready-span changes require a fresh artifact; these results do not establish phone sensors, new signed AMap acceptance or loading speed. See the repair checklist for hashes and retained failures.
 
 Audit date: 2026-09-21. Scope: the complete approved September 15 frontend brief, including its Swift-inspired panel model, all existing pages, data contract, coordinates and acceptance gates, with the user's explicit coordinate-baseline and API 26 coverage substitutions below. The original plan-only restriction was superseded by implementation authorization; personal-device installation and production changes remain separate.
 

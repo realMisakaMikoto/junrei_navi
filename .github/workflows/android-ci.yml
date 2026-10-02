@@ -61,6 +61,10 @@ jobs:
         run: python3 scripts/check-backend-compatibility-test.py
       - name: Test the AMap JNI release guard
         run: python3 .github/scripts/test-audit-amap-r8.py
+      - name: Test Discovery artifact and measurement evidence guards
+        run: |
+          python3 .github/scripts/test-audit-discovery-build.py
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - name: Restore Firebase Android configuration
         env:
           ANITABI_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANITABI_GOOGLE_SERVICES_JSON_BASE64 }}
@@ -184,11 +188,15 @@ jobs:
           adb shell pm revoke cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
           adb shell am instrument -w \
             -e captureFrontendReview true \
-            -e class 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest,cn.anitabi.navigator.ui.FrontendRemainingFlowsTest,cn.anitabi.navigator.ui.DiscoveryStartupInstrumentedTest,cn.anitabi.navigator.ui.TransitPresentationInstrumentedTest,cn.anitabi.navigator.ui.discovery.map.DiscoveryMarkerArtworkInstrumentedTest' \
+            -e class 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest,cn.anitabi.navigator.ui.FrontendRemainingFlowsTest,cn.anitabi.navigator.ui.DiscoveryStartupInstrumentedTest,cn.anitabi.navigator.ui.TransitPresentationInstrumentedTest,cn.anitabi.navigator.ui.discovery.map.DiscoveryMarkerArtworkInstrumentedTest,cn.anitabi.navigator.data.repository.PlannerDraftCompletionInstrumentedTest,cn.anitabi.navigator.data.images.AppImageLoaderTraceInstrumentedTest' \
             cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/map-list-fallback.txt
           grep -Eq '^OK \([1-9][0-9]* tests\)' smoke-output/map-list-fallback.txt
           adb pull /sdcard/Android/data/cn.anitabi.navigator/files/frontend-review smoke-output/frontend-review
+          mkdir -p smoke-output/repair
+          for name in committedTerminalRecordsClearLinkedDraftDurablyWithoutRemovingFormalTours oldAndUnrelatedTerminalSavesPreserveTheNewerLinkedOrUnlinkedDraft; do
+            adb pull "/sdcard/Android/data/cn.anitabi.navigator/files/frontend-fix-v2/planner-draft-completion-$name.json" smoke-output/repair/
+          done
       - name: Reset Android 8 after permission-system smoke
         if: matrix.label == 'android-8-api-26'
         run: |

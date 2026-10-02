@@ -1,6 +1,9 @@
 package cn.anitabi.navigator.data.repository
 
 import cn.anitabi.navigator.core.model.PlannerDraft
+import cn.anitabi.navigator.core.model.NavigationState
+import cn.anitabi.navigator.data.images.samePlanningPoints
+import cn.anitabi.navigator.data.images.withMissingAnitabiImage
 import java.io.File
 import java.io.FileOutputStream
 import java.nio.file.Files
@@ -20,6 +23,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.intOrNull
@@ -98,6 +102,8 @@ class PlannerDraftRepository(
     private val storage: PlannerDraftStorage,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
     private val checkpointMillis: Long = 250,
+    /** Read persisted local tour status only; never refresh routing or contact a provider. */
+    private val isTourComplete: suspend (String) -> Boolean = { false },
 ) {
     private val lock = Any()
     private val writes = Mutex()
@@ -107,6 +113,9 @@ class PlannerDraftRepository(
     val state: StateFlow<PlannerDraftState> = mutableState.asStateFlow()
     private var edited = false
     private var persistedRevision = -1L
+    /** Storage revisions include display metadata; this barrier changes only with input ownership. */
+    private var ownershipRevision = 0L
+    private var pendingCompletionTourId: String? = null
 
     init {
         scope.launch {
@@ -117,16 +126,25 @@ class PlannerDraftRepository(
             } catch (_: Exception) {
                 PlannerDraftRead.Unavailable(PlannerDraftProblem.CORRUPT)
             }
+            val disk = (result as? PlannerDraftRead.Loaded)?.envelope
+            val completedTour = disk?.draft?.generatedTourId?.takeIf { id ->
+                isPersistedTourComplete(id)
+            }
+            var needsCompletionWrite = false
             synchronized(lock) {
-                val disk = (result as? PlannerDraftRead.Loaded)?.envelope
                 if (!edited) {
                     mutableState.value = PlannerDraftState(
                         initialized = true,
-                        draft = disk?.draft,
-                        revision = disk?.revision ?: 0,
+                        draft = disk?.draft.takeIf { completedTour == null },
+                        revision = (disk?.revision ?: 0) + if (completedTour != null) 1 else 0,
                         problem = (result as? PlannerDraftRead.Unavailable)?.problem,
                     )
                     persistedRevision = disk?.revision ?: -1
+                    if (completedTour != null) {
+                        edited = true
+                        pendingCompletionTourId = completedTour
+                        needsCompletionWrite = true
+                    }
                 } else {
                     // The old disk read must not replace a selection started while it was in flight.
                     mutableState.value = mutableState.value.copy(
@@ -134,7 +152,9 @@ class PlannerDraftRepository(
                         revision = maxOf(mutableState.value.revision, (disk?.revision ?: 0) + 1),
                     )
                 }
+                ownershipRevision = mutableState.value.revision
             }
+            if (needsCompletionWrite && persistLatest()) synchronized(lock) { pendingCompletionTourId = null }
             loaded.complete(Unit)
         }
         scope.launch {
@@ -155,18 +175,83 @@ class PlannerDraftRepository(
 
     fun replace(draft: PlannerDraft): String {
         draft.validate()
-        synchronized(lock) { publish(draft) }
+        synchronized(lock) {
+            val current = state.value.draft
+            val next = forInputEdit(draft, current)
+            if (next != current) publish(next, imageOnly = current != null && next.samePlanningInputs(current))
+        }
         return draft.draftId
     }
 
     fun update(draftId: String, transform: (PlannerDraft) -> PlannerDraft): Boolean = synchronized(lock) {
         val current = state.value.draft?.takeIf { it.draftId == draftId } ?: return@synchronized false
-        val next = transform(current)
+        val next = forInputEdit(transform(current), current)
         require(next.draftId == current.draftId)
         next.validate()
-        if (next != current) publish(next)
+        if (next != current) publish(next, imageOnly = next.samePlanningInputs(current))
         true
     }
+
+    /** Fill only matching, absent display images; all planning inputs and the formal link stay intact. */
+    fun supplementPointImages(draftId: String, imagesByPointId: Map<String, String>): Boolean = synchronized(lock) {
+        val current = state.value.draft?.takeIf { state.value.initialized && it.draftId == draftId }
+            ?: return@synchronized false
+        val points = current.selectedPoints.map { point -> point.withMissingAnitabiImage(imagesByPointId[point.id]) }
+        if (points != current.selectedPoints) publish(current.copy(selectedPoints = points), imageOnly = true)
+        true
+    }
+
+    /** Link the captured planning revision only while input ownership has stayed unchanged. */
+    fun linkGeneratedTour(draftId: String, expectedRevision: Long, tourId: String): Boolean = synchronized(lock) {
+        require(tourId.isNotBlank())
+        val current = state.value
+        val draft = current.draft?.takeIf { it.draftId == draftId } ?: return@synchronized false
+        if (!current.initialized || expectedRevision !in ownershipRevision..current.revision) return@synchronized false
+        if (draft.generatedTourId != tourId) publish(draft.copy(generatedTourId = tourId))
+        true
+    }
+
+    /** Completion affects only this draft; the formal journey and navigation progress stay intact. */
+    suspend fun completeGeneratedTour(tourId: String, navigationState: NavigationState): Boolean {
+        if (navigationState != NavigationState.COMPLETED && navigationState != NavigationState.ENDED) return false
+        loaded.await()
+        val ownership = synchronized(lock) {
+            if (state.value.draft?.generatedTourId != tourId &&
+                (state.value.draft != null || pendingCompletionTourId != tourId)) return false
+            ownershipRevision
+        }
+        // Runtime terminal progress can still roll back if the formal Room write fails.
+        if (!isPersistedTourComplete(tourId)) return false
+        synchronized(lock) {
+            if (ownershipRevision != ownership) return false
+            if (state.value.draft?.generatedTourId == tourId) {
+                publish(null)
+                pendingCompletionTourId = tourId
+            } else if (state.value.draft != null || pendingCompletionTourId != tourId) return false
+        }
+        val durable = flush()
+        if (durable) synchronized(lock) {
+            if (pendingCompletionTourId == tourId) pendingCompletionTourId = null
+        }
+        return durable
+    }
+
+    private suspend fun isPersistedTourComplete(tourId: String): Boolean = try {
+        withTimeoutOrNull(5_000) { isTourComplete(tourId) } == true
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        false
+    }
+
+    private fun forInputEdit(incoming: PlannerDraft, current: PlannerDraft?): PlannerDraft {
+        val preserved = current?.takeIf { incoming.samePlanningInputs(it) }?.generatedTourId
+        return incoming.copy(generatedTourId = preserved)
+    }
+
+    private fun PlannerDraft.samePlanningInputs(other: PlannerDraft): Boolean =
+        selectedPoints.samePlanningPoints(other.selectedPoints) &&
+            copy(selectedPoints = other.selectedPoints, generatedTourId = null) == other.copy(generatedTourId = null)
 
     /** Also invalidates pending restores and is written even if no draft was loaded yet. */
     fun clear(draftId: String? = null) {
@@ -177,9 +262,11 @@ class PlannerDraftRepository(
         scope.launch { flush() }
     }
 
-    private fun publish(draft: PlannerDraft?) {
+    private fun publish(draft: PlannerDraft?, imageOnly: Boolean = false) {
         edited = true
+        pendingCompletionTourId = null
         mutableState.value = mutableState.value.copy(draft = draft, revision = state.value.revision + 1, problem = null)
+        if (!imageOnly) ownershipRevision = mutableState.value.revision
         wakeWriter.trySend(Unit)
     }
 

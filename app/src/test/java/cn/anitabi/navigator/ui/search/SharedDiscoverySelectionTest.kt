@@ -50,4 +50,15 @@ class SharedDiscoverySelectionTest {
             .withDiscoveryPoints(anime, listOf(point.copy(coordinate = GeoPoint(11.0, 21.0))))
         assertEquals(point.coordinate, state.combinedPilgrimageData!!.points.single().coordinate)
     }
+
+    @Test fun deselectingThenClickingUpdatedPointUsesTheNewSnapshot() {
+        val anime = Anime(1, "TEST_ONLY")
+        val previous = PilgrimagePoint("p", "TEST_ONLY_OLD", GeoPoint(1.0, 2.0))
+        val changed = previous.copy(name = "TEST_ONLY_NEW", coordinate = GeoPoint(3.0, 4.0))
+        val first = SearchUiState().withDiscoveryPoints(anime, listOf(previous))
+        val cleared = first.copy(selectedPointIds = emptySet())
+        val selectedAgain = cleared.withDiscoveryPoints(anime, listOf(changed))
+        assertEquals(changed, selectedAgain.selectedAnimeData.getValue(anime.subjectId).points.single())
+        assertEquals(setOf("1::p"), selectedAgain.selectedPointIds)
+    }
 }

@@ -30,6 +30,8 @@ data class PlannerDraft(
     val transitRoutingPreference: TransitRoutingPreference = TransitRoutingPreference.RECOMMENDED,
     val transitTravelModes: Set<TransitTravelMode> = emptySet(),
     val sourceTourId: String? = null,
+    /** Set only after a matching generation is saved; ordinary input edits invalidate this link. */
+    val generatedTourId: String? = null,
 ) {
     fun withValidEndpointOrder(): PlannerDraft {
         val start = startPointId?.takeUnless { useCurrentLocation }
@@ -40,6 +42,7 @@ data class PlannerDraft(
 
     fun validate() {
         require(draftId.matches(Regex("[A-Za-z0-9_-]{1,80}")))
+        require(generatedTourId == null || generatedTourId.isNotBlank())
         require(selectedAnimes.isNotEmpty())
         require(selectedAnimes.map(Anime::subjectId).distinct().size == selectedAnimes.size)
         val ids = selectedPoints.mapTo(hashSetOf(), PilgrimagePoint::id)

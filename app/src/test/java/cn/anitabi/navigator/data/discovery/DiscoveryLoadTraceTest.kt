@@ -22,6 +22,8 @@ class DiscoveryLoadTraceTest {
         trace.request(DiscoveryLoadEndpoint.IMAGE, DiscoveryLoadOutcome.OBSERVED, receivedBytes = 12)
         trace.increment(DiscoveryLoadCounter.INDEX_REBUILD_COUNT)
         trace.maximum(DiscoveryLoadCounter.JAVA_HEAP_PEAK_BYTES, 128)
+        trace.reset()
+        assertFalse(trace.enabled)
         val state = trace.snapshot()
         assertFalse(state.enabled)
         assertNull(state.originNanos)
@@ -150,5 +152,62 @@ class DiscoveryLoadTraceTest {
         assertTrue(trace.snapshot().events.isEmpty())
     }
 
+    @Test fun `reset starts a fresh interval and rejects prior span tokens`() {
+        var now = 100L
+        val trace = enabled { now }
+        val stale = trace.begin(DiscoveryLoadPhase.INDEX_FETCH)
+        trace.mark(DiscoveryLoadPhase.DISCOVERY_ENTER)
+        trace.increment(DiscoveryLoadCounter.CACHE_WRITE_COUNT)
+        trace.request(DiscoveryLoadEndpoint.STATIC_INDEX, DiscoveryLoadOutcome.OBSERVED, 20, statusCode = 200)
+        now = 200
+        trace.reset()
+        assertTrue(trace.enabled)
+        assertFalse(trace.end(stale))
+        val fresh = trace.begin(DiscoveryLoadPhase.INDEX_FETCH)
+        now = 250
+        trace.end(fresh)
+        val state = trace.snapshot()
+        assertEquals(200L, state.originNanos)
+        assertEquals(50L, state.events.single().durationNanos)
+        assertEquals(1L, state.events.single().sequence)
+        assertTrue(state.counters.isEmpty())
+        assertTrue(state.requests.all { it.completedCount == null && it.statusCodes.isEmpty() })
+        assertTrue(state.pendingSpans.isEmpty())
+    }
+
+    @Test fun `request status aggregation distinguishes exact statuses and rejects impossible codes`() {
+        val trace = enabled { 0 }
+        trace.request(DiscoveryLoadEndpoint.STATIC_INDEX, DiscoveryLoadOutcome.OBSERVED, statusCode = 200)
+        trace.request(DiscoveryLoadEndpoint.STATIC_INDEX, DiscoveryLoadOutcome.FAILED,
+            error = DiscoveryLoadError.NOT_FOUND, statusCode = 404)
+        trace.request(DiscoveryLoadEndpoint.STATIC_INDEX, DiscoveryLoadOutcome.FAILED,
+            error = DiscoveryLoadError.TIMEOUT)
+        assertEquals(mapOf(200 to 1L, 404 to 1L),
+            trace.snapshot().requests.single { it.endpoint == DiscoveryLoadEndpoint.STATIC_INDEX }.statusCodes)
+        assertThrows(IllegalArgumentException::class.java) {
+            trace.request(DiscoveryLoadEndpoint.STATIC_INDEX, DiscoveryLoadOutcome.OBSERVED, statusCode = 0)
+        }
+    }
+
     private fun enabled(clock: () -> Long) = DiscoveryLoadTrace(DiscoveryLoadTraceConfig(enabled = true), clock)
+
+    @Test fun `first successful stages survive ring loss while late stages remain observed`() {
+        var now = 0L
+        val trace = DiscoveryLoadTrace(DiscoveryLoadTraceConfig(enabled = true, maxEvents = 2), { now })
+        trace.mark(DiscoveryLoadPhase.SDK_READY, DiscoveryLoadOutcome.NOT_OBSERVED)
+        now = 10
+        trace.mark(DiscoveryLoadPhase.SDK_READY)
+        now = 20
+        trace.mark(DiscoveryLoadPhase.SDK_READY)
+        trace.mark(DiscoveryLoadPhase.DETAILS_SYNC_COMPLETE)
+        trace.mark(DiscoveryLoadPhase.IMAGE_MARKERS_COMMITTED, itemCount = 6)
+        val result = trace.snapshot()
+        assertEquals(3L, result.droppedEvents)
+        assertEquals(10L, result.stageEvents.single { it.phase == DiscoveryLoadPhase.SDK_READY }.offsetNanos)
+        assertTrue(result.stageEvents.any { it.phase == DiscoveryLoadPhase.DETAILS_SYNC_COMPLETE })
+        assertEquals(6L, result.stageEvents.single { it.phase == DiscoveryLoadPhase.IMAGE_MARKERS_COMMITTED }.itemCount)
+        assertTrue(result.stageEvents.size <= DiscoveryLoadPhase.entries.size)
+        trace.reset()
+        assertTrue(trace.snapshot().stageEvents.isEmpty())
+    }
 }

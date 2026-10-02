@@ -28,6 +28,7 @@ import cn.anitabi.navigator.ui.discovery.DiscoveryViewModel
 import cn.anitabi.navigator.ui.AppShell
 
 class MainActivity : ComponentActivity() {
+    private var windowDiagnostics: java.io.Closeable? = null
     private val container by lazy { (application as AnitabiApplication).container }
     private val searchViewModel by viewModels<SearchViewModel> {
         SearchViewModel.Factory(
@@ -57,6 +58,7 @@ class MainActivity : ComponentActivity() {
                     freshLocation = {
                         container.locationProvider.currentLocationFix(maxAgeMillis = 30_000, maxAccuracyMeters = 5_000.0).coordinate
                     },
+                    trace = container.discoveryTrace,
                 )
             }
         }
@@ -64,11 +66,15 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val diagnostics = (application as AnitabiApplication).discoveryDiagnostics
+        windowDiagnostics = diagnostics.observeWindow(window)
         enableEdgeToEdge()
         setContent {
             var appearance by remember { mutableStateOf(container.appSettingsStore.appearance()) }
             var imagesEnabled by remember { mutableStateOf(container.appSettingsStore.imageMarkersEnabled()) }
-            AnitabiTheme(appearance = appearance) {
+            androidx.compose.runtime.CompositionLocalProvider(
+                cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace provides diagnostics.trace,
+            ) { AnitabiTheme(appearance = appearance) {
                 val dark = MaterialTheme.colorScheme.background.luminance() < 0.5f
                 androidx.compose.runtime.SideEffect {
                     WindowCompat.getInsetsController(window, window.decorView).apply {
@@ -111,7 +117,13 @@ class MainActivity : ComponentActivity() {
                         )
                     }
                 }
-            }
+            } }
         }
+    }
+
+    override fun onDestroy() {
+        windowDiagnostics?.close()
+        windowDiagnostics = null
+        super.onDestroy()
     }
 }

@@ -27,6 +27,7 @@ class DiscoveryRepository(
     private val scope: CoroutineScope,
     private val now: () -> Long = System::currentTimeMillis,
     private val requestIntervalMillis: Long = 1_000,
+    private val trace: DiscoveryLoadTrace = DiscoveryLoadTrace(),
 ) {
     private val mutableState = MutableStateFlow(DiscoveryState())
     val state: StateFlow<DiscoveryState> = mutableState.asStateFlow()
@@ -40,6 +41,11 @@ class DiscoveryRepository(
     private var pendingRefresh = false
     private var pendingForce = false
     private var lastRequestAt = Long.MIN_VALUE
+
+    /** Includes lazy jobs and cancellation cleanup, not just the published loading flags. */
+    internal fun isWorkQuiescent(): Boolean = synchronized(workLock) {
+        updateJob == null && subjectRequests.values.all { it.isCompleted } && !(foreground && pendingRefresh)
+    }
 
     suspend fun initialize() = initializeMutex.withLock {
         if (!state.value.initialized) {
@@ -121,9 +127,12 @@ class DiscoveryRepository(
                 val version = snapshot.version
                 mutableState.update { it.copy(loadingSubjectIds = it.loadingSubjectIds + subjectId) }
                 try {
-                    val detail = request { DiscoveryParser.apiDetails(subjectId, source.subject(subjectId)) }
-                    snapshotMutex.withLock {
-                        val current = state.value.snapshot ?: return@withLock
+                    val detail = request {
+                        val document = source.subject(subjectId)
+                        parse(DiscoveryLoadPhase.SUBJECT_PARSE) { DiscoveryParser.apiDetails(subjectId, document) }
+                    }
+                    withSnapshotLock {
+                        val current = state.value.snapshot ?: return@withSnapshotLock
                         // The API carries no index generation; page validation must still confirm freshness.
                         if (current.version == version) publish(DiscoveryParser.merge(current, listOf(detail)))
                     }
@@ -150,8 +159,11 @@ class DiscoveryRepository(
 
     private suspend fun updateRound() {
         val token = (now() / 60_000 / 24 + 6).toString(36)
-        val index = request { DiscoveryParser.index(source.index(token)) }
-        snapshotMutex.withLock {
+        val index = request {
+            val document = source.index(token)
+            parse(DiscoveryLoadPhase.INDEX_PARSE) { DiscoveryParser.index(document) }
+        }
+        withSnapshotLock {
             val old = state.value.snapshot
             // The fresh index restores members removed by legacy API folder responses as well.
             val next = DiscoveryParser.carryDetails(index, old)
@@ -161,13 +173,16 @@ class DiscoveryRepository(
         for (page in 0 until index.pageCount) {
             if (page in state.value.snapshot.orEmptyPages()) continue
             try {
-                val details = request { DiscoveryParser.page(source.page(page, token)) }
+                val details = request {
+                    val document = source.page(page, token)
+                    parse(DiscoveryLoadPhase.PAGE_PARSE) { DiscoveryParser.page(document) }
+                }
                 // A response for the wrong shard cannot satisfy this generation's completeness.
                 val expectedIds = index.subjects.drop(page * index.pageSize).take(index.pageSize).map { it.id }.toSet()
                 if (details.map { it.subjectId }.toSet() != expectedIds) throw DiscoveryFormatException()
-                snapshotMutex.withLock {
-                    val current = state.value.snapshot ?: return@withLock
-                    if (current.version != index.version) return@withLock
+                withSnapshotLock {
+                    val current = state.value.snapshot ?: return@withSnapshotLock
+                    if (current.version != index.version) return@withSnapshotLock
                     val merged = DiscoveryParser.merge(current, details)
                     val complete = merged.points.none { it.subjectId in expectedIds && it.detailsVersion != merged.version }
                     publish(merged.copy(loadedPages = if (complete) merged.loadedPages + page else merged.loadedPages))
@@ -183,23 +198,67 @@ class DiscoveryRepository(
                 mutableState.update { it.copy(error = failure.toDiscoveryError()) }
             }
         }
-        val rechecked = request { DiscoveryParser.index(source.index(token)) }
-        snapshotMutex.withLock {
-            val current = state.value.snapshot ?: return@withLock
+        val rechecked = request {
+            val document = source.index(token)
+            parse(DiscoveryLoadPhase.INDEX_PARSE) { DiscoveryParser.index(document) }
+        }
+        withSnapshotLock {
+            val current = state.value.snapshot ?: return@withSnapshotLock
             val consistent = rechecked.version == index.version
-            publish(current.copy(endVersionVerified = consistent && !pageFailure))
+            val completed = current.copy(endVersionVerified = consistent && !pageFailure)
+            publish(completed)
+            if (completed.detailsCurrent) trace.mark(
+                DiscoveryLoadPhase.DETAILS_SYNC_COMPLETE,
+                itemCount = completed.points.size.toLong(),
+            )
             if (!consistent) mutableState.update { it.copy(error = DiscoveryError.VERSION_CHANGED) }
         }
     }
 
-    private suspend fun <T> request(block: suspend () -> T): T = networkMutex.withLock {
-        currentCoroutineContext().ensureActive()
-        if (!foreground) throw CancellationException("Discovery is paused")
-        if (lastRequestAt != Long.MIN_VALUE) delay((requestIntervalMillis - (now() - lastRequestAt)).coerceAtLeast(0))
-        currentCoroutineContext().ensureActive()
-        if (!foreground) throw CancellationException("Discovery is paused")
-        lastRequestAt = now()
-        block().also { currentCoroutineContext().ensureActive() }
+    private suspend fun <T> request(block: suspend () -> T): T {
+        val queued = trace.begin(DiscoveryLoadPhase.REQUEST_QUEUE_WAIT)
+        try {
+            return networkMutex.withLock {
+                currentCoroutineContext().ensureActive()
+                if (!foreground) throw CancellationException("Discovery is paused")
+                if (lastRequestAt != Long.MIN_VALUE) delay((requestIntervalMillis - (now() - lastRequestAt)).coerceAtLeast(0))
+                currentCoroutineContext().ensureActive()
+                if (!foreground) throw CancellationException("Discovery is paused")
+                lastRequestAt = now()
+                trace.end(queued)
+                block().also { currentCoroutineContext().ensureActive() }
+            }
+        } catch (cancelled: CancellationException) {
+            trace.end(queued, DiscoveryLoadOutcome.CANCELLED)
+            trace.increment(DiscoveryLoadCounter.CANCELLED_WORK_COUNT)
+            throw cancelled
+        }
+    }
+
+    private suspend fun <T> withSnapshotLock(block: suspend () -> T): T {
+        val waiting = trace.begin(DiscoveryLoadPhase.SNAPSHOT_LOCK_WAIT)
+        try {
+            return snapshotMutex.withLock {
+                trace.end(waiting)
+                block()
+            }
+        } catch (cancelled: CancellationException) {
+            trace.end(waiting, DiscoveryLoadOutcome.CANCELLED)
+            throw cancelled
+        }
+    }
+
+    private inline fun <T> parse(phase: DiscoveryLoadPhase, block: () -> T): T {
+        val parsing = trace.begin(phase)
+        try {
+            return block().also { trace.end(parsing) }
+        } catch (cancelled: CancellationException) {
+            trace.end(parsing, DiscoveryLoadOutcome.CANCELLED)
+            throw cancelled
+        } catch (failure: Exception) {
+            trace.end(parsing, DiscoveryLoadOutcome.FAILED, DiscoveryLoadError.INVALID_DATA)
+            throw failure
+        }
     }
 
     private suspend fun publish(snapshot: DiscoverySnapshot) {

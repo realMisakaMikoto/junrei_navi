@@ -4,6 +4,10 @@
 
 The September 21 acceptance below covers its original approved scope and exact artifacts. The later image/load feedback, F1-F7 repair plan and own-location/phone-heading requirement are active work, tracked separately in [FRONTEND_FIX_ACCEPTANCE.md](FRONTEND_FIX_ACCEPTANCE.md). Their code, device tests and performance measurements must be verified at the new source/artifact identities; historical passes do not close them.
 
+September 24 adds dedicated API26 public-image decode/UI evidence and five background process-death recovery results, retaining the first image timeout and harness failures. The current repair checklist records the exact artifacts and CI fixture failure; neither these functional passes nor the new opt-in stage instrumentation close F6 performance acceptance.
+
+October 2 adds 602 JVM correctness passes and separately bound API26 Google native own-location/heading and search-row HTTPS retry/pixel checks. Location and direction inputs are authored test data; the user's physical-device failure has not been repeated on the new code. The opt-in Release native-pixel probe is compiled but unqualified, with no B1/B2 performance sample or F5 optimization yet. Current repair CI and signed acceptance remain required.
+
 ## Scope and evidence policy
 
 The approved September 15, 2026 brief replaces the entry experience with a complete discovery map, a single content panel, shared local search and itinerary selection, and a Material 3 redesign of every existing page. Implementation is authorized; device installation and deployment are separate. The baseline is `main@2b6d971`; development branch is `codex/frontend-discovery-redesign`.
