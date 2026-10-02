@@ -432,7 +432,10 @@ class DiscoveryUiContractTest {
                 onLocate = { locateRequests++ }, onResetBearing = { resetBearingRequests++ },
                 onListMode = { state = state.copy(listMode = it) },
                 onBatchMode = { state = state.copy(batchMode = it) },
-                onNearby = { state = state.copy(nearby = it) }, onRefresh = { refreshRequests++ },
+                onNearby = { enabled ->
+                    val next = state.copy(nearby = enabled)
+                    state = next.copy(nearbyResult = next.nearbyKey?.let { calculateDiscoveryNearby(next.pointsById.values, it) })
+                }, onRefresh = { refreshRequests++ },
                 onPoint = { point, _ -> state = state.copy(panel = state.panel.open(DiscoveryPanel.Point(point.id))) },
                 onSubject = { state = state.copy(panel = state.panel.open(DiscoveryPanel.Subject(it))) },
                 onTogglePoint = { point -> selectedIds = if (point.id in selectedIds) selectedIds - point.id else selectedIds + point.id },

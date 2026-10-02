@@ -8,8 +8,8 @@
 | F2 完整性/重试 | 空/部分响应、独立图片元数据补充、缓存修复通过上述测试；相关64项核心测试全过 | 新 HEAD 整体/设备验证 |
 | F3 视野选点 | 8项生产 VM 基线7失败；20项修复回归及2项数据准备屏障测试全过，已接入地图/按钮事件；14项发现界面契约复测通过 | 原生移动/布局期间即时点击验证 |
 | F4 持久草稿 | 原5项恢复测试全部失败；10月2日3c4a2ae源码API26实际后台进程死亡5种情况通过；持久完成清理的2项真实容器/Room集成保留各自包范围；图片元数据与生成关联/完成所有权包含在602项JVM通过中 | 当前源码API37恢复及签名复测；旧容器结果不移用 |
-| F5 附近排序 | 仍在 Composable 中，风险已确认，未测得性能根因 | 基线、后台计算及次数/规模验证 |
-| F6 加载性能 | 默认关闭的trace已接入数据、缓存、地图、Window帧和Coil请求/解码；受门控Release测量源集及原生像素探针已编译/Lint通过，尚未取得B1或B2样本 | 测量包实际设备资格验证、同条件至少20次及完整矩阵；F5仍未优化 |
+| F5 附近排序 | 固定83d签名Debug的1k/10k/100k各20次B1全过，确认MAIN重复距离计算；工作树已移到可取消后台、单次距离复用，15项专项及618全量/双Lint/两包/R8/全部本地审计通过 | 新签名Debug同条件B2与实际后台/每点一次验证 |
+| F6 加载性能 | 默认关闭的trace已接入数据、缓存、地图、Window帧和Coil请求/解码；83d测量Release签名/实际组件与独立APK审计通过，尚无图片正常的Release B1/B2样本 | 测量包设备像素资格、同条件至少20次及完整矩阵；附近B1不替代地图整体性能 |
 | F7 图片链路 | B0规范3/3、旧前缀0/3；旧包公网实际6图及缩略图/h360像素通过，保留首次超时；10月2日修复可见集超过256项绕过退避、旧null图片补充和后台暂停丢失重试机会，固定包602项JVM通过；同包API26点位列表真实HTTPS/解码像素/重试1项通过 | 双地图原生图片及最终签名验收；原手机仍未复测 |
 | 新增定位显示 | 位置/方向逻辑回归已过；10月2日API26 Google真实SDK定位用例1项通过，合成位置/方向的圆点、箭头和过期回退均验证实际像素 | 当前API37 Google/高德原生验证及真实手机传感器/GNSS验证 |
 
@@ -90,6 +90,20 @@ cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快�
 这证明当前受门控 Kotlin 源集修正通过了实际签名流程及独立 APK 审计。API37 专用 AVD 保留数据安装签名 Debug/Test，核对 ARM64；Google 明确批准的说明夹具通过。新 Google F3 用例在第141行初始30秒视野就绪等待失败，尚未进入拖动/旧按钮断言；`runtime-36977969429-api37-native/runtime.json` 保留失败。有限日志中未见提供方不可用/鉴权/链接/EGL/致命标记，不能据此确认或排除根因；用例结束后实际目标 PID 不存在，权限及字体/方向保持原值。其余原生用例与 B1/B2 仍待，未作 F5 优化或手机复测。PR 仍为 Draft。
 
 完整 API37 恢复需独立 Debug 夹具：普通签名 Debug 无法记录保存 Bundle、两进程路线尝试数与完整输入相等性。已有恢复源码不变；新增默认关闭的保护签名选项与严格 `planner-recovery` APK 身份审计，并将现有驱动限定参数化为专用 API26/5584 或 API37/5554。25项审计控制、9项驱动测试、7项内容审计集成控制和14个工作流 Bash 块通过；实际新夹具打包、独立签名核验及 API37 五种恢复仍待。夹具还原原文件并删除哨兵后，必须以同签名 `install -r` 恢复普通 APK 才能再次启动。文件备份清单不证明 Room/WAL 或全 Discovery 缓存逐字节未变。
+
+## 当前工作树 F5 实现与基线
+
+固定83d签名Debug的附近列表基线在API37/ARM64分别完成1k/10k/100k各20次：排序p95为40.047/235.568/2957.828ms，每轮距离计算17393/240767/3069059次，全部在MAIN。完整成员滚动、0 source/route/map调用和清理验证通过；原始文件哈希与逐组统计在性能文档。这是独立合成位置/NoImage列表基线，不证明用户手机或底图总耗时的原因。
+
+`DiscoveryNearby.kt` 计算一次距离后按存储值和稳定ID排序；VM以独立成员/坐标/作品归属版本、位置与筛选为键，在后台 `collectLatest` 中取消旧计算，并在回写前复核当前键。名称/图片/上游generation/checkedAt/提供方/镜头/面板不改变距离排序键。列表按ID取最新展示元数据并复用距离；等待新结果时显示真实计算状态，完整结果不截断成员，也不修改选点。
+
+新15项JVM回归通过，覆盖1k/10k/100k计算计数、稳定相等距离、相关/无关输入、计算与比较阶段取消、回主线程前迟到结果、元数据刷新及位置消失；`f5-targeted-1002/`保留XML及7个修改源文件前后相等的哈希。随后 `f5-full-1002/` 全量618项0失败/错误/跳过、双Lint0Fatal/Error（各20条警告）、应用/测试APK构建通过；普通本地app=`7705df117b3dfc70ded06efe2ad253ec5714268f35bb68fca14f8cf14d1228e6`、test=`bbae42d3d25f6aea92a6c7c62541944b4856ae84da83d1bb7b9d00f9b790da6c`，没有安装到固定签名AVD或手机。`f5-r8-1002/` 普通Release R8、Google反射、高德7类/24成员及7变异通过；实际两份DEX含7个高德定义与普通Application，测量命名空间0，7源文件哈希仍相同。当前普通Debug APK内容和源凭据审计也通过。保留既有SDK资源非致命警告，未修改keep或门禁。
+
+签名B2仍待。原附近Android计时探针、Release测量源码、Parser/Models/服务及collector未修改，以便保留相同观察方法。真实计时期间未运行本地Gradle；全量/构建/R8只在暂停后执行，完成后才释放运行代理的主机构建所有权。
+
+2026-10-02以锁定coroutines1.11.0的官方 [collectLatest](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/collect-latest.html)、[withContext](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html) 与 [ensureActive](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/ensure-active.html) 文档确认：新输入取消上一动作，切dispatcher返回时取消会丢弃结果，非挂起的计算/比较需主动检查取消。实现遵循这些约束并保留最终键复核。
+
+F3初始超时的静态复核未发现必然阻止就绪的生产缺陷。固定83d签名包的Google ready-viewport跨度用例已在API37通过（`runtime-36977969429-api37-google-ready-span/runtime.json`），实际SDK/投影/聚合/防抖及token接收路径可工作；这是采用Focus命令的独立作者夹具，只将排查缩到真实VM/Restore集成范围，不能推断根因。下一测试APK仅补失败时的VM/回调/原生View标量快照，原30秒等待、拖动与旧按钮断言不变；无法直接观察的SDK回调/投影资格填null，不假填成功。该诊断已在上述AndroidTest APK编译，但尚未签名/运行，不构成F3修复证明。
 
 ## 定位显示官方约束
 

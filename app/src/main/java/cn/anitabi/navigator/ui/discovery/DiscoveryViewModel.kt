@@ -38,6 +38,8 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.debounce
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.isActive
@@ -61,6 +63,8 @@ data class DiscoveryUiState(
     val batchMode: Boolean = false,
     val listMode: Boolean = false,
     val nearby: Boolean = false,
+    val nearbyRevision: Long = 0,
+    val nearbyResult: DiscoveryNearbyResult? = null,
     val location: GeoPoint? = null,
     val locationProvider: MapProvider? = null,
     val establishedLocationProvider: MapProvider? = null,
@@ -71,6 +75,9 @@ data class DiscoveryUiState(
 ) {
     val visibleIds: Set<String> get() = viewportSnapshot?.takeIf { viewportIsCurrent(it.token) }?.visibleIds.orEmpty()
     val canSelectViewport: Boolean get() = visibleIds.isNotEmpty()
+    val nearbyKey: DiscoveryNearbyKey? get() = location?.takeIf { nearby }?.let { DiscoveryNearbyKey(nearbyRevision, it, filters) }
+    val currentNearby: DiscoveryNearbyResult? get() = nearbyResult?.takeIf { it.key == nearbyKey }
+    val nearbyPreparing: Boolean get() = nearbyKey != null && currentNearby == null
 }
 
 @OptIn(FlowPreview::class, ExperimentalCoroutinesApi::class)
@@ -83,6 +90,7 @@ class DiscoveryViewModel(
     private val freshLocation: suspend () -> GeoPoint = locationProvider::currentLocation,
     private val trace: DiscoveryLoadTrace = DiscoveryLoadTrace(),
     private val preparationDispatcher: CoroutineDispatcher = Dispatchers.Default,
+    private val nearbyDispatcher: CoroutineDispatcher = Dispatchers.Default,
 ) : ViewModel() {
     private val mutableState = MutableStateFlow(DiscoveryUiState(
         panel = restorePanels(savedState),
@@ -132,6 +140,7 @@ class DiscoveryViewModel(
                     data = data, dataPreparing = false,
                     mapPoints = prepared?.mapPoints.orEmpty(), pointsById = prepared?.pointsById.orEmpty(),
                     mapDataVersion = prepared?.mapDataVersion.orEmpty(),
+                    nearbyRevision = prepared?.nearbyRevision ?: 0,
                     providerChoices = prepared?.providerChoices.orEmpty(),
                     unresolvedCount = prepared?.unresolvedCount ?: 0,
                 )
@@ -139,6 +148,19 @@ class DiscoveryViewModel(
                         next.invalidatedViewport(DiscoveryViewportInvalidation.DATA) else next
                 }
                 searchIndex.value = prepared?.searchIndex to (snapshot?.detailsCurrent == true)
+            }
+        }
+        viewModelScope.launch {
+            state.map { it.nearbyKey }.distinctUntilChanged().collectLatest { key ->
+                if (key == null) return@collectLatest
+                val captured = state.value
+                if (captured.nearbyKey != key || captured.currentNearby != null) return@collectLatest
+                val result = withContext(nearbyDispatcher) {
+                    calculateDiscoveryNearby(captured.pointsById.values, key, trace) { coroutineContext.ensureActive() }
+                }
+                mutableState.update { current ->
+                    if (current.nearbyKey == key) current.copy(nearbyResult = result) else current
+                }
             }
         }
         viewModelScope.launch {
@@ -466,6 +488,7 @@ internal data class PreparedDiscoveryData(
     val providerChoices: Set<MapProvider>,
     val searchIndex: DiscoverySearchIndex,
     val membershipRevision: Long,
+    val nearbyRevision: Long,
 ) {
     val mapDataVersion: String get() = "${snapshot.version}:$membershipRevision"
     val unresolvedCount: Int get() = pointsById.size - mapPoints.size
@@ -514,11 +537,17 @@ internal fun prepareDiscoveryData(
         pointsById.any { (id, point) -> previous.pointsById[id]?.coordinate != point.coordinate } ||
         previous.providersByPoint != providers
     val revision = (previous?.membershipRevision ?: 0) + if (membershipChanged) 1 else 0
+    val nearbyChanged = previous == null || previous.pointsById.keys != pointsById.keys ||
+        pointsById.any { (id, point) ->
+            checkCancellation()
+            previous.pointsById[id]?.coordinate != point.coordinate || previous.pointsById[id]?.subjectId != point.subjectId
+        }
+    val nearbyRevision = (previous?.nearbyRevision ?: 0) + if (nearbyChanged) 1 else 0
     return PreparedDiscoveryData(
         snapshot, providers, mapPoints, pointsById, mapPoints.mapTo(linkedSetOf()) { it.provider },
         trace.measure(DiscoveryLoadPhase.SEARCH_INDEX_BUILD, snapshot.points.size.toLong()) {
             DiscoverySearchIndex(snapshot, checkCancellation)
-        }, revision,
+        }, revision, nearbyRevision,
     )
 }
 

@@ -45,7 +45,6 @@ import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.repeatOnLifecycle
 import cn.anitabi.navigator.core.model.MapProvider
-import cn.anitabi.navigator.core.routing.TourOptimizer
 import cn.anitabi.navigator.data.discovery.*
 import cn.anitabi.navigator.navigation.AndroidLocationProvider
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryMap
@@ -55,8 +54,6 @@ import cn.anitabi.navigator.ui.theme.MapSurfaceTheme
 import cn.anitabi.navigator.data.images.AnitabiImageVariant
 import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
 import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
-import cn.anitabi.navigator.data.discovery.DiscoveryLoadCounter
-import cn.anitabi.navigator.data.discovery.measure
 import androidx.compose.ui.draw.drawWithContent
 import kotlinx.coroutines.flow.distinctUntilChanged
 import java.util.Locale
@@ -407,22 +404,17 @@ private fun DiscoveryPanelContent(
     onMinimumHeight: (Int) -> Unit,
 ) {
     val panel = state.panel.current
-    val trace = LocalDiscoveryTrace.current
     val subjects = remember(state.data.snapshot?.subjects) { state.data.snapshot?.subjects.orEmpty().associateBy { it.id } }
     val point = (panel as? DiscoveryPanel.Point)?.pointId?.let(state.pointsById::get)
     val subject = (panel as? DiscoveryPanel.Subject)?.subjectId?.let(subjects::get)
     var collapsedGroups by rememberSaveable { mutableStateOf(listOf<String>()) }
     var showWorks by rememberSaveable { mutableStateOf(false) }
-    val visiblePoints = remember(state.pointsById, state.visibleIds, state.filters, state.listMode, state.nearby, state.location) {
+    val nearbyActive = state.nearbyKey != null
+    val nearbyEntries = state.currentNearby?.entries.orEmpty()
+    val visiblePoints = remember(state.pointsById, state.visibleIds, state.filters, state.listMode, state.nearby, nearbyActive) {
+        if (nearbyActive) return@remember emptyList()
         val source = if (state.listMode || state.nearby) state.pointsById.values else state.visibleIds.mapNotNull(state.pointsById::get)
-        val filtered = source.filter { state.filters.isEmpty() || it.subjectId in state.filters }
-        if (state.nearby && state.location != null) {
-            trace.increment(DiscoveryLoadCounter.NEARBY_SORT_COUNT)
-            var computations = 0L
-            try { trace.measure(DiscoveryLoadPhase.NEARBY_SORT, filtered.size.toLong()) {
-                filtered.sortedBy { computations++; TourOptimizer.haversineMeters(state.location, it.coordinate) }
-            } } finally { trace.increment(DiscoveryLoadCounter.DISTANCE_COMPUTATION_COUNT, computations) }
-        } else filtered
+        source.filter { state.filters.isEmpty() || it.subjectId in state.filters }
     }
     val title = when (panel) {
         is DiscoveryPanel.Point -> point?.displayName ?: "地点暂不可用"
@@ -511,12 +503,13 @@ private fun DiscoveryPanelContent(
                                     TextButton(onClick = onClearSelection, enabled = selectedIds.isNotEmpty()) { Text("清空选择") }
                                 }
                             }
-                            if (visiblePoints.isEmpty()) item { PanelNotice(when {
+                            if (state.nearbyPreparing) item { PanelNotice("\u6b63\u5728\u8ba1\u7b97\u9644\u8fd1\u5730\u70b9") }
+                            else if (if (nearbyActive) nearbyEntries.isEmpty() else visiblePoints.isEmpty()) item { PanelNotice(when {
                                 !state.data.indexAvailable -> "联网加载后即可浏览发现地图"
                                 state.pointsById.isEmpty() -> "当前发现数据中没有可用地点"
                                 else -> "移动地图或调整作品筛选，发现更多地点"
                             }) }
-                            if (showWorks) {
+                            if (showWorks && !nearbyActive) {
                                 val counts = visiblePoints.groupingBy { it.subjectId }.eachCount()
                                 items(counts.keys.mapNotNull(subjects::get), key = { "work:${it.id}" }) { subject ->
                                     ListItem(
@@ -526,13 +519,15 @@ private fun DiscoveryPanelContent(
                                         leadingContent = { DiscoveryThumbnail(subject.anime.imageUrl, Modifier.size(56.dp)) },
                                     )
                                 }
+                            } else if (nearbyActive) items(nearbyEntries, key = { it.pointId }) { nearby ->
+                                state.pointsById[nearby.pointId]?.let { entry ->
+                                    DiscoveryPointRow(entry, subjects[entry.subjectId]?.name, entry.id in selectedIds,
+                                        onOpen = { onPoint(entry) }, onToggle = { onTogglePoint(entry) },
+                                        distance = straightLineDistance(nearby.distanceMeters))
+                                }
                             } else items(visiblePoints, key = { it.id }) { entry ->
                                 DiscoveryPointRow(entry, subjects[entry.subjectId]?.name, entry.id in selectedIds,
-                                    onOpen = { onPoint(entry) }, onToggle = { onTogglePoint(entry) },
-                                    distance = if (state.nearby) state.location?.let {
-                                        trace.increment(DiscoveryLoadCounter.DISTANCE_COMPUTATION_COUNT)
-                                        straightLineDistance(TourOptimizer.haversineMeters(it, entry.coordinate))
-                                    } else null)
+                                    onOpen = { onPoint(entry) }, onToggle = { onTogglePoint(entry) })
                             }
                         }
                         is DiscoveryPanel.Subject -> if (subject != null) {

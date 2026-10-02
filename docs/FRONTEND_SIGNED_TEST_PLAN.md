@@ -8,6 +8,17 @@ The `v0.2.5-release` environment allows protected branches only. The internal wo
 
 ## Approved activation and execution
 
+### October 2 repair candidate and optional fixtures
+
+Ordinary CI `36975549732` passes all four checks at `83d86d8a271533403d941f324344a80d8abd4697`. After fresh protection/environment validation, the candidate was fast-forwarded to that commit and protected signing `36977969429` succeeded. Ordinary and measurement builds/audits, private upload and material cleanup all succeeded; both SSH jobs were skipped. Independent verification of the four downloaded APKs passed. [The repair checklist](FRONTEND_FIX_ACCEPTANCE.md) records their exact hashes and initial API37 outcomes; this does not close F5/F6 or the physical-device report.
+
+The workflow's optional `build_discovery_measurement` and `build_planner_recovery` inputs default false. Either option requires the named protected candidate and exact reviewed SHA. Ordinary artifacts are copied and audited before optional builds; the existing environment, signer/material controls, backend compatibility, provider/content/region audits and cleanup remain required.
+
+- Measurement uses the existing non-debuggable, R8 Release with profiling and closed localhost-only fixture transport. It has its own actual Manifest/DEX role and checksum metadata.
+- Recovery uses the existing emulator-only Debug application and provider with `ANITABI_DRAFT_RECOVERY_FIXTURE=true`, profiling/measurement false and the same fixed signer. Its actual Application/provider definitions, enabled DUMP protection, content/region and signature are audited before private upload. No recovery APK has yet been built by this new option.
+
+The recovery driver permits only its original API26/5584 target or the approved API37/5554 target, with exact AVD/API/user/package/APK-hash checks. Run the existing five cases after independently verifying the fixture and using same-signer `install -r`; retain explicit ARM64 on API37. Preserve its on-device backup and original-file restoration. After removing the fixture sentinel, restore the ordinary signed APK with `install -r` before launching, because the fixture refuses startup without the sentinel. Do not switch signers, uninstall, clear application data or use this fixture on a physical device. Its private-file backup list does not establish whole-database/WAL or whole-cache byte equality.
+
 ### Final coverage approval on 2026-09-21
 
 After reviewing the completed signed results and the API 26 ARM environment failures, the user explicitly selected option **"1"**: **API 37 native AMap + API 26 UI/Google/safe-fallback coverage**. This closes the coverage decision through an approved substitution. **API 26 native AMap remains untested**; safe fallback is not native rendering. The initial AMap tap transient, original unavailable old/new coordinate comparison and other evidence limits remain recorded. Final documentation retains the repository's required PR checks; this approval does not publish, deploy, merge main or install on a personal device.

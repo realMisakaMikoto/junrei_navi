@@ -26,6 +26,7 @@ import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performTouchInput
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.SavedStateHandle
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.ViewModelStore
 import androidx.lifecycle.viewModelScope
 import androidx.test.core.app.ApplicationProvider
@@ -138,9 +139,14 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
             Harness(vm, requests).also { harness = it }
         }
         show(value)
-        composeRule.waitUntil(30_000) {
-            check(!value.unavailable) { "Actual provider SDK unavailable" }
-            value.vm.state.value.canSelectViewport && value.vm.state.value.visibleIds.size == 2
+        try {
+            composeRule.waitUntil(30_000) {
+                check(!value.unavailable) { "Actual provider SDK unavailable" }
+                value.vm.state.value.canSelectViewport && value.vm.state.value.visibleIds.size == 2
+            }
+        } catch (failure: Throwable) {
+            runCatching { writeReadinessFailure(value, provider) }.onFailure(failure::addSuppressed)
+            throw failure
         }
         composeRule.onNodeWithTag(SELECT).assertIsEnabled().performTouchInput { click() }
         composeRule.waitUntil(5_000) { value.click.get() != null }
@@ -204,7 +210,8 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         composeRule.setContent {
             val state by value.vm.state.collectAsState()
             val root = LocalView.current.rootView
-            SideEffect { value.root = root }
+            val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
+            SideEffect { value.root = root; value.hostLifecycle = lifecycle }
             val bottom = with(LocalDensity.current) { 80.dp.roundToPx() }
             AnitabiTheme {
                 Box(Modifier.fillMaxSize()) {
@@ -212,14 +219,24 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                         privacyReady = true, selectedIds = emptySet(), focusedPointId = null, imagesEnabled = true,
                         darkTheme = false, padding = DiscoveryMapPadding(bottom = bottom), cameraCommand = state.cameraCommand,
                         onVisibleIdsChanged = {}, onPointClick = {}, onOverlapClick = {},
-                        onCameraChanged = value.vm::cameraChanged,
+                        onCameraChanged = { value.cameraChanges.incrementAndGet(); value.vm.cameraChanged(it) },
                         onManualMove = { if (value.armed) value.gestureAt.compareAndSet(0, SystemClock.elapsedRealtimeNanos()); value.vm.manualMove() },
                         onUnavailable = { value.unavailable = true; value.vm.mapUnavailable() },
-                        modifier = Modifier.fillMaxSize().testTag(MAP), onCameraCommandApplied = value.vm::cameraCommandApplied,
-                        viewportToken = state.viewportToken, onViewportInvalidated = { value.vm.invalidateViewport(it) },
-                        onViewportCalculated = { token, ids -> value.vm.viewportCalculated(token, ids).also {
-                            if (it) value.acceptedPublications.incrementAndGet()
-                        } })
+                        modifier = Modifier.fillMaxSize().testTag(MAP), onCameraCommandApplied = { sequence, camera ->
+                            value.commandsApplied.incrementAndGet(); value.vm.cameraCommandApplied(sequence, camera)
+                        },
+                        viewportToken = state.viewportToken, onViewportInvalidated = {
+                            value.invalidations.incrementAndGet(); value.vm.invalidateViewport(it)
+                        },
+                        onViewportCalculated = { token, ids ->
+                            val current = value.vm.state.value
+                            value.publicationAttempts.incrementAndGet(); value.lastPublicationMembers.set(ids.size)
+                            value.lastTokenCurrent.set(token == current.viewportToken)
+                            value.lastProviderMatches.set(token.provider == current.provider)
+                            value.lastDataVersionMatches.set(token.dataVersion == current.mapDataVersion)
+                            value.vm.viewportCalculated(token, ids).also {
+                                if (it) value.acceptedPublications.incrementAndGet()
+                            } })
                     Button(enabled = state.canSelectViewport, onClick = {
                         val handledAt = SystemClock.elapsedRealtimeNanos()
                         val current = value.vm.state.value
@@ -232,6 +249,36 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 }
             }
         }
+    }
+
+    private fun writeReadinessFailure(value: Harness, provider: MapProvider) {
+        val report = onMain {
+            val current = value.vm.state.value
+            val views = runCatching { nativeViews(value.root) }.getOrDefault(emptyList())
+            JSONObject().put("provider", provider.name).put("scope", "initial_native_VM_readiness_failure")
+                .put("lifecycle", value.hostLifecycle?.currentState?.name ?: JSONObject.NULL).put("nativeViewCount", views.size)
+                .put("allNativeViewsAttached", views.isNotEmpty() && views.all { it.isAttachedToWindow })
+                .put("allNativeViewsHaveSize", views.isNotEmpty() && views.all { it.width > 0 && it.height > 0 })
+                .put("sdkMapCallbackObserved", JSONObject.NULL).put("projectionEligibilityObserved", JSONObject.NULL)
+                .put("unavailable", value.unavailable).put("initialized", current.data.initialized)
+                .put("indexAvailable", current.data.indexAvailable).put("dataPreparing", current.dataPreparing)
+                .put("memberCount", current.pointsById.size).put("mapPointCount", current.mapPoints.size)
+                .put("unresolvedCount", current.unresolvedCount).put("listMode", current.listMode)
+                .put("locating", current.locating).put("commandPresent", current.cameraCommand != null)
+                .put("commandType", current.cameraCommand?.javaClass?.simpleName ?: JSONObject.NULL)
+                .put("currentSnapshot", current.viewportSnapshot?.let { current.viewportIsCurrent(it.token) } == true)
+                .put("visibleMemberCount", current.visibleIds.size).put("cameraCallbacks", value.cameraChanges.get())
+                .put("commandsApplied", value.commandsApplied.get()).put("invalidations", value.invalidations.get())
+                .put("publicationAttempts", value.publicationAttempts.get()).put("acceptedPublications", value.acceptedPublications.get())
+                .put("lastPublicationMembers", value.lastPublicationMembers.get().takeIf { it >= 0 } ?: JSONObject.NULL)
+                .put("lastTokenCurrent", value.lastTokenCurrent.get() ?: JSONObject.NULL)
+                .put("lastProviderMatches", value.lastProviderMatches.get() ?: JSONObject.NULL)
+                .put("lastDataVersionMatches", value.lastDataVersionMatches.get() ?: JSONObject.NULL)
+                .put("sourceRequests", value.requests.get())
+        }
+        val directory = File(requireNotNull(application.getExternalFilesDir(null)), "frontend-review")
+        check(directory.isDirectory || directory.mkdirs())
+        File(directory, "native-viewport-readiness-${provider.name.lowercase()}.json").writeText(report.toString())
     }
 
     private fun cameraReader(native: View): () -> GeoPoint = when (native) {
@@ -257,6 +304,15 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         var showMap by mutableStateOf(true)
         @Volatile var unavailable = false
         @Volatile var armed = false
+        var hostLifecycle: Lifecycle? = null
+        val cameraChanges = AtomicInteger()
+        val commandsApplied = AtomicInteger()
+        val invalidations = AtomicInteger()
+        val publicationAttempts = AtomicInteger()
+        val lastPublicationMembers = AtomicInteger(-1)
+        val lastTokenCurrent = AtomicReference<Boolean?>(null)
+        val lastProviderMatches = AtomicReference<Boolean?>(null)
+        val lastDataVersionMatches = AtomicReference<Boolean?>(null)
         val gestureAt = AtomicLong()
         val acceptedPublications = AtomicInteger()
         val selectionCalls = AtomicInteger()

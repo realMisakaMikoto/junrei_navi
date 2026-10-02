@@ -1,6 +1,6 @@
 # Discovery loading performance: measurement contract
 
-Prepared 2026-09-21 for PR #37. Status: **measurement setup; no F6 performance run recorded here yet**.
+Prepared 2026-09-21 for PR #37. Current status: **nearby UI B1 recorded and F5 source/JVM verification complete; image-enabled Release B1/B2 pending**.
 
 October 2 checkpoint: production retry and draft-image correctness fixes pass 602 JVM cases in the normal local build. Gated Release compilation and Lint also pass with the native visual probe, before the later ready-span change. The probe projects the actual SDK markers and copies the native SurfaceView or TextureView pixels; scalar reports retain current viewport/member/photo match counts, capture cost and stale-result rejection. The matcher has not been qualified on a device, so these are prepared mechanisms, not observed native point/image timings. A SurfaceView copy does not establish final Window composition or successful geographic tiles. Fresh official [PixelCopy](https://developer.android.com/reference/android/view/PixelCopy) and [Google Projection](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/Projection) constraints informed this separation.
 
@@ -55,6 +55,20 @@ The optional protected-workflow input defaults false and is restricted to the re
 `scripts/summarize-discovery-performance.py` has 15 passing statistical tests: strict same-condition/environment/harness matching, nearest-rank percentiles, all attempts/failures and missing/null stages preserved. "Completed" means a controlled workload reached its expected state; it never means F6 acceptance. The external driver is still under review and native point/image/geographic pixel observation remains an explicit gap. No sample, speedup, or completed B1/B2 comparison has been produced by this setup.
 
 ## 1. Baseline identity and comparison order
+
+### Recorded nearby UI B1 (separate signed Debug probe)
+
+All three API37/ARM64 groups use protected source `83d86d8a271533403d941f324344a80d8abd4697`, signed Debug `f8361a4d9d908639e1cd8a94996ad8f9feece4aecebb525a173d15f3c108eb38` and test APK `c23582fec30b3d396310aad6f36ac44e79c28b9b3e0233f9b07386c55cb4ad0e`. The synthetic-location probe preserves full 1k/10k/100k membership and the actual list UI, at1080x1920/420dpi/font1.0/light appearance. Images remain enabled, but every point in this specific sorting fixture has an explicit NoImage reference; it is not a successful-image Release loading group.
+
+| Members | Attempts / completed / failed | Sort p50 / p95 / max (ms) | UI-settle upper-bound p95 (ms) | Distance calculations per round | Sort lane |
+| --- | --- | --- | --- | --- | --- |
+| 1,000 | 20 / 20 / 0 | 17.136 / 40.047 / 40.345 | 200.946 | 17,393 | MAIN |
+| 10,000 | 20 / 20 / 0 | 209.611 / 235.568 / 239.122 | 387.037 | 240,767 | MAIN |
+| 100,000 | 20 / 20 / 0 | 2,847.252 / 2,957.828 / 2,963.667 | 3,137.208 | 3,069,059 | MAIN |
+
+Each round has exactly one observed full-member sort span; source, route and SDK-map calls are0, and cleanup succeeds. Root independently validates all60records and nearest-rank statistics. Raw `nearby.json` files and companion exact-selector/API/installed-ABI reports are in `runtime-36977969429-api37-nearby-b1-{1000,10000,100000}/`. Their SHA256 values, in that size order, are `fd2d61852378de3bbdd0ea3363e4c00959e5360bcfbb986a1f032b559bbd1d21`, `13789e8bdb427e027e65a90aaff00db09b40e3722cfb753542cf6a8364e5d1c4`, and `c4e7dff64856408d847a8168aa04681ecced20504ca4bb5936bf1de37faf63f4`. The observed excess calculations and main execution justify F5's one-distance-per-member/background change. They do not establish the cause of total map loading, actual frame jank, true phone sensors, or a B2 improvement. Image-enabled Release groups remain pending. An initial ad-hoc analysis command failed at shell quoting before reading/writing samples; stdin-script analysis then validated the unchanged reports.
+
+F5 source now moves full-membership ranking to a cancellable background worker, computes each distance once and reuses stored meters in rows. Display metadata, source generation and camera changes do not change its separate ranking key. Fifteen targeted regressions and all618JVM tests pass, as do both Lints, ordinary app/test assembly, R8, Google/AMap audits, seven mutation checks, actual ordinary DEX isolation and local APK/source audits. Seven modified source hashes remain unchanged. The nearby Android probe and Release measurement/server/collector files remain unchanged. Verification ran after all three nearby B1 groups paused, avoiding host-build load inside their samples. Signed Debug B2 and the image-enabled Release matrix remain pending; source/JVM success does not establish a measured speedup.
 
 Keep three distinct checkpoints. Record the full application SHA, measurement-harness SHA, build execution SHA, target/test APK SHA-256, signer verification, and measurement configuration for each. Instrumentation added to an old source snapshot is a separate measured artifact and must be identified as such.
 
