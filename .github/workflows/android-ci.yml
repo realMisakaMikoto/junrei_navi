@@ -64,6 +64,7 @@ jobs:
       - name: Test Discovery artifact and measurement evidence guards
         run: |
           python3 .github/scripts/test-audit-discovery-build.py
+          python3 .github/scripts/test-audit-apk-role.py
           python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - name: Restore Firebase Android configuration
         env:

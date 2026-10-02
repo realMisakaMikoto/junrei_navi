@@ -54,6 +54,14 @@
 
 两类共19项独立JVM任务重复20轮，全380次通过；源文件哈希0差异，XML保留于 `fixture-barriers-1002/round-*/`。随后 `checkpoint-fixtures-final-1002/` 全量603 JVM、双Lint、普通应用/测试构建通过，源码0差异：app=`601ea8d9bc58f178c1eb8d43b59191ec9ceba870df89e4d599376bd01956fddb`、test=`0b466f03242354c13b951953c46ee96da429d2f3fd2ed90751194df94766fcdc`。本次只改两个JVM夹具；应用源码仍3c4a2ae，新保护签名验证仍待。
 
+## 2026-10-02：测量包身份审计与设备用例准备
+
+aef9056普通CI `36961783850`四项全部成功。保护与环境重新核对后候选快进aef，并触发 `36964124477`。该次普通签名三包的单测/构建/内容/Manifest-DEX/固定签名审计成功；可选测量包Lint、R8组装、Google反射与高德JNI也成功，随后内容审计因没有固定Anitabi生产后端域名字符串失败。上传跳过、产物0，秘密清理成功。字符串缺失是实测门禁结果；R8移除未使用后端路径仅为源代码推断，没有最终APK/mapping可独立复核。
+
+测量模式内容审计现在要求四参数：APK、保护地区哈希、显式测量模式、精确源码SHA。实际非debug Manifest/DEX/profiling/DUMP身份必须先通过，才使用固定localhost HTTPS端点要求；普通1/2参数仍要求固定生产后端域名。禁止材料、AMap标记、地区资产、签名与提供方审计均保留，未植入无用域名字符串。7项集成CLI/实际Python解析器控制测试、17项Manifest/DEX变异通过；仅可选测量步骤使用新模式，新控制测试加入普通CI。真实测量APK验证仍待保护构建。
+
+新增 `DiscoveryNativeViewportSelectionInstrumentedTest` 的Google/高德两选择器绑定真实SDK手势、生产VM方法和点击处理时的有效性；用冻结Compose时钟保持旧按钮启用，避免只证明灰色按钮保护。新增 `DiscoveryNearbyUiBenchmarkInstrumentedTest` 在实际VM/列表中用1k/10k/100k合成成员和20次相关位置变化采集附近排序、计算次数/执行线程与UI完成时间，比较同模式签名Debug，不与Release加载数据混用。两新文件及测试APK已编译成功，源码哈希0差异；都未执行，不构成F3原生或F5/B1/B2通过。生产代码与默认图片功能未变。
+
 当日核对维护者公告：[Fastify GHSA-4mh8-r7rc-xpvc](https://github.com/fastify/fastify/security/advisories/GHSA-4mh8-r7rc-xpvc) 指定修复版本5.12.5；[fast-uri GHSA-hrr3-gc8f-f4qj](https://github.com/fastify/fast-uri/security/advisories/GHSA-hrr3-gc8f-f4qj) 指定3.1.8/4.1.5；[GHSA-jvvf-x445-j334](https://github.com/fastify/fast-uri/security/advisories/GHSA-jvvf-x445-j334) 指定4.1.5。仅在 `backend/package.json` 精确更新Fastify至5.12.5，并将锁文件中的两条fast-uri解析更新至3.1.8和4.1.5；公开registry完整性值随对应版本更新，其它包、业务代码和审计门禁不变。没有使用 `npm audit fix --force`，没有部署。
 
 本地Node 24.14.0/npm 11.18.0实际执行 `npm ci`、类型检查、测试、构建及 `npm audit --omit=dev --json`，全部退出0；78项测试全部通过且无跳过，生产依赖审计所有风险等级及总数均为0。文件SHA-256：package=`492ca7920251243df2195226dc40e55d291621c3569f43132b16ef9095853152`，lock=`cd0dea64b7ca10321d477ac75ff9e78a456f68d7d485d6123cfda176712d03fc`。这只证明本地依赖修正；新提交CI和容器构建仍待，不将原失败run写为通过。源码没有HTTP/2配置、注册响应trailer或直接导入fast-uri，属于适用性观察，不能替代依赖审计，也不声称观察到实际攻击。
