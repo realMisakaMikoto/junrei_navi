@@ -2,6 +2,7 @@ package cn.anitabi.navigator.ui.discovery
 
 import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.viewModelScope
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.core.model.TerritoryRegion
@@ -16,7 +17,9 @@ import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.joinAll
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceTimeBy
@@ -39,13 +42,19 @@ import org.junit.Test
 class DiscoveryLocationTrackingTest {
     private val dispatcher = StandardTestDispatcher()
     private val owners = mutableListOf<ViewModelStore>()
+    private val ownerJobs = mutableListOf<Job>()
     private val gates = mutableListOf<CompletableDeferred<GeoPoint>>()
     private val first = GeoPoint(1.0, 2.0)
     private val second = GeoPoint(2.0, 3.0)
 
     @Before fun setUp() = Dispatchers.setMain(dispatcher)
     @After fun tearDown() {
-        owners.forEach(ViewModelStore::clear)
+        runTest(dispatcher) {
+            owners.forEach(ViewModelStore::clear)
+            gates.forEach { it.complete(first) }
+            // Worker cancellation must finish before Main is restored, including real Default work.
+            ownerJobs.joinAll()
+        }
         Dispatchers.resetMain()
     }
 
@@ -265,11 +274,14 @@ class DiscoveryLocationTrackingTest {
             block()
         } finally {
             // Cancel map polling before runTest drains its scheduler, not in JUnit's later @After.
-            owners.forEach(ViewModelStore::clear)
-            owners.clear()
-            gates.forEach { it.complete(first) }
-            gates.clear()
-            runCurrent()
+            withContext(NonCancellable) {
+                owners.forEach(ViewModelStore::clear)
+                owners.clear()
+                gates.forEach { it.complete(first) }
+                gates.clear()
+                ownerJobs.joinAll()
+                ownerJobs.clear()
+            }
         }
     }
 
@@ -294,6 +306,7 @@ class DiscoveryLocationTrackingTest {
             override suspend fun currentLocation(): GeoPoint = error("Use the injected freshness policy")
         }, classify, SavedStateHandle(), freshLocation = fresh)
         owners += ViewModelStore().apply { put("location", vm) }
+        ownerJobs += requireNotNull(vm.viewModelScope.coroutineContext[Job])
         return vm
     }
 }

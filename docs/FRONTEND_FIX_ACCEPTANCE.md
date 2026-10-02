@@ -44,6 +44,16 @@
 
 提交 `3c4a2aed98aff88da8beda489f17213a25a6f2e3` 的 CI `36955609907`，后端 job `110677785291` 在 `npm audit --omit=dev` 退出1；此前类型检查、78项测试（78通过、0失败、0跳过）及构建已完成。锁定的 Fastify 5.12.3、fast-uri 3.1.7 和嵌套4.1.4触发两项中等风险依赖报告，共三个公告；该提交没有修改后端业务源码。
 
+后续 `5f703c50be20e469fdf4dfca3f35f906c6eeeb6e` 的CI `36956367954`四项全部成功；独立内存核对API26资产11206956373、API37资产11207370625各59项UI通过，两份完成清理标量报告均符合预期、source/route请求均0，ZIP摘要与GitHub digest一致。摘要位于 `ci36956367954-scalar.json`。此CI不覆盖下列后续夹具修改。
+
+## 2026-10-02：签名构建前单测夹具屏障
+
+保护/环境与main重新比对后，候选已快进5f703c5并触发 `36958692125`；秘密材料清理成功、两SSH作业跳过。首个Gradle命令的602项中2失败，尚未组装/签名、执行APK审计或可选测量构建，产物为0。旧签名结果没有移用。
+
+`PlannerDraftImagesTest.legacyNullUsesOneProductionSubjectMergeAndKeepsTheSavedCoordinate`为断言失败：虚拟调度器空闲并未等待实际IO缓存写入及补图观察器完成。所有相关用例改为实际请求/加载状态/草稿状态屏障，保持请求次数、坐标和所有权断言，增加受控真实IO写入屏障用例证明此时序差异；没有生产延时/超时修改。`DiscoveryLocationTrackingTest.boundedTimeoutLeavesAnExplicitRetryAvailable`为正文开始前的`UncaughtExceptionsBeforeTest`，短日志未提供前序异常生产者；源码确认测试只取消VM且推进虚拟调度，未等待Default后台任务，现清理等待所有者Job结束后再resetMain。确切异常生产者继续标为未证实。
+
+两类共19项独立JVM任务重复20轮，全380次通过；源文件哈希0差异，XML保留于 `fixture-barriers-1002/round-*/`。随后 `checkpoint-fixtures-final-1002/` 全量603 JVM、双Lint、普通应用/测试构建通过，源码0差异：app=`601ea8d9bc58f178c1eb8d43b59191ec9ceba870df89e4d599376bd01956fddb`、test=`0b466f03242354c13b951953c46ee96da429d2f3fd2ed90751194df94766fcdc`。本次只改两个JVM夹具；应用源码仍3c4a2ae，新保护签名验证仍待。
+
 当日核对维护者公告：[Fastify GHSA-4mh8-r7rc-xpvc](https://github.com/fastify/fastify/security/advisories/GHSA-4mh8-r7rc-xpvc) 指定修复版本5.12.5；[fast-uri GHSA-hrr3-gc8f-f4qj](https://github.com/fastify/fast-uri/security/advisories/GHSA-hrr3-gc8f-f4qj) 指定3.1.8/4.1.5；[GHSA-jvvf-x445-j334](https://github.com/fastify/fast-uri/security/advisories/GHSA-jvvf-x445-j334) 指定4.1.5。仅在 `backend/package.json` 精确更新Fastify至5.12.5，并将锁文件中的两条fast-uri解析更新至3.1.8和4.1.5；公开registry完整性值随对应版本更新，其它包、业务代码和审计门禁不变。没有使用 `npm audit fix --force`，没有部署。
 
 本地Node 24.14.0/npm 11.18.0实际执行 `npm ci`、类型检查、测试、构建及 `npm audit --omit=dev --json`，全部退出0；78项测试全部通过且无跳过，生产依赖审计所有风险等级及总数均为0。文件SHA-256：package=`492ca7920251243df2195226dc40e55d291621c3569f43132b16ef9095853152`，lock=`cd0dea64b7ca10321d477ac75ff9e78a456f68d7d485d6123cfda176712d03fc`。这只证明本地依赖修正；新提交CI和容器构建仍待，不将原失败run写为通过。源码没有HTTP/2配置、注册响应trailer或直接导入fast-uri，属于适用性观察，不能替代依赖审计，也不声称观察到实际攻击。

@@ -13,9 +13,12 @@ import cn.anitabi.navigator.data.discovery.DiscoverySubject
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
-import kotlinx.coroutines.cancel
+import kotlinx.coroutines.cancelAndJoin
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
@@ -23,6 +26,7 @@ import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonElement
 import org.junit.Assert.*
 import org.junit.Test
+import java.util.concurrent.CountDownLatch
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class PlannerDraftImagesTest {
@@ -53,12 +57,15 @@ class PlannerDraftImagesTest {
             assertTrue(drafts.linkGeneratedTour("draft", drafts.state.value.revision, "TEST_ONLY_TOUR"))
             observePlannerDraftImages(drafts, discovery, scope)
             discovery.initialize()
-            advanceUntilIdle()
             val expected = draft().copy(selectedPoints = listOf(point.copy(imageUrl = image)), generatedTourId = "TEST_ONLY_TOUR")
+            drafts.state.first { it.draft == expected }
+            assertTrue(drafts.flush())
+            runCurrent()
             assertEquals(expected, drafts.state.value.draft)
             assertEquals(expected, storage.envelope?.draft)
             assertEquals(0, source.subjectCalls)
-        } finally { scope.cancel() }
+            assertTrue(discovery.isWorkQuiescent())
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
     }
 
     @Test fun legacyNullUsesOneProductionSubjectMergeAndKeepsTheSavedCoordinate() = runTest {
@@ -73,11 +80,12 @@ class PlannerDraftImagesTest {
             drafts.awaitLoaded(); drafts.replace(draft())
             observePlannerDraftImages(drafts, discovery, scope)
             discovery.initialize()
-            advanceUntilIdle()
+            awaitMetadataAttempt(discovery, source.subjectCalled)
+            drafts.state.first { it.draft?.selectedPoints?.single()?.imageUrl == image }
             assertEquals(1, source.subjectCalls)
             assertEquals(point.copy(imageUrl = image), drafts.state.value.draft?.selectedPoints?.single())
             assertEquals(GeoPoint(8.0, 9.0), discovery.state.value.snapshot?.points?.single()?.coordinate)
-        } finally { scope.cancel() }
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
     }
 
     @Test fun emptyMetadataResponseDoesNotLoopAndExistingManualRetryStillWorks() = runTest {
@@ -90,33 +98,39 @@ class PlannerDraftImagesTest {
             drafts.awaitLoaded(); drafts.replace(draft())
             observePlannerDraftImages(drafts, discovery, scope)
             discovery.initialize()
-            advanceUntilIdle()
+            awaitMetadataAttempt(discovery, source.subjectCalled)
             assertEquals(1, source.subjectCalls)
             assertEquals(point, drafts.state.value.draft?.selectedPoints?.single())
             source.document = Json.parseToJsonElement("""[{"id":"point","image":"/images/points/synthetic/image.jpg?v=2"}]""")
             discovery.ensureSubjectDetails(101)
-            advanceUntilIdle()
+            drafts.state.first { it.draft?.selectedPoints?.single()?.imageUrl == image }
+            runCurrent()
             assertEquals(2, source.subjectCalls)
             assertEquals(image, drafts.state.value.draft?.selectedPoints?.single()?.imageUrl)
-        } finally { scope.cancel() }
+            assertTrue(discovery.isWorkQuiescent())
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
     }
 
     @Test fun currentNoImageAndAnUnknownPointNeverInventOrFetchReferences() = runTest {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val drafts = PlannerDraftRepository(ImageDraftStorage(), scope)
         val source = ImageMetadataSource()
-        val discovery = DiscoveryRepository(source, ImageMetadataCache(snapshot(null, 1)), scope,
+        val cache = ImageMetadataCache(snapshot(null, 1))
+        val discovery = DiscoveryRepository(source, cache, scope,
             now = { testScheduler.currentTime })
         try {
             drafts.awaitLoaded(); drafts.replace(draft())
             observePlannerDraftImages(drafts, discovery, scope)
-            discovery.initialize(); advanceUntilIdle()
+            discovery.initialize(); assertTrue(drafts.flush()); runCurrent()
             assertEquals(point, drafts.state.value.draft?.selectedPoints?.single())
             drafts.replace(draft("unknown", point.copy(id = "101::unknown")))
-            advanceUntilIdle()
+            assertTrue(drafts.flush()); runCurrent()
             assertEquals(0, source.subjectCalls)
             assertNull(drafts.state.value.draft?.selectedPoints?.single()?.imageUrl)
-        } finally { scope.cancel() }
+            assertFalse(source.subjectCalled.isCompleted)
+            assertEquals(0, cache.writeCount)
+            assertTrue(discovery.isWorkQuiescent())
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
     }
 
     @Test fun aPausedSourceDoesNotConsumeTheAutomaticMetadataAttempt() = runTest {
@@ -129,17 +143,20 @@ class PlannerDraftImagesTest {
             drafts.awaitLoaded(); drafts.replace(draft())
             discovery.setForeground(false)
             observePlannerDraftImages(drafts, discovery, scope)
-            discovery.initialize(); runCurrent()
+            discovery.initialize(); assertTrue(drafts.flush()); runCurrent()
             assertEquals(0, source.subjectCalls)
+            assertFalse(source.subjectCalled.isCompleted)
+            assertTrue(discovery.isWorkQuiescent())
             discovery.setForeground(true)
-            advanceUntilIdle()
+            awaitMetadataAttempt(discovery, source.subjectCalled)
             assertEquals(1, source.subjectCalls)
-        } finally { scope.cancel() }
+        } finally { scope.coroutineContext[Job]!!.cancelAndJoin() }
     }
 
     @Test fun pauseDuringFirstSubjectDoesNotConsumeTheNextSubjectsAttempt() = runTest {
         val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
         val first = CompletableDeferred<Unit>()
+        val firstStarted = CompletableDeferred<Unit>()
         val secondStarted = CompletableDeferred<Unit>()
         val calls = mutableListOf<Long>()
         val secondAnime = Anime(102, "TEST_ONLY_SECOND")
@@ -154,7 +171,7 @@ class PlannerDraftImagesTest {
             override suspend fun page(page: Int, cacheToken: String): JsonElement = error("Unexpected page request")
             override suspend fun subject(subjectId: Long): JsonElement {
                 calls += subjectId
-                if (subjectId == 101L) first.await()
+                if (subjectId == 101L) { firstStarted.complete(Unit); first.await() }
                 if (subjectId == 102L) secondStarted.complete(Unit)
                 return Json.parseToJsonElement("[]")
             }
@@ -167,18 +184,57 @@ class PlannerDraftImagesTest {
             drafts.replace(draft().copy(selectedAnimes = listOf(anime, secondAnime),
                 selectedPoints = listOf(point, second), manualOrderPointIds = listOf(point.id, second.id)))
             observePlannerDraftImages(drafts, discovery, scope)
-            discovery.initialize(); runCurrent()
+            discovery.initialize(); firstStarted.await()
             assertEquals(listOf(101L), calls)
-            discovery.setForeground(false); runCurrent()
+            discovery.setForeground(false)
+            discovery.state.first { it.paused && it.loadingSubjectIds.isEmpty() }
+            runCurrent()
             assertEquals(listOf(101L), calls)
             first.complete(Unit)
             discovery.setForeground(true)
-            // The Repository writes its public cache on real IO; virtual scheduler idleness
-            // does not mean that the observer has resumed after that write.
-            secondStarted.await()
-            advanceUntilIdle()
+            awaitMetadataAttempt(discovery, secondStarted)
             assertEquals("Both missing subjects must remain eligible after the cancelled request", listOf(101L, 101L, 102L), calls)
-        } finally { first.complete(Unit); scope.cancel() }
+        } finally { first.complete(Unit); scope.coroutineContext[Job]!!.cancelAndJoin() }
+    }
+
+    @Test fun virtualIdlenessDoesNotCompleteTheObserverWhileTheRealCacheWriteIsHeld() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val writeEntered = CompletableDeferred<Unit>()
+        val releaseWrite = CountDownLatch(1)
+        val source = ImageMetadataSource().apply {
+            document = Json.parseToJsonElement("""[{"id":"point","image":"/images/points/synthetic/image.jpg?v=2"}]""")
+        }
+        val cache = ImageMetadataCache(snapshot(null, 0)) {
+            writeEntered.complete(Unit)
+            releaseWrite.await()
+        }
+        val drafts = PlannerDraftRepository(ImageDraftStorage(), scope)
+        val discovery = DiscoveryRepository(source, cache, scope, now = { testScheduler.currentTime })
+        try {
+            drafts.awaitLoaded(); drafts.replace(draft())
+            observePlannerDraftImages(drafts, discovery, scope)
+            discovery.initialize()
+            writeEntered.await()
+            advanceUntilIdle()
+            assertEquals(1, source.subjectCalls)
+            assertEquals(image, discovery.state.value.snapshot?.points?.single()?.imageUrl)
+            assertEquals(point, drafts.state.value.draft?.selectedPoints?.single())
+            assertFalse(discovery.isWorkQuiescent())
+            releaseWrite.countDown()
+            awaitMetadataAttempt(discovery, source.subjectCalled)
+            drafts.state.first { it.draft?.selectedPoints?.single()?.imageUrl == image }
+            assertEquals(point.copy(imageUrl = image), drafts.state.value.draft?.selectedPoints?.single())
+            assertEquals(GeoPoint(8.0, 9.0), discovery.state.value.snapshot?.points?.single()?.coordinate)
+            assertEquals(1, cache.writeCount)
+        } finally { releaseWrite.countDown(); scope.coroutineContext[Job]!!.cancelAndJoin() }
+    }
+
+    private suspend fun TestScope.awaitMetadataAttempt(discovery: DiscoveryRepository, started: CompletableDeferred<Unit>) {
+        started.await()
+        discovery.state.first { it.loadingSubjectIds.isEmpty() }
+        // The source and cache have completed before we drain the observer's virtual callbacks.
+        runCurrent()
+        assertTrue(discovery.isWorkQuiescent())
     }
 }
 
@@ -189,19 +245,22 @@ private class ImageDraftStorage : PlannerDraftStorage {
     override suspend fun write(envelope: PlannerDraftEnvelope) { this.envelope = envelope }
 }
 
-private class ImageMetadataCache(private var value: DiscoverySnapshot) : DiscoveryCache {
+private class ImageMetadataCache(private var value: DiscoverySnapshot, private val beforeWrite: () -> Unit = {}) : DiscoveryCache {
+    @Volatile var writeCount = 0
     override fun read() = value
-    override fun write(snapshot: DiscoverySnapshot) { value = snapshot }
+    override fun write(snapshot: DiscoverySnapshot) { writeCount++; beforeWrite(); value = snapshot }
 }
 
 private class ImageMetadataSource : DiscoverySource {
     var subjectCalls = 0
+    val subjectCalled = CompletableDeferred<Unit>()
     var document: JsonElement = Json.parseToJsonElement("[]")
     override suspend fun index(cacheToken: String): JsonElement = error("Unexpected index request")
     override suspend fun page(page: Int, cacheToken: String): JsonElement = error("Unexpected page request")
     override suspend fun subject(subjectId: Long): JsonElement {
         require(subjectId == 101L)
         subjectCalls++
+        subjectCalled.complete(Unit)
         return document
     }
 }
