@@ -169,8 +169,16 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 repeat(12) { step -> moveTo(start + (end - start) * ((step + 1) / 12f), 20L) }
                 up()
             }
-            composeRule.waitUntil(10_000) {
-                value.gestureAt.get() > 0 && !value.vm.state.value.canSelectViewport && onMain(camera) != originalCamera
+            try {
+                composeRule.waitUntil(10_000) {
+                    value.gestureAt.get() > 0 && !value.vm.state.value.canSelectViewport && onMain(camera) != originalCamera
+                }
+            } catch (failure: Throwable) {
+                runCatching {
+                    value.panCameraChangedAtFailure.set(onMain(camera) != originalCamera)
+                    writeReadinessFailure(value, provider, "pan_invalidation")
+                }.onFailure(failure::addSuppressed)
+                throw failure
             }
             // Recomposition is frozen: this is a real enabled button backed by stale area A.
             composeRule.onNodeWithTag(SELECT).assertIsEnabled().performTouchInput { click() }
@@ -251,11 +259,11 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         }
     }
 
-    private fun writeReadinessFailure(value: Harness, provider: MapProvider) {
+    private fun writeReadinessFailure(value: Harness, provider: MapProvider, stage: String = "initial_ready") {
         val report = onMain {
             val current = value.vm.state.value
             val views = runCatching { nativeViews(value.root) }.getOrDefault(emptyList())
-            JSONObject().put("provider", provider.name).put("scope", "initial_native_VM_readiness_failure")
+            JSONObject().put("provider", provider.name).put("scope", "native_VM_readiness_failure").put("stage", stage)
                 .put("lifecycle", value.hostLifecycle?.currentState?.name ?: JSONObject.NULL).put("nativeViewCount", views.size)
                 .put("allNativeViewsAttached", views.isNotEmpty() && views.all { it.isAttachedToWindow })
                 .put("allNativeViewsHaveSize", views.isNotEmpty() && views.all { it.width > 0 && it.height > 0 })
@@ -267,6 +275,8 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 .put("locating", current.locating).put("commandPresent", current.cameraCommand != null)
                 .put("commandType", current.cameraCommand?.javaClass?.simpleName ?: JSONObject.NULL)
                 .put("currentSnapshot", current.viewportSnapshot?.let { current.viewportIsCurrent(it.token) } == true)
+                .put("canSelectViewport", current.canSelectViewport).put("gestureObserved", value.gestureAt.get() > 0)
+                .put("panCameraChangedAtFailure", value.panCameraChangedAtFailure.get() ?: JSONObject.NULL)
                 .put("visibleMemberCount", current.visibleIds.size).put("cameraCallbacks", value.cameraChanges.get())
                 .put("commandsApplied", value.commandsApplied.get()).put("invalidations", value.invalidations.get())
                 .put("publicationAttempts", value.publicationAttempts.get()).put("acceptedPublications", value.acceptedPublications.get())
@@ -313,6 +323,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         val lastTokenCurrent = AtomicReference<Boolean?>(null)
         val lastProviderMatches = AtomicReference<Boolean?>(null)
         val lastDataVersionMatches = AtomicReference<Boolean?>(null)
+        val panCameraChangedAtFailure = AtomicReference<Boolean?>(null)
         val gestureAt = AtomicLong()
         val acceptedPublications = AtomicInteger()
         val selectionCalls = AtomicInteger()

@@ -105,6 +105,16 @@ cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快�
 
 F3初始超时的静态复核未发现必然阻止就绪的生产缺陷。固定83d签名包的Google ready-viewport跨度用例已在API37通过（`runtime-36977969429-api37-google-ready-span/runtime.json`），实际SDK/投影/聚合/防抖及token接收路径可工作；这是采用Focus命令的独立作者夹具，只将排查缩到真实VM/Restore集成范围，不能推断根因。下一测试APK仅补失败时的VM/回调/原生View标量快照，原30秒等待、拖动与旧按钮断言不变；无法直接观察的SDK回调/投影资格填null，不假填成功。该诊断已在上述AndroidTest APK编译，但尚未签名/运行，不构成F3修复证明。
 
+## 当前签名原生运行与图片夹具契约
+
+固定83d签名Debug/Test在API37的Google定位用例通过：实际像素验证合成圆点/方向、屏幕旋转处理、2秒过期回退、定位点不选入草稿且位置更新不跟随镜头，仍不代表真机传感器/GNSS。
+
+Google/高德投影与位图锚点用例均在初始投影/圆点像素/首次点击后，等待 `imageRequests>0` 失败（原测试第658行）。源码确认同一个fake拦截器只接受裸合成URL，而生产地图规范请求已添加 `plan=h160`，因此在计数前抛出；严格期望已改为共享resolver的THUMBNAIL结果，未宽松匹配、删除计数或调整超时/像素断言。该测试修正尚未构建/设备复测；拦截器返回自造位图，后续通过也不替代F7真实网络/解码。
+
+高德F3通过初始视野/选点，随后第166行拖动联合判定失败，未进入旧启用按钮断言；高德定位通过圆点/方向/过期/镜头检查，随后第148行重叠回调等待失败。未确定生产根因。下一F3测试APK补拖动失败时的gesture/VM资格/镜头变化布尔值和既有回调计数，保留原等待/断言。各次失败及Google定位成功在 `runtime-36977969429-api37-{google-projection,google-location,amap-projection,amap-viewport,amap-location}/runtime.json`，均绑定83d；原权限/标志、字体与方向已读回相同，目标PID和instrumentation结束后为空。
+
+测量Release已通过同签名ARM64保留数据安装，实际ART编译过滤器为verify，无手动编译/权限变更。新受控HTTPS服务的8份数据集哈希与固定旧夹具全部相同，Parser校验通过；这些是执行准备，尚无Release B1/B2计时样本。
+
 ## 定位显示官方约束
 
 2026-09-23 核对 [Google Navigation GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)：`setLocationSource` 仅编译兼容，自定义源不工作。因此使用应用判区后的独立定位 Marker，不启用不可过滤的原生定位源，也不引入另一套 Maps SDK。

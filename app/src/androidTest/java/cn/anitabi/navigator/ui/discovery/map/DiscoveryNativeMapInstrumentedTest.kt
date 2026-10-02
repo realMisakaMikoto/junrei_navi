@@ -33,6 +33,8 @@ import cn.anitabi.navigator.data.discovery.DiscoveryLoadOutcome
 import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
 import cn.anitabi.navigator.data.discovery.DiscoveryLoadTrace
 import cn.anitabi.navigator.data.discovery.DiscoveryLoadTraceConfig
+import cn.anitabi.navigator.data.images.AnitabiImageReference
+import cn.anitabi.navigator.data.images.AnitabiImageVariant
 import cn.anitabi.navigator.diagnostics.LocalDiscoveryTrace
 import cn.anitabi.navigator.ui.discovery.DiscoveryViewportToken
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
@@ -98,7 +100,7 @@ class DiscoveryNativeMapInstrumentedTest {
         fixtureLoader = ImageLoader.Builder(application).components {
             add(object : Interceptor {
                 override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-                    check(chain.request.data == SYNTHETIC_IMAGE_URL) { "Unexpected fixture image request" }
+                    check(chain.request.data == AnitabiImageReference.request(SYNTHETIC_IMAGE_URL, AnitabiImageVariant.THUMBNAIL)) { "Unexpected fixture image request" }
                     imageRequests.incrementAndGet()
                     imageGate?.await()
                     if (failImage) return ErrorResult(image = null, request = chain.request, throwable = IllegalStateException("Synthetic image failure"))
