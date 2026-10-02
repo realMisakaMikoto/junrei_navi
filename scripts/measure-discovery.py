@@ -113,6 +113,10 @@ def parse_manifest_tree(output):
             stack[-1][1]["children"].append(node)
             stack.append((level, node))
         else:
+            android_namespace = "http://schemas.android.com/apk/res/android:"
+            if name.startswith(android_namespace):
+                name = "android:" + name[len(android_namespace):]
+            require(name not in stack[-1][1]["attrs"], "duplicate_manifest_attribute", fatal=True)
             value = tail.split("=", 1)[-1].strip()
             if value.startswith('"'):
                 value = value.split('"', 2)[1]

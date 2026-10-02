@@ -56,9 +56,17 @@ The optional protected-workflow input defaults false and is restricted to the re
 
 ## 1. Baseline identity and comparison order
 
+### Release qualification and collector namespace correction
+
+The fixed83d measurement APK on API37/ARM64 has actual ART filter `verify` after same-signer installation, with no manual compiler/permission change. All eight host dataset hashes match the fixed fixture. Its first Google qualification times out before any positive check; cleanup restores settings and removes the owned reverse, certificate and bootstrap, with0route attempts. `runtime-36977969429-api37-google-pixel-qualification/qualification.json` preserves0checks and the failure. This supplies no performance sample or native pixel qualification.
+
+The unchanged collector's excluded diagnostic then rejects the Manifest before transport or a workload (`measurement_application_missing`,0attempts). Safe actual aapt2 inspection confirms the public measurement Application exists under full `http://schemas.android.com/apk/res/android:` attribute keys; the collector expected only `android:` aliases. The parser now normalizes only that exact Android namespace and rejects duplicate logical attributes. Foreign/lookalike namespaces remain invalid, and value/SDK/data/pixel/clock/watchdog/sample gates are unchanged. All23collector tests and48lightweight script tests pass; the actual unchanged APK passes non-debuggable/profileable/Application/DUMP-provider inspection. Frozen collector SHA256=`6ab7d41e4e0ba5ec0abcb69983478140b8f6f11eaaf50f55081e8d78699a2b82` applies to subsequent Release B1/B2; no Release samples existed before this correction. A new excluded status/trace diagnostic is pending. The earlier qualification timeout has not been assigned the same cause.
+
 ### Recorded nearby UI B1 (separate signed Debug probe)
 
 All three API37/ARM64 groups use protected source `83d86d8a271533403d941f324344a80d8abd4697`, signed Debug `f8361a4d9d908639e1cd8a94996ad8f9feece4aecebb525a173d15f3c108eb38` and test APK `c23582fec30b3d396310aad6f36ac44e79c28b9b3e0233f9b07386c55cb4ad0e`. The synthetic-location probe preserves full 1k/10k/100k membership and the actual list UI, at1080x1920/420dpi/font1.0/light appearance. Images remain enabled, but every point in this specific sorting fixture has an explicit NoImage reference; it is not a successful-image Release loading group.
+
+`runtime-36977969429-api37-install/before-native.json` was captured after signed Debug/Test installation, before native/nearby controls; `after-controls.json` matches its APK and observed ART filter `run-from-apk`, permissions/flags, font and rotation. No per-round ART snapshot exists. B2 must verify its own post-install state and match these observed bounds; no compiler mode is inferred from the Release `verify` group.
 
 | Members | Attempts / completed / failed | Sort p50 / p95 / max (ms) | UI-settle upper-bound p95 (ms) | Distance calculations per round | Sort lane |
 | --- | --- | --- | --- | --- | --- |

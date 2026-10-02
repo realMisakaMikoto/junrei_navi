@@ -66,6 +66,49 @@ class MeasurementDriverTest(unittest.TestCase):
             with self.assertRaises(DRIVER.Failure):
                 DRIVER.inspect_manifest(text)
 
+    def test_full_android_namespace_matches_short_alias_measurement_fields(self):
+        qualified = manifest().replace("android:", "http://schemas.android.com/apk/res/android:")
+        self.assertEqual(DRIVER.parse_manifest_tree(manifest()), DRIVER.parse_manifest_tree(qualified))
+        self.assertEqual(DRIVER.inspect_manifest(manifest()), DRIVER.inspect_manifest(qualified))
+
+    def test_foreign_or_lookalike_namespace_cannot_supply_measurement_identity(self):
+        for namespace in ("https://schemas.android.com/apk/res/android:",
+                          "http://schemas.android.com/apk/res/android/foreign:",
+                          "http://example.invalid/apk/res/android:"):
+            with self.subTest(namespace=namespace), self.assertRaises(DRIVER.Failure):
+                DRIVER.inspect_manifest(manifest().replace("android:", namespace))
+
+    def test_mixed_namespace_duplicates_cannot_override_guarded_manifest_fields(self):
+        text = manifest().replace("      E: provider (line=5)\n",
+            "      E: provider (line=5)\n        A: android:enabled(0x0101000e)=(type 0x12)0xffffffff\n")
+        lines = text.splitlines()
+        unsafe_values = (
+            ('android:name(0x01010003)="cn.anitabi.navigator.measurement.DiscoveryMeasurementApplication"',
+             'android:name(0x01010003)="cn.anitabi.navigator.AnitabiApplication"'),
+            ("android:debuggable(0x0101000f)=(type 0x12)0x0", "android:debuggable(0x0101000f)=(type 0x12)0xffffffff"),
+            ("android:enabled(0x0101000e)=(type 0x12)0xffffffff", "android:enabled(0x0101000e)=(type 0x12)0x0"),
+            ("android:shell(0x01010594)=(type 0x12)0xffffffff", "android:shell(0x01010594)=(type 0x12)0x0"),
+            ('android:authorities(0x01010018)="cn.anitabi.navigator.discovery-measurement"',
+             'android:authorities(0x01010018)="cn.anitabi.navigator.unprotected"'),
+            ('android:authorities(0x01010018)="cn.anitabi.navigator.discovery-diagnostics"',
+             'android:authorities(0x01010018)="cn.anitabi.navigator.unprotected"'),
+            ('android:permission(0x01010006)="android.permission.DUMP"',
+             'android:permission(0x01010006)="TEST_ONLY_WRONG"'),
+        )
+        for index, line in enumerate(lines):
+            for original, unsafe in unsafe_values:
+                if original not in line:
+                    continue
+                qualified = line.replace(original, unsafe).replace("android:", "http://schemas.android.com/apk/res/android:")
+                for full_first in (False, True):
+                    duplicate = [qualified, line] if full_first else [line, qualified]
+                    changed = "\n".join(lines[:index] + duplicate + lines[index + 1:])
+                    with self.subTest(line=index, field=original, full_first=full_first):
+                        with self.assertRaises(DRIVER.Failure) as raised:
+                            DRIVER.inspect_manifest(changed)
+                        self.assertEqual("duplicate_manifest_attribute", raised.exception.code)
+                        self.assertTrue(raised.exception.fatal)
+
     def test_art_filter_only_comes_from_exact_installed_apk(self):
         text = "path: /data/app/other/base.apk\n x86_64: [status=verify]\npath: /data/app/test/base.apk\n arm64: [status=speed]\n"
         self.assertEqual(["speed"], DRIVER.art_filters(text, "/data/app/test/base.apk"))

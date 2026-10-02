@@ -115,6 +115,10 @@ Google/高德投影与位图锚点用例均在初始投影/圆点像素/首次�
 
 测量Release已通过同签名ARM64保留数据安装，实际ART编译过滤器为verify，无手动编译/权限变更。新受控HTTPS服务的8份数据集哈希与固定旧夹具全部相同，Parser校验通过；这些是执行准备，尚无Release B1/B2计时样本。
 
+## 测量执行支架命名空间修正
+
+Google测量资格首次 `controlled_workload_timeout` 保留0检查及完整清理；随后collector排除样本的诊断在Manifest门禁误拒绝，0尝试。实际aapt2输出的Android属性使用全URI，旧parser只查 `android:` 别名，导致未识别真实Application/profile/provider；独立APK实际类审计一直通过。限定归一化该精确URI并拒绝重复逻辑属性，23collector/48脚本测试与实际APK解析全过，类型值、SDK、数据、像素、时钟、超时和20次门禁未改。新collector哈希与失败边界在性能doc；先前资格超时原因仍未确定，新诊断待实际状态/trace。没有Release B1/B2或速度结论。
+
 ## 定位显示官方约束
 
 2026-09-23 核对 [Google Navigation GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)：`setLocationSource` 仅编译兼容，自定义源不工作。因此使用应用判区后的独立定位 Marker，不启用不可过滤的原生定位源，也不引入另一套 Maps SDK。
