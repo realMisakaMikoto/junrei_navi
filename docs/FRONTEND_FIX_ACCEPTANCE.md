@@ -62,6 +62,14 @@ aef9056普通CI `36961783850`四项全部成功。保护与环境重新核对后
 
 新增 `DiscoveryNativeViewportSelectionInstrumentedTest` 的Google/高德两选择器绑定真实SDK手势、生产VM方法和点击处理时的有效性；用冻结Compose时钟保持旧按钮启用，避免只证明灰色按钮保护。新增 `DiscoveryNearbyUiBenchmarkInstrumentedTest` 在实际VM/列表中用1k/10k/100k合成成员和20次相关位置变化采集附近排序、计算次数/执行线程与UI完成时间，比较同模式签名Debug，不与Release加载数据混用。两新文件及测试APK已编译成功，源码哈希0差异；都未执行，不构成F3原生或F5/B1/B2通过。生产代码与默认图片功能未变。
 
+## 2026-10-02：实际测量组件源集缺失
+
+cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快进，签名 `36970012064` 的普通构建/审计成功；可选测量Lint、组装及提供方审计成功，但实际Manifest/DEX身份门禁报 `measurement_dex_definition_missing`。上传0产物、秘密清理成功。该失败属于真实组件定义不足，未放宽检查或添加keep规则。
+
+查阅当日[AGP内置Kotlin迁移文档](https://developer.android.com/build/migrate-to-built-in-kotlin#4-migrate-the-kotlin-sourcesets-dsl-if-necessary)，确认额外Kotlin目录必须通过AndroidSourceSet.kotlin注册，Java源集新增目录不受支持。受门控Release曾使用 `java.srcDir` 注册Kotlin测量源码，现仅改为 `kotlin.directories.add`。此前“flagged任务成功”没有类文件证据，不能证明测量源码实际被编译；普通flags=false产物的类缺失也不用于反推旧flagged产物。
+
+`measurement-source-set-fixed-1002/` 新显式flagged Kotlin编译及R8成功；114核对文件前后哈希一致，实际三个class文件均存在，既有DEX class_defs读取器在两份Release DEX中确认MeasurementApplication、MeasurementProvider、DiscoveryDiagnosticsProvider三个准确描述符全部存在。随后 `measurement-lint-ordinary-r8-1002/` 的真实测量源码Lint为0Fatal/0Error/23Warning；普通flags=false编译/R8的实际DEX中测量命名空间为0，普通Application存在、高德JNI七类存在，Google反射/高德R8/7变异均通过，117文件哈希一致。不是签名APK、Manifest最终合包或运行/性能证明；新保护构建仍待。
+
 当日核对维护者公告：[Fastify GHSA-4mh8-r7rc-xpvc](https://github.com/fastify/fastify/security/advisories/GHSA-4mh8-r7rc-xpvc) 指定修复版本5.12.5；[fast-uri GHSA-hrr3-gc8f-f4qj](https://github.com/fastify/fast-uri/security/advisories/GHSA-hrr3-gc8f-f4qj) 指定3.1.8/4.1.5；[GHSA-jvvf-x445-j334](https://github.com/fastify/fast-uri/security/advisories/GHSA-jvvf-x445-j334) 指定4.1.5。仅在 `backend/package.json` 精确更新Fastify至5.12.5，并将锁文件中的两条fast-uri解析更新至3.1.8和4.1.5；公开registry完整性值随对应版本更新，其它包、业务代码和审计门禁不变。没有使用 `npm audit fix --force`，没有部署。
 
 本地Node 24.14.0/npm 11.18.0实际执行 `npm ci`、类型检查、测试、构建及 `npm audit --omit=dev --json`，全部退出0；78项测试全部通过且无跳过，生产依赖审计所有风险等级及总数均为0。文件SHA-256：package=`492ca7920251243df2195226dc40e55d291621c3569f43132b16ef9095853152`，lock=`cd0dea64b7ca10321d477ac75ff9e78a456f68d7d485d6123cfda176712d03fc`。这只证明本地依赖修正；新提交CI和容器构建仍待，不将原失败run写为通过。源码没有HTTP/2配置、注册响应trailer或直接导入fast-uri，属于适用性观察，不能替代依赖审计，也不声称观察到实际攻击。

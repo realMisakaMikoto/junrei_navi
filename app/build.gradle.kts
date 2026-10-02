@@ -153,7 +153,7 @@ android {
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
     if (discoveryMeasurement) {
         sourceSets.getByName("release") {
-            java.srcDir("src/discoveryMeasurement/java")
+            kotlin.directories.add("src/discoveryMeasurement/java")
             manifest.srcFile("src/discoveryMeasurement/AndroidManifest.xml")
         }
     }
