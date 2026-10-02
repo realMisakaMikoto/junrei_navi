@@ -17,6 +17,9 @@ APPLICATION = PACKAGE + '.AnitabiApplication'
 MEASUREMENT = PACKAGE + '.measurement.DiscoveryMeasurementApplication'
 MEASUREMENT_PROVIDER = PACKAGE + '.measurement.DiscoveryMeasurementProvider'
 DIAGNOSTICS_PROVIDER = PACKAGE + '.diagnostics.DiscoveryDiagnosticsProvider'
+RECOVERY = PACKAGE + '.recovery.PlannerRecoveryApplication'
+RECOVERY_PROVIDER = PACKAGE + '.recovery.PlannerRecoveryProvider'
+RECOVERY_AUTHORITY = PACKAGE + '.planner-recovery'
 
 
 class AuditError(Exception):
@@ -35,16 +38,21 @@ def class_name(value):
 
 
 def audit_manifest(document, classes, mode):
+    require(mode in ('ordinary', 'measurement', 'planner-recovery'), 'unexpected_mode')
     root = ET.fromstring(document)
     require(root.get('package') == PACKAGE, 'unexpected_package')
     applications = root.findall('application')
     require(len(applications) == 1, 'application_count')
     app = applications[0]
-    require(app.get(ANDROID+'debuggable', 'false') == 'false', 'release_must_not_be_debuggable')
+    if mode == 'planner-recovery':
+        require(app.get(ANDROID+'debuggable') == 'true', 'recovery_must_be_debuggable')
+    else:
+        require(app.get(ANDROID+'debuggable', 'false') == 'false', 'release_must_not_be_debuggable')
     provider_nodes = app.findall('provider')
     providers = {class_name(p.get(ANDROID+'name', '')): p for p in provider_nodes}
     require(len(providers) == len(provider_nodes), 'duplicate_provider')
-    require(not any('.recovery.' in name for name in providers), 'recovery_fixture_in_release')
+    if mode != 'planner-recovery':
+        require(not any('.recovery.' in name for name in providers), 'recovery_fixture_in_release')
     profiles = app.findall('profileable')
     require(len(profiles) <= 1, 'profileable_count')
     for profile in profiles:
@@ -66,6 +74,28 @@ def audit_manifest(document, classes, mode):
             require(provider.get(ANDROID+'permission') == 'android.permission.DUMP', 'measurement_provider_permission')
         for name in (MEASUREMENT, MEASUREMENT_PROVIDER, DIAGNOSTICS_PROVIDER):
             require('L'+name.replace('.', '/')+';' in classes, 'measurement_dex_definition_missing')
+    elif mode == 'planner-recovery':
+        require(actual_application == RECOVERY, 'recovery_application_missing')
+        recovery_providers = [name for name, provider in providers.items() if '.recovery.' in name or
+                              RECOVERY_AUTHORITY in provider.get(ANDROID+'authorities', '').split(';')]
+        require(recovery_providers == [RECOVERY_PROVIDER], 'recovery_provider_count')
+        provider = providers[RECOVERY_PROVIDER]
+        require(provider.get(ANDROID+'authorities') == RECOVERY_AUTHORITY, 'recovery_authority')
+        require(provider.get(ANDROID+'enabled') == 'true', 'recovery_provider_disabled')
+        require(provider.get(ANDROID+'exported') == 'true', 'recovery_provider_export')
+        require(provider.get(ANDROID+'permission') == 'android.permission.DUMP', 'recovery_provider_permission')
+        for name in (APPLICATION, RECOVERY, RECOVERY_PROVIDER):
+            require('L'+name.replace('.', '/')+';' in classes, 'recovery_dex_definition_missing')
+        require(not profile_enabled and not profile_shell, 'recovery_profiling_enabled')
+        require(not any((name.startswith(PACKAGE+'.diagnostics.') or PACKAGE+'.discovery-diagnostics' in
+                         provider.get(ANDROID+'authorities', '').split(';')) and
+                        provider.get(ANDROID+'enabled', 'true') != 'false' for name, provider in providers.items()),
+                'recovery_diagnostics_enabled')
+        require(not any(name.startswith(PACKAGE+'.measurement.') or PACKAGE+'.discovery-measurement' in
+                        provider.get(ANDROID+'authorities', '').split(';') for name, provider in providers.items()),
+                'measurement_provider_in_recovery_fixture')
+        require(not any(name.startswith('Lcn/anitabi/navigator/measurement/') for name in classes),
+                'measurement_class_in_recovery_fixture')
     else:
         require(actual_application == APPLICATION, 'ordinary_application_replaced')
         require('L'+APPLICATION.replace('.', '/')+';' in classes, 'ordinary_application_dex_missing')
@@ -73,15 +103,18 @@ def audit_manifest(document, classes, mode):
         require(MEASUREMENT_PROVIDER not in providers, 'measurement_provider_in_ordinary_release')
         require(not any(name.startswith('Lcn/anitabi/navigator/measurement/') for name in classes), 'measurement_class_in_ordinary_release')
         require(diagnostics is None or diagnostics.get(ANDROID+'enabled', 'true') == 'false', 'ordinary_diagnostics_enabled')
-    return {'nonDebuggable':True, 'profilingEnabled':profile_enabled and profile_shell,
-            'measurementFixture':mode == 'measurement', 'manifestAndDexVerified':True}
+    report = {'nonDebuggable':mode != 'planner-recovery', 'profilingEnabled':profile_enabled and profile_shell,
+              'measurementFixture':mode == 'measurement', 'manifestAndDexVerified':True}
+    if mode == 'planner-recovery':
+        report['plannerRecoveryFixture'] = True
+    return report
 
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--apk', type=Path, required=True)
     parser.add_argument('--apkanalyzer', required=True)
-    parser.add_argument('--mode', choices=['ordinary', 'measurement'], required=True)
+    parser.add_argument('--mode', choices=['ordinary', 'measurement', 'planner-recovery'], required=True)
     parser.add_argument('--source-sha', required=True)
     parser.add_argument('--output', type=Path, required=True)
     args = parser.parse_args()

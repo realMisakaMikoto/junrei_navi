@@ -23,6 +23,9 @@ def load(name, filename):
 audit = load("discovery_build_audit", "audit-discovery-build.py")
 dex_reader = load("discovery_build_dex_reader", "audit-amap-r8.py")
 A = audit.ANDROID
+RECOVERY_APPLICATION = audit.PACKAGE + ".recovery.PlannerRecoveryApplication"
+RECOVERY_PROVIDER = audit.PACKAGE + ".recovery.PlannerRecoveryProvider"
+RECOVERY_AUTHORITY = audit.PACKAGE + ".planner-recovery"
 
 
 def descriptor(name):
@@ -31,8 +34,14 @@ def descriptor(name):
 
 def manifest(mode="ordinary", explicit_disabled=False):
     root = ET.Element("manifest", {"package": audit.PACKAGE})
-    application = ".measurement.DiscoveryMeasurementApplication" if mode == "measurement" else ".AnitabiApplication"
+    application = {"ordinary": ".AnitabiApplication", "measurement": ".measurement.DiscoveryMeasurementApplication",
+        "planner-recovery": ".recovery.PlannerRecoveryApplication"}[mode]
     app = ET.SubElement(root, "application", {A + "name": application})
+    if mode == "planner-recovery":
+        app.set(A + "debuggable", "true")
+        ET.SubElement(app, "provider", {A + "name": RECOVERY_PROVIDER,
+            A + "authorities": RECOVERY_AUTHORITY, A + "enabled": "true",
+            A + "exported": "true", A + "permission": "android.permission.DUMP"})
     if mode == "measurement" or explicit_disabled:
         enabled = "true" if mode == "measurement" else "false"
         ET.SubElement(app, "profileable", {A + "enabled": enabled, A + "shell": enabled})
@@ -50,12 +59,14 @@ def classes(mode="ordinary"):
     names = [audit.APPLICATION]
     if mode == "measurement":
         names += [audit.MEASUREMENT, audit.MEASUREMENT_PROVIDER, audit.DIAGNOSTICS_PROVIDER]
+    elif mode == "planner-recovery":
+        names += [RECOVERY_APPLICATION, RECOVERY_PROVIDER]
     return {descriptor(name) for name in names}
 
 
 def dex_fixture(defined):
     # Names exist in string/type tables for every mutation; only the class definition table differs.
-    names = sorted(classes("measurement"))
+    names = sorted(classes("measurement") | classes("planner-recovery"))
     count = len(names)
     strings_offset, types_offset, definitions_offset = 112, 112 + count * 4, 112 + count * 8
     definitions = [index for index, name in enumerate(names) if name in defined]
@@ -76,9 +87,11 @@ class DiscoveryBuildAuditTest(unittest.TestCase):
     def check(self, root, mode="ordinary", definitions=None):
         return audit.audit_manifest(ET.tostring(root), classes(mode) if definitions is None else definitions, mode)
 
-    def rejected(self, root, mode="ordinary", definitions=None):
-        with self.assertRaises(audit.AuditError):
+    def rejected(self, root, mode="ordinary", definitions=None, code=None):
+        with self.assertRaises(audit.AuditError) as failure:
             self.check(root, mode, definitions)
+        if code is not None:
+            self.assertEqual(code, str(failure.exception))
 
     def test_ordinary_defaults_and_explicit_disabled_controls_pass(self):
         for explicit in (False, True):
@@ -92,6 +105,16 @@ class DiscoveryBuildAuditTest(unittest.TestCase):
         self.assertEqual({"nonDebuggable": True, "profilingEnabled": True,
             "measurementFixture": True, "manifestAndDexVerified": True}, report)
 
+    def test_proper_recovery_manifest_and_actual_definitions_pass(self):
+        definitions = dex_reader.dex_classes(dex_fixture(classes("planner-recovery")))
+        self.assertEqual(classes("planner-recovery"), definitions)
+        for explicit in (False, True):
+            with self.subTest(explicit=explicit):
+                report = self.check(manifest("planner-recovery", explicit), "planner-recovery", definitions)
+                self.assertEqual({"nonDebuggable": False, "profilingEnabled": False,
+                    "measurementFixture": False, "manifestAndDexVerified": True,
+                    "plannerRecoveryFixture": True}, report)
+
     def test_relative_simple_and_fully_qualified_ordinary_names_resolve(self):
         for name in (".AnitabiApplication", "AnitabiApplication", audit.APPLICATION):
             root = manifest()
@@ -99,15 +122,16 @@ class DiscoveryBuildAuditTest(unittest.TestCase):
             self.assertFalse(self.check(root)["measurementFixture"])
 
     def test_wrong_package_missing_or_duplicate_application_fail(self):
-        root = manifest()
-        root.set("package", "example.invalid")
-        self.rejected(root)
-        root = manifest()
-        root.remove(root.find("application"))
-        self.rejected(root)
-        root = manifest()
-        root.append(copy.deepcopy(root.find("application")))
-        self.rejected(root)
+        for mode in ("ordinary", "measurement", "planner-recovery"):
+            root = manifest(mode)
+            root.set("package", "example.invalid")
+            self.rejected(root, mode)
+            root = manifest(mode)
+            root.remove(root.find("application"))
+            self.rejected(root, mode)
+            root = manifest(mode)
+            root.append(copy.deepcopy(root.find("application")))
+            self.rejected(root, mode)
 
     def test_debuggable_release_fails_in_both_modes(self):
         for mode in ("ordinary", "measurement"):
@@ -116,7 +140,7 @@ class DiscoveryBuildAuditTest(unittest.TestCase):
             self.rejected(root, mode)
 
     def test_wrong_or_missing_application_class_fails(self):
-        for mode in ("ordinary", "measurement"):
+        for mode in ("ordinary", "measurement", "planner-recovery"):
             for name in (".WrongApplication", None):
                 root = manifest(mode)
                 app = root.find("application")
@@ -125,6 +149,106 @@ class DiscoveryBuildAuditTest(unittest.TestCase):
                 else:
                     app.set(A + "name", name)
                 self.rejected(root, mode)
+
+    def test_recovery_must_be_explicitly_debuggable_and_use_the_recovery_application(self):
+        for value in (None, "false", "@bool/unresolved"):
+            root = manifest("planner-recovery")
+            app = root.find("application")
+            if value is None:
+                app.attrib.pop(A + "debuggable")
+            else:
+                app.set(A + "debuggable", value)
+            self.rejected(root, "planner-recovery", code="recovery_must_be_debuggable")
+        for name in (audit.APPLICATION, audit.MEASUREMENT):
+            root = manifest("planner-recovery")
+            root.find("application").set(A + "name", name)
+            self.rejected(root, "planner-recovery", code="recovery_application_missing")
+
+    def test_recovery_requires_only_one_approved_recovery_provider(self):
+        for mutation in ("absent", "duplicate", "other-recovery", "authority-collision"):
+            root = manifest("planner-recovery")
+            app = root.find("application")
+            provider = app.find("provider")
+            if mutation == "absent":
+                app.remove(provider)
+            else:
+                extra = copy.deepcopy(provider)
+                if mutation == "duplicate":
+                    extra.set(A + "name", ".recovery.PlannerRecoveryProvider")
+                elif mutation == "other-recovery":
+                    extra.set(A + "name", ".recovery.OtherProvider")
+                    extra.set(A + "authorities", audit.PACKAGE + ".other-recovery")
+                else:
+                    extra.set(A + "name", ".OtherProvider")
+                    extra.set(A + "authorities", "example.invalid;" + RECOVERY_AUTHORITY)
+                app.append(extra)
+            self.rejected(root, "planner-recovery", code="duplicate_provider" if mutation == "duplicate" else "recovery_provider_count")
+
+    def test_recovery_provider_identity_and_access_controls_are_exact(self):
+        for key, values in (("authorities", (None, "", "example.invalid", RECOVERY_AUTHORITY + ";example.invalid")),
+                ("permission", (None, "", "android.permission.INTERNET")),
+                ("enabled", (None, "false", "@bool/unresolved")),
+                ("exported", (None, "false", "@bool/unresolved"))):
+            for value in values:
+                with self.subTest(key=key, value=value):
+                    root = manifest("planner-recovery")
+                    provider = root.find("application/provider")
+                    if value is None:
+                        provider.attrib.pop(A + key)
+                    else:
+                        provider.set(A + key, value)
+                    code = {"authorities": "recovery_authority", "permission": "recovery_provider_permission",
+                        "enabled": "recovery_provider_disabled", "exported": "recovery_provider_export"}[key]
+                    self.rejected(root, "planner-recovery", code=code)
+
+    def test_recovery_requires_actual_base_application_and_fixture_definitions(self):
+        for name in (audit.APPLICATION, RECOVERY_APPLICATION, RECOVERY_PROVIDER):
+            definitions = dex_reader.dex_classes(dex_fixture(classes("planner-recovery") - {descriptor(name)}))
+            self.assertNotIn(descriptor(name), definitions)
+            with self.assertRaisesRegex(audit.AuditError, "^recovery_dex_definition_missing$"):
+                self.check(manifest("planner-recovery"), "planner-recovery", definitions)
+        self.rejected(manifest("planner-recovery"), "planner-recovery", dex_reader.dex_classes(dex_fixture(set())),
+            "recovery_dex_definition_missing")
+
+    def test_recovery_rejects_profiling_and_enabled_diagnostics(self):
+        for key in ("enabled", "shell"):
+            root = manifest("planner-recovery", explicit_disabled=True)
+            root.find("application/profileable").set(A + key, "true")
+            self.rejected(root, "planner-recovery", code="recovery_profiling_enabled")
+        root = manifest("planner-recovery", explicit_disabled=True)
+        app = root.find("application")
+        app.append(copy.deepcopy(app.find("profileable")))
+        self.rejected(root, "planner-recovery", code="profileable_count")
+        for enabled in (None, "true", "@bool/unresolved"):
+            root = manifest("planner-recovery", explicit_disabled=True)
+            provider = root.find("application").findall("provider")[1]
+            if enabled is None:
+                provider.attrib.pop(A + "enabled")
+            else:
+                provider.set(A + "enabled", enabled)
+            self.rejected(root, "planner-recovery", code="recovery_diagnostics_enabled")
+        for name, authority in ((audit.PACKAGE + ".diagnostics.OtherProvider", "example.invalid"),
+                (audit.PACKAGE + ".OtherProvider", "example.invalid;" + audit.PACKAGE + ".discovery-diagnostics")):
+            root = manifest("planner-recovery")
+            ET.SubElement(root.find("application"), "provider", {A + "name": name, A + "authorities": authority})
+            self.rejected(root, "planner-recovery", code="recovery_diagnostics_enabled")
+
+    def test_recovery_rejects_measurement_providers_and_classes(self):
+        for name, authority in ((audit.MEASUREMENT_PROVIDER, audit.PACKAGE + ".discovery-measurement"),
+                (audit.PACKAGE + ".measurement.OtherProvider", "example.invalid"),
+                (audit.PACKAGE + ".OtherProvider", "example.invalid;" + audit.PACKAGE + ".discovery-measurement")):
+            root = manifest("planner-recovery")
+            ET.SubElement(root.find("application"), "provider", {A + "name": name,
+                A + "authorities": authority, A + "enabled": "false"})
+            self.rejected(root, "planner-recovery", code="measurement_provider_in_recovery_fixture")
+        for name in (audit.MEASUREMENT, audit.MEASUREMENT_PROVIDER, audit.PACKAGE + ".measurement.UnreferencedFixture"):
+            self.rejected(manifest("planner-recovery"), "planner-recovery",
+                classes("planner-recovery") | {descriptor(name)}, "measurement_class_in_recovery_fixture")
+
+    def test_unknown_mode_cannot_fall_through_to_ordinary_checks(self):
+        for mode in ("", "planner_recovery", "unknown"):
+            with self.assertRaisesRegex(audit.AuditError, "^unexpected_mode$"):
+                self.check(manifest(), mode, classes())
 
     def test_each_measurement_provider_is_required_and_must_have_dump_permission(self):
         for index in (0, 1):
@@ -216,10 +340,11 @@ class DiscoveryBuildAuditTest(unittest.TestCase):
         self.rejected(root, "measurement")
 
     def test_unresolved_profile_boolean_cannot_be_treated_as_disabled(self):
-        for key in ("enabled", "shell"):
-            root = manifest(explicit_disabled=True)
-            root.find("application/profileable").set(A + key, "@bool/unresolved")
-            self.rejected(root)
+        for mode in ("ordinary", "planner-recovery"):
+            for key in ("enabled", "shell"):
+                root = manifest(mode, explicit_disabled=True)
+                root.find("application/profileable").set(A + key, "@bool/unresolved")
+                self.rejected(root, mode)
 
     def test_failure_codes_do_not_expose_manifest_metadata(self):
         root = manifest("measurement")

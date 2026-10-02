@@ -74,6 +74,23 @@ cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快�
 
 本地Node 24.14.0/npm 11.18.0实际执行 `npm ci`、类型检查、测试、构建及 `npm audit --omit=dev --json`，全部退出0；78项测试全部通过且无跳过，生产依赖审计所有风险等级及总数均为0。文件SHA-256：package=`492ca7920251243df2195226dc40e55d291621c3569f43132b16ef9095853152`，lock=`cd0dea64b7ca10321d477ac75ff9e78a456f68d7d485d6123cfda176712d03fc`。这只证明本地依赖修正；新提交CI和容器构建仍待，不将原失败run写为通过。源码没有HTTP/2配置、注册响应trailer或直接导入fast-uri，属于适用性观察，不能替代依赖审计，也不声称观察到实际攻击。
 
+## 2026-10-02：当前保护签名构建成功
+
+`83d86d8a271533403d941f324344a80d8abd4697` 的普通 CI `36975549732` 四项成功。重新核对 main/候选保护及签名环境后，候选按祖先关系快进至该 SHA，main 保持 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`。保护签名 `36977969429` 已成功：普通构建与审计、可选测量构建与实际 Manifest/DEX/内容/签名审计、私有产物上传及秘密/地区材料清理全部成功；两个 SSH 作业跳过。此前三次签名失败各自保留其来源和失败原因。
+
+四个下载 APK 已独立核验固定 RSA-4096/v2 单签名者、精确包名及校验和；普通/测量包的实际 Manifest/DEX、内容、地区资产与高德 JNI 审计通过，记录在 `build/frontend-fix-v2/signed-current-36977969429/verified-artifacts.json`。
+
+| 产物 | SHA-256 |
+| --- | --- |
+| 普通 Release | `b090255b4edb921a4a4c2072e213dd41189af763adbc933e1e6812144791b880` |
+| 签名 Debug | `f8361a4d9d908639e1cd8a94996ad8f9feece4aecebb525a173d15f3c108eb38` |
+| AndroidTest | `c23582fec30b3d396310aad6f36ac44e79c28b9b3e0233f9b07386c55cb4ad0e` |
+| 测量 Release | `b586dfec0d75cb92007998823d58c2d442db5882eb436aac7f87d764b33b047b` |
+
+这证明当前受门控 Kotlin 源集修正通过了实际签名流程及独立 APK 审计。API37 专用 AVD 保留数据安装签名 Debug/Test，核对 ARM64；Google 明确批准的说明夹具通过。新 Google F3 用例在第141行初始30秒视野就绪等待失败，尚未进入拖动/旧按钮断言；`runtime-36977969429-api37-native/runtime.json` 保留失败。有限日志中未见提供方不可用/鉴权/链接/EGL/致命标记，不能据此确认或排除根因；用例结束后实际目标 PID 不存在，权限及字体/方向保持原值。其余原生用例与 B1/B2 仍待，未作 F5 优化或手机复测。PR 仍为 Draft。
+
+完整 API37 恢复需独立 Debug 夹具：普通签名 Debug 无法记录保存 Bundle、两进程路线尝试数与完整输入相等性。已有恢复源码不变；新增默认关闭的保护签名选项与严格 `planner-recovery` APK 身份审计，并将现有驱动限定参数化为专用 API26/5584 或 API37/5554。25项审计控制、9项驱动测试、7项内容审计集成控制和14个工作流 Bash 块通过；实际新夹具打包、独立签名核验及 API37 五种恢复仍待。夹具还原原文件并删除哨兵后，必须以同签名 `install -r` 恢复普通 APK 才能再次启动。文件备份清单不证明 Room/WAL 或全 Discovery 缓存逐字节未变。
+
 ## 定位显示官方约束
 
 2026-09-23 核对 [Google Navigation GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)：`setLocationSource` 仅编译兼容，自定义源不工作。因此使用应用判区后的独立定位 Marker，不启用不可过滤的原生定位源，也不引入另一套 Maps SDK。

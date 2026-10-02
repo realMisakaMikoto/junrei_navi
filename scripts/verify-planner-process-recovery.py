@@ -19,7 +19,10 @@ import xml.etree.ElementTree as ET
 
 PACKAGE = "cn.anitabi.navigator"
 SERIAL = "emulator-5584"
-AVD = "anitabi-pr37-images-api26"
+TARGETS = {
+    "emulator-5584": (26, "anitabi-pr37-images-api26"),
+    "emulator-5554": (37, "anitabi-redesign-api37"),
+}
 AUTHORITY = "content://cn.anitabi.navigator.planner-recovery"
 PRIVATE = "files/planner-recovery-harness"
 DRAFT = "files/planner-draft/current.json"
@@ -90,8 +93,11 @@ def task_present(output, task_id):
 
 
 class Driver:
-    def __init__(self, adb, apk, output):
+    def __init__(self, adb, apk, output, serial=SERIAL):
+        require(serial in TARGETS, "unapproved_target")
         self.adb_path = adb
+        self.serial = serial
+        self.api, self.avd = TARGETS[serial]
         self.apk_hash = hashlib.sha256(apk.read_bytes()).hexdigest()
         self.output = output
         self.backups = []
@@ -99,7 +105,7 @@ class Driver:
         self.ui_dump_path = "/data/local/tmp/anitabi-recovery-" + uuid.uuid4().hex + ".xml"
 
     def adb(self, *args, data=None, allowed=(0,), timeout=25):
-        result = subprocess.run([self.adb_path, "-s", SERIAL, *args], input=data, capture_output=True, timeout=timeout)
+        result = subprocess.run([self.adb_path, "-s", self.serial, *args], input=data, capture_output=True, timeout=timeout)
         operation = args[0] if args else "unknown"
         if len(args) > 3 and args[:2] == ("shell", "run-as"):
             operation = "private_" + args[3]
@@ -117,7 +123,7 @@ class Driver:
 
     def exists_private(self, path):
         # API26 supplies test as a shell builtin rather than a standalone executable.
-        result = subprocess.run([self.adb_path, "-s", SERIAL, "shell", "run-as", PACKAGE,
+        result = subprocess.run([self.adb_path, "-s", self.serial, "shell", "run-as", PACKAGE,
             "sh", "-c", shlex.quote("test -f " + shlex.quote(path))], capture_output=True, timeout=10)
         require(result.returncode in (0, 1), "private_stat_failed")
         require(not result.stderr.strip(), "private_stat_transport_failed")
@@ -126,13 +132,13 @@ class Driver:
     def identity(self):
         require(self.adb("get-state").strip() == "device", "device_unavailable")
         require(self.adb("shell", "getprop", "ro.kernel.qemu").strip() == "1", "not_emulator")
-        require(self.adb("shell", "getprop", "ro.build.version.sdk").strip() == "26", "wrong_api")
-        require(self.adb("emu", "avd", "name").splitlines()[0].strip() == AVD, "wrong_avd")
+        require(self.adb("shell", "getprop", "ro.build.version.sdk").strip() == str(self.api), "wrong_api")
+        require(self.adb("emu", "avd", "name").splitlines()[0].strip() == self.avd, "wrong_avd")
         require(self.adb("shell", "am", "get-current-user").strip() == "0", "wrong_android_user")
         paths = self.adb("shell", "pm", "path", PACKAGE).strip().splitlines()
         require(len(paths) == 1 and paths[0].startswith("package:/data/app/"), "unexpected_apk_layout")
         path = paths[0][len("package:"):]
-        require(re.fullmatch(r"/data/app/[A-Za-z0-9_./=+-]+/base\.apk", path) is not None, "apk_path_invalid")
+        require(re.fullmatch(r"/data/app/[A-Za-z0-9_./=+~-]+/base\.apk", path) is not None, "apk_path_invalid")
         observed = self.adb("shell", "sha256sum", path).split()[0]
         require(observed == self.apk_hash, "installed_apk_hash_mismatch")
         package = self.adb("shell", "dumpsys", "package", PACKAGE)
@@ -285,6 +291,7 @@ class Driver:
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--adb", default="adb")
+    parser.add_argument("--serial", choices=TARGETS, default=SERIAL)
     parser.add_argument("--app-apk", required=True, type=Path)
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--case", choices=CASES, action="append")
@@ -294,8 +301,8 @@ def main():
     require(output.is_relative_to(workspace / "build") and not output.exists(), "output_must_be_new_workspace_build_directory")
     require(args.app_apk.is_file(), "expected_apk_missing")
     output.mkdir(parents=True)
-    driver = Driver(args.adb, args.app_apk, output)
-    report = {"schema": 1, "appSha256": driver.apk_hash, "api": 26, "target": "dedicated-emulator", "cases": []}
+    driver = Driver(args.adb, args.app_apk, output, args.serial)
+    report = {"schema": 1, "appSha256": driver.apk_hash, "api": driver.api, "target": "dedicated-emulator", "cases": []}
     try:
         driver.backup()
         for case in args.case or CASES:
