@@ -29,6 +29,7 @@ import cn.anitabi.navigator.ui.map.AmapMapView
 import cn.anitabi.navigator.ui.map.NavigationMapView
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
 import cn.anitabi.navigator.ui.map.amapRouteGeometryForDisplay
+import cn.anitabi.navigator.ui.map.animateCameraRespectingMotion
 import cn.anitabi.navigator.ui.map.currentLocationMarkerOptions
 import cn.anitabi.navigator.ui.map.isAmapMapCreationReady
 import cn.anitabi.navigator.ui.map.mapContentMismatch
@@ -123,7 +124,7 @@ private fun GoogleRoutePreviewMap(
         runCatching {
             withPositiveMapViewport(viewportWidth, viewportHeight) { _, _ ->
                 CameraUpdateFactory.newLatLngZoom(location.toGoogleLatLng(), 16f)
-            }?.let(readyMap::animateCamera)
+            }?.let(readyMap::animateCameraRespectingMotion)
         }.onFailure { error ->
             Log.w("RoutePreviewMap", "GOOGLE_FOLLOW failed (${error.javaClass.name})")
         }
@@ -143,7 +144,7 @@ private fun GoogleRoutePreviewMap(
                         coordinates.forEach { builder.include(it.toGoogleLatLng()) }
                     }.build().let { CameraUpdateFactory.newLatLngBounds(it, width, height, 76) }
                 }
-            }?.let(readyMap::animateCamera)
+            }?.let(readyMap::animateCameraRespectingMotion)
         }.onFailure { error ->
             Log.w("RoutePreviewMap", "GOOGLE_FIT failed (${error.javaClass.name})")
         }
@@ -234,7 +235,7 @@ private fun AmapRoutePreviewMap(
         val readyConverter = converter ?: return@LaunchedEffect
         if (!followCurrentLocation || viewportWidth <= 0 || viewportHeight <= 0) return@LaunchedEffect
         runCatching {
-            readyMap.animateCamera(
+            readyMap.animateCameraRespectingMotion(
                 AmapCameraUpdateFactory.newLatLngZoom(readyConverter.convert(location).toLatLng(), 16f),
             )
         }.onFailure { error ->
@@ -254,14 +255,14 @@ private fun AmapRoutePreviewMap(
             }.withoutConsecutiveAmapDuplicates()
             when (coordinates.size) {
                 0 -> Unit
-                1 -> readyMap.animateCamera(
+                1 -> readyMap.animateCameraRespectingMotion(
                     AmapCameraUpdateFactory.newLatLngZoom(coordinates.single().toLatLng(), 15f),
                 )
                 else -> {
                     val bounds = AmapLatLngBounds.Builder().also { builder ->
                         coordinates.forEach { builder.include(it.toLatLng()) }
                     }.build()
-                    readyMap.animateCamera(AmapCameraUpdateFactory.newLatLngBounds(bounds, 76))
+                    readyMap.animateCameraRespectingMotion(AmapCameraUpdateFactory.newLatLngBounds(bounds, 76))
                 }
             }
         }.onFailure { error ->

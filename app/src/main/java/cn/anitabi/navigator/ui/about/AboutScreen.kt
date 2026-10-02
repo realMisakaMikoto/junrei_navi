@@ -13,20 +13,20 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.automirrored.rounded.ArrowBack
 import androidx.compose.material.icons.automirrored.rounded.OpenInNew
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -46,10 +46,9 @@ import androidx.compose.ui.unit.dp
 import cn.anitabi.navigator.BuildConfig
 import cn.anitabi.navigator.R
 import cn.anitabi.navigator.telemetry.TelemetryConsentController
-import cn.anitabi.navigator.ui.theme.Ink
-import cn.anitabi.navigator.ui.theme.MutedInk
-import cn.anitabi.navigator.ui.theme.Paper
-import cn.anitabi.navigator.ui.theme.Vermilion
+import cn.anitabi.navigator.security.AppAppearance
+import cn.anitabi.navigator.ui.components.JournalTopBar
+import cn.anitabi.navigator.ui.components.JournalSectionHeading
 
 @Composable
 fun AboutScreen(
@@ -57,6 +56,10 @@ fun AboutScreen(
     telemetryConsentController: TelemetryConsentController,
     amapPrivacyConsentEnabled: Boolean = false,
     onAmapPrivacyConsentChange: (Boolean) -> Unit = {},
+    appearance: AppAppearance = AppAppearance.SYSTEM,
+    onAppearanceChange: (AppAppearance) -> Unit = {},
+    imageMarkersEnabled: Boolean = true,
+    onImageMarkersEnabledChange: (Boolean) -> Unit = {},
 ) {
     val uriHandler = androidx.compose.ui.platform.LocalUriHandler.current
     var telemetryConsent by remember(telemetryConsentController) {
@@ -67,13 +70,13 @@ fun AboutScreen(
     }
 
     Surface(
-        color = Paper,
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxSize().testTag("about-screen"),
     ) {
         Column(modifier = Modifier.fillMaxSize()) {
             AboutTopBar(onBack)
             LazyColumn(
-                modifier = Modifier.fillMaxSize().navigationBarsPadding(),
+                modifier = Modifier.fillMaxSize().navigationBarsPadding().testTag("about-content"),
                 contentPadding = PaddingValues(horizontal = 20.dp, vertical = 20.dp),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -82,18 +85,50 @@ fun AboutScreen(
                     AppIdentity(modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth())
                 }
                 item {
+                    AboutSection("外观", Modifier.widthIn(max = 720.dp).fillMaxWidth()) {
+                        Column(Modifier.selectableGroup().testTag("appearance-settings")) {
+                            AppAppearance.entries.forEach { option ->
+                                Row(
+                                    modifier = Modifier.fillMaxWidth().heightIn(min = 48.dp)
+                                        .selectable(
+                                            selected = appearance == option,
+                                            role = Role.RadioButton,
+                                            onClick = { onAppearanceChange(option) },
+                                        ).padding(vertical = 4.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                ) {
+                                    RadioButton(selected = appearance == option, onClick = null)
+                                    Text(when (option) {
+                                        AppAppearance.SYSTEM -> "跟随系统"
+                                        AppAppearance.LIGHT -> "浅色手帳"
+                                        AppAppearance.DARK -> "深色手帳"
+                                    }, style = MaterialTheme.typography.bodyLarge)
+                                }
+                            }
+                        }
+                        HorizontalDivider(Modifier.padding(vertical = 12.dp))
+                        TelemetryConsentRow(
+                            title = "地图图片标记",
+                            description = "在近处显示地点截图。关闭或图片加载失败时，地点仍会保留为普通标记。",
+                            checked = imageMarkersEnabled,
+                            onCheckedChange = onImageMarkersEnabledChange,
+                        )
+                    }
+                }
+                item {
                     AboutSection(
                         title = "隐私",
                         modifier = Modifier.widthIn(max = 720.dp).fillMaxWidth(),
                     ) {
                         Text(
                             "不含广告或云同步。路线与进度只保存在本机；路线响应不会持久化。",
-                            color = Ink,
+                            color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.bodyLarge,
                         )
                         Text(
                             "规划或偏航重算时，必要坐标、模式和出发时间会经自建服务发送给当前地区对应的路线提供方。Firebase 匿名身份不需要邮箱、姓名或密码；Analytics 与 Crashlytics 默认关闭。",
-                            color = MutedInk,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp),
                         )
@@ -132,7 +167,7 @@ fun AboutScreen(
                             Column {
                                 Text(
                                     "两项默认关闭，可分别选择加入并随时撤回。不会记录坐标、动漫名、搜索词或路线正文。",
-                                    color = MutedInk,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     style = MaterialTheme.typography.bodyMedium,
                                     modifier = Modifier.padding(16.dp),
                                 )
@@ -179,13 +214,13 @@ fun AboutScreen(
                         }
                         Text(
                             "路线会先按起点和所有目的地解析为单一地图提供方。Google 与高德的路线和地图内容不会混合显示；高德道路及公交由后端规划，导航执行交给高德地图。日本公交仍在本机排序并逐段交给 Google 地图。",
-                            color = MutedInk,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp),
                         )
                         Text(
                             "地区判定只使用经过批准且带版本和校验信息的离线数据；数据缺失、损坏、边界重叠或无法判定时会停止地图与路线请求。日本与日本以外点不能混合生成同一条公交行程。",
-                            color = MutedInk,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 6.dp),
                         )
@@ -201,8 +236,8 @@ fun AboutScreen(
                             uriHandler.openUri("https://github.com/anitabi/anitabi.cn-document/blob/main/api.md")
                         }
                         Text(
-                            "只缓存用户实际访问的作品；截图旁保留原始来源和链接。",
-                            color = MutedInk,
+                            "地图发现会缓存公共点位索引并逐步补齐详情；图片仅按当前可见内容加载。公共缓存独立于本机行程，截图旁保留原始来源和链接。",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
                             style = MaterialTheme.typography.bodyMedium,
                             modifier = Modifier.padding(top = 8.dp),
                         )
@@ -215,7 +250,7 @@ fun AboutScreen(
                     ) {
                         Text(
                             "应用代码采用 GPL-3.0-or-later，并附仅用于 Google Navigation/Firebase SDK 的窄范围链接例外；项目自有代码仍保持开源。第三方服务和数据分别遵循其自身条款。",
-                            color = Ink,
+                            color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.bodyMedium,
                         )
                         SourceLink("源代码、GPL 与链接例外") {
@@ -233,30 +268,7 @@ fun AboutScreen(
 
 @Composable
 private fun AboutTopBar(onBack: () -> Unit) {
-    Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .statusBarsPadding()
-                .heightIn(min = 56.dp)
-                .padding(horizontal = 8.dp),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            IconButton(onClick = onBack) {
-                Icon(Icons.AutoMirrored.Rounded.ArrowBack, contentDescription = "返回")
-            }
-            Text(
-                "关于",
-                color = Ink,
-                style = MaterialTheme.typography.titleLarge,
-                modifier = Modifier.padding(start = 4.dp),
-            )
-        }
-    }
+    JournalTopBar(title = "关于与设置", onBack = onBack)
 }
 
 @Composable
@@ -274,16 +286,16 @@ private fun AppIdentity(modifier: Modifier = Modifier) {
             )
         }
         Column(modifier = Modifier.padding(start = 18.dp)) {
-            Text("巡礼手帳", color = Ink, style = MaterialTheme.typography.headlineMedium)
+            Text("巡礼手帳", color = MaterialTheme.colorScheme.onSurface, style = MaterialTheme.typography.headlineMedium)
             Text(
                 "版本 ${BuildConfig.VERSION_NAME}",
-                color = MutedInk,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(top = 4.dp),
             )
             Text(
                 "本地路线记录  ·  可选遥测  ·  GPL-3.0-or-later",
-                color = MutedInk,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.labelSmall,
                 modifier = Modifier.padding(top = 2.dp),
             )
@@ -315,10 +327,10 @@ private fun TelemetryConsentRow(
         horizontalArrangement = Arrangement.spacedBy(16.dp),
     ) {
         Column(modifier = Modifier.weight(1f)) {
-            Text(title, color = Ink, fontWeight = FontWeight.SemiBold)
+            Text(title, color = MaterialTheme.colorScheme.onSurface, fontWeight = FontWeight.SemiBold, style = MaterialTheme.typography.bodyLarge)
             Text(
                 description,
-                color = MutedInk,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
                 modifier = Modifier.padding(top = 3.dp),
             )
@@ -338,28 +350,16 @@ private fun AboutSection(
 ) {
     Column(modifier = modifier) {
         SectionHeading(title)
-        Surface(
-            modifier = Modifier.fillMaxWidth().padding(top = 10.dp),
-            color = MaterialTheme.colorScheme.surface,
-            shape = RoundedCornerShape(16.dp),
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-        ) {
-            Column(modifier = Modifier.padding(18.dp)) {
-                content()
-            }
+        Column(modifier = Modifier.fillMaxWidth().padding(top = 12.dp)) {
+            content()
+            HorizontalDivider(Modifier.padding(top = 20.dp), color = MaterialTheme.colorScheme.outlineVariant)
         }
     }
 }
 
 @Composable
 private fun SectionHeading(title: String) {
-    Text(
-        title,
-        color = Ink,
-        style = MaterialTheme.typography.titleMedium,
-        fontWeight = FontWeight.SemiBold,
-        modifier = Modifier.padding(horizontal = 4.dp),
-    )
+    JournalSectionHeading(title, Modifier.padding(horizontal = 4.dp))
 }
 
 @Composable
@@ -373,11 +373,11 @@ private fun SourceLink(label: String, onClick: () -> Unit) {
             .padding(horizontal = 2.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Text(label, color = Vermilion, modifier = Modifier.weight(1f))
+        Text(label, color = MaterialTheme.colorScheme.primary, modifier = Modifier.weight(1f))
         Icon(
             Icons.AutoMirrored.Rounded.OpenInNew,
             contentDescription = "打开网页",
-            tint = Vermilion,
+            tint = MaterialTheme.colorScheme.primary,
             modifier = Modifier.size(20.dp),
         )
     }

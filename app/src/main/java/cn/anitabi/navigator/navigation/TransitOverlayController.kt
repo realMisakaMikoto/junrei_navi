@@ -36,6 +36,8 @@ import cn.anitabi.navigator.core.model.NavigationState
 import cn.anitabi.navigator.core.model.TourPlan
 import cn.anitabi.navigator.core.model.TransitExecutionStrategy
 import cn.anitabi.navigator.core.model.TravelMode
+import cn.anitabi.navigator.security.AppAppearance
+import cn.anitabi.navigator.security.AppSettingsStore
 import kotlin.math.hypot
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -66,6 +68,42 @@ internal class TransitOverlayController(
     private var legacyWindowInsets: Rect? = null
     private var layoutDensity = context.resources.displayMetrics.density
     private var layoutFontScale = context.resources.configuration.fontScale
+    private val appSettingsStore = AppSettingsStore(context)
+    private var displayedPalette: OverlayPalette? = null
+
+    private data class OverlayPalette(
+        val surface: Int,
+        val text: Int,
+        val supportingText: Int,
+        val primary: Int,
+        val onPrimary: Int,
+        val secondarySurface: Int,
+        val outline: Int,
+        val error: Int,
+        val errorSurface: Int,
+    )
+
+    private fun palette(): OverlayPalette {
+        val dark = when (appSettingsStore.appearance()) {
+            AppAppearance.SYSTEM -> context.resources.configuration.uiMode and
+                Configuration.UI_MODE_NIGHT_MASK == Configuration.UI_MODE_NIGHT_YES
+            AppAppearance.LIGHT -> false
+            AppAppearance.DARK -> true
+        }
+        return if (dark) OverlayPalette(
+            surface = Color.rgb(32, 34, 38), text = Color.rgb(226, 227, 229),
+            supportingText = Color.rgb(195, 199, 204), primary = Color.rgb(255, 180, 166),
+            onPrimary = Color.rgb(87, 28, 18), secondarySurface = Color.rgb(48, 50, 54),
+            outline = Color.rgb(68, 71, 76), error = Color.rgb(255, 180, 171),
+            errorSurface = Color.rgb(78, 35, 32),
+        ) else OverlayPalette(
+            surface = Color.WHITE, text = Color.rgb(32, 33, 36),
+            supportingText = Color.rgb(83, 88, 95), primary = Color.rgb(201, 62, 79),
+            onPrimary = Color.WHITE, secondarySurface = Color.rgb(239, 241, 243),
+            outline = Color.rgb(221, 225, 229), error = Color.rgb(154, 32, 48),
+            errorSurface = Color.rgb(255, 235, 237),
+        )
+    }
 
     val isShowing: Boolean
         get() = root != null
@@ -82,7 +120,7 @@ internal class TransitOverlayController(
         latestData = RenderData(plan, progress, targetDistanceMeters)
         val contentMetricsChanged = rescaleLayoutForDensityIfNeeded()
         if (root == null && !attach()) return
-        if (contentMetricsChanged) layoutState?.form?.let(::rebuildContent)
+        if (contentMetricsChanged || displayedPalette != palette()) layoutState?.form?.let(::rebuildContent)
         applyCurrentLayout()
         updateContent()
     }
@@ -92,7 +130,7 @@ internal class TransitOverlayController(
         attachedRoot.post {
             if (root === attachedRoot) {
                 val contentMetricsChanged = rescaleLayoutForDensityIfNeeded()
-                if (contentMetricsChanged) layoutState?.form?.let(::rebuildContent)
+                if (contentMetricsChanged || displayedPalette != palette()) layoutState?.form?.let(::rebuildContent)
                 applyCurrentLayout()
                 updateContent()
             }
@@ -158,6 +196,7 @@ internal class TransitOverlayController(
     @SuppressLint("ClickableViewAccessibility")
     private fun rebuildContent(form: TransitOverlayForm) {
         val container = root ?: return
+        displayedPalette = palette()
         displayedForm = form
         titleView = null
         summaryView = null
@@ -177,9 +216,9 @@ internal class TransitOverlayController(
 
     private fun buildPanel(container: FrameLayout) {
         container.background = roundedBackground(
-            color = Color.argb(250, 255, 255, 255),
+            color = palette().surface,
             radiusDp = 16,
-            strokeColor = Color.rgb(210, 207, 199),
+            strokeColor = palette().outline,
         )
         container.contentDescription = "外部分段导航悬浮控制面板"
 
@@ -216,10 +255,10 @@ internal class TransitOverlayController(
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.MATCH_PARENT, 1f),
         )
         dragRegion.addView(
-            OverlayDragGripView(context),
+            OverlayDragGripView(context, palette().supportingText),
             LinearLayout.LayoutParams(dp(24), LinearLayout.LayoutParams.MATCH_PARENT),
         )
-        titleView = textView(size = 15f, bold = true).also { title ->
+        titleView = textView(size = 16f, bold = true).also { title ->
             title.maxLines = 1
             title.ellipsize = TextUtils.TruncateAt.END
             title.gravity = Gravity.CENTER_VERTICAL
@@ -233,7 +272,7 @@ internal class TransitOverlayController(
         header.addView(
             ImageButton(context).apply {
                 setImageResource(R.drawable.ic_overlay_collapse)
-                imageTintList = ColorStateList.valueOf(Color.rgb(55, 53, 49))
+                imageTintList = ColorStateList.valueOf(palette().text)
                 backgroundTintList = ColorStateList.valueOf(Color.TRANSPARENT)
                 contentDescription = "收起为悬浮球"
                 setOnClickListener { switchForm(TransitOverlayForm.BUBBLE) }
@@ -261,8 +300,8 @@ internal class TransitOverlayController(
             ),
         )
 
-        summaryView = textView(size = 13f).also { summary ->
-            summary.maxLines = 1
+        summaryView = textView(size = 14f, color = palette().supportingText).also { summary ->
+            summary.maxLines = 2
             summary.ellipsize = TextUtils.TruncateAt.END
             summary.gravity = Gravity.CENTER_VERTICAL
             summary.minimumHeight = dp(20)
@@ -274,8 +313,8 @@ internal class TransitOverlayController(
                 ),
             )
         }
-        statusView = textView(size = 12f).also { status ->
-            status.maxLines = 1
+        statusView = textView(size = 14f, color = palette().supportingText).also { status ->
+            status.maxLines = 3
             status.ellipsize = TextUtils.TruncateAt.END
             status.gravity = Gravity.CENTER_VERTICAL
             status.minimumHeight = dp(20)
@@ -347,7 +386,7 @@ internal class TransitOverlayController(
             LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f),
         )
         toolbar.addView(
-            OverlayResizeHandleView(context).apply {
+            OverlayResizeHandleView(context, palette().supportingText).apply {
                 isClickable = true
                 contentDescription = "拖动调整大小，轻触切换紧凑尺寸"
                 setOnClickListener { toggleCompactPanelSize() }
@@ -359,7 +398,7 @@ internal class TransitOverlayController(
 
     private fun buildBubble(container: FrameLayout) {
         container.background = roundedBackground(
-            color = Color.rgb(201, 62, 79),
+            color = palette().primary,
             radiusDp = 30,
         )
         container.isClickable = true
@@ -380,11 +419,12 @@ internal class TransitOverlayController(
         content.addView(
             ImageView(context).apply {
                 setImageResource(R.drawable.ic_navigation_notification)
+                imageTintList = ColorStateList.valueOf(palette().onPrimary)
                 contentDescription = null
             },
             LinearLayout.LayoutParams(dp(25), dp(25)),
         )
-        bubbleProgressView = textView(size = 10f, bold = true, color = Color.WHITE).also { progress ->
+        bubbleProgressView = textView(size = 14f, bold = true, color = palette().onPrimary).also { progress ->
             progress.gravity = Gravity.CENTER
             progress.maxLines = 1
             progress.ellipsize = TextUtils.TruncateAt.END
@@ -437,8 +477,9 @@ internal class TransitOverlayController(
             }
             isEnabled = data.progress.state != NavigationState.DWELLING
             backgroundTintList = ColorStateList.valueOf(
-                if (isEnabled) Color.rgb(201, 62, 79) else Color.rgb(205, 201, 194),
+                if (isEnabled) palette().primary else palette().secondarySurface,
             )
+            setTextColor(if (isEnabled) palette().onPrimary else palette().supportingText)
         }
         earlyLeaveButton?.visibility =
             if (data.progress.state == NavigationState.DWELLING) View.VISIBLE else View.GONE
@@ -451,7 +492,7 @@ internal class TransitOverlayController(
         onClick: () -> Unit,
     ): Button = Button(context).apply {
         text = label
-        textSize = if (primary) 14f else 12f
+        textSize = 14f
         isAllCaps = false
         minWidth = 0
         minimumWidth = 0
@@ -460,16 +501,16 @@ internal class TransitOverlayController(
         setPadding(0, 0, 0, 0)
         setTextColor(
             when {
-                primary -> Color.WHITE
-                destructive -> Color.rgb(154, 32, 48)
-                else -> Color.rgb(45, 43, 39)
+                primary -> palette().onPrimary
+                destructive -> palette().error
+                else -> palette().text
             },
         )
         backgroundTintList = ColorStateList.valueOf(
             when {
-                primary -> Color.rgb(201, 62, 79)
-                destructive -> Color.rgb(255, 235, 237)
-                else -> Color.rgb(243, 240, 234)
+                primary -> palette().primary
+                destructive -> palette().errorSurface
+                else -> palette().secondarySurface
             },
         )
         setOnClickListener { onClick() }
@@ -478,7 +519,7 @@ internal class TransitOverlayController(
     private fun textView(
         size: Float,
         bold: Boolean = false,
-        color: Int = Color.rgb(35, 34, 31),
+        color: Int = palette().text,
     ): TextView = TextView(context).apply {
         textSize = size
         setTextColor(color)
@@ -980,9 +1021,9 @@ internal class TransitOverlayController(
     }
 }
 
-private class OverlayDragGripView(context: Context) : View(context) {
+private class OverlayDragGripView(context: Context, foregroundColor: Int) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(116, 112, 104)
+        color = foregroundColor
     }
 
     override fun onDraw(canvas: Canvas) {
@@ -999,9 +1040,9 @@ private class OverlayDragGripView(context: Context) : View(context) {
     }
 }
 
-private class OverlayResizeHandleView(context: Context) : View(context) {
+private class OverlayResizeHandleView(context: Context, foregroundColor: Int) : View(context) {
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.rgb(116, 112, 104)
+        color = foregroundColor
         strokeCap = Paint.Cap.ROUND
         style = Paint.Style.STROKE
     }

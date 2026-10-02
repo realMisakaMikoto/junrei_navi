@@ -62,6 +62,16 @@ val releaseSigningValues = listOf(
     releaseKeyPassword,
 )
 val releaseSigningReady = releaseSigningValues.all { it != null }
+val signInternalTestApks = signingValue("ANITABI_SIGN_INTERNAL_TEST_APKS") == "true"
+val discoveryProfiling = providers.gradleProperty("ANITABI_DISCOVERY_PROFILING").orNull == "true"
+val draftRecoveryFixture = providers.gradleProperty("ANITABI_DRAFT_RECOVERY_FIXTURE").orNull == "true"
+val discoveryMeasurement = providers.gradleProperty("ANITABI_DISCOVERY_MEASUREMENT").orNull == "true"
+if (discoveryMeasurement && (!discoveryProfiling || draftRecoveryFixture)) {
+    throw GradleException("Discovery measurement requires profiling and cannot include the draft recovery fixture")
+}
+if (signInternalTestApks && !releaseSigningReady) {
+    throw GradleException("Internal signed tests require the complete existing release signing configuration")
+}
 if (releaseSigningValues.any { it != null } && !releaseSigningReady) {
     throw GradleException("Release signing requires all four ANITABI_* signing values")
 }
@@ -88,6 +98,10 @@ android {
         manifestPlaceholders["AMAP_API_KEY"] = amapApiKey.ifBlank { "ANITABI_AMAP_KEY_MISSING" }
         buildConfigField("boolean", "AMAP_API_KEY_CONFIGURED", amapApiKeyConfigured.toString())
         buildConfigField("String", "BACKEND_BASE_URL", "\"$backendBaseUrl\"")
+        buildConfigField("boolean", "DISCOVERY_PROFILING", discoveryProfiling.toString())
+        buildConfigField("boolean", "DRAFT_RECOVERY_FIXTURE", "false")
+        buildConfigField("boolean", "DISCOVERY_MEASUREMENT", "false")
+        manifestPlaceholders["DISCOVERY_PROFILING"] = discoveryProfiling.toString()
     }
 
     signingConfigs {
@@ -102,7 +116,15 @@ android {
     }
 
     buildTypes {
+        getByName("debug") {
+            buildConfigField("boolean", "DRAFT_RECOVERY_FIXTURE", draftRecoveryFixture.toString())
+            manifestPlaceholders["DRAFT_RECOVERY_FIXTURE"] = draftRecoveryFixture.toString()
+            manifestPlaceholders["DEBUG_APPLICATION_NAME"] = if (draftRecoveryFixture)
+                "cn.anitabi.navigator.recovery.PlannerRecoveryApplication" else "cn.anitabi.navigator.AnitabiApplication"
+            if (signInternalTestApks) signingConfig = signingConfigs.getByName("release")
+        }
         release {
+            buildConfigField("boolean", "DISCOVERY_MEASUREMENT", discoveryMeasurement.toString())
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(
@@ -129,6 +151,12 @@ android {
     }
 
     sourceSets.getByName("androidTest").assets.directories.add("$projectDir/schemas")
+    if (discoveryMeasurement) {
+        sourceSets.getByName("release") {
+            kotlin.directories.add("src/discoveryMeasurement/java")
+            manifest.srcFile("src/discoveryMeasurement/AndroidManifest.xml")
+        }
+    }
 }
 
 gradle.taskGraph.whenReady {
@@ -139,6 +167,12 @@ gradle.taskGraph.whenReady {
         throw GradleException(
             "Release signing is not configured. Keep the keystore outside the workspace and set ANITABI_* values.",
         )
+    }
+    if (requestsReleaseArtifact && draftRecoveryFixture) {
+        throw GradleException("The draft recovery fixture is restricted to dedicated Debug test artifacts")
+    }
+    if (requestsReleaseArtifact && discoveryMeasurement && !signInternalTestApks) {
+        throw GradleException("Discovery measurement artifacts require the protected internal signing configuration")
     }
     if (requestsReleaseArtifact && navigationApiKey.isBlank()) {
         throw GradleException(
@@ -173,6 +207,8 @@ dependencies {
     implementation("androidx.compose.ui:ui-tooling-preview")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.11.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.11.0")
+    implementation("androidx.navigation:navigation-compose:2.10.1")
+    implementation("androidx.compose.material3.adaptive:adaptive:1.3.0")
     implementation("androidx.room:room-runtime:2.8.4")
     implementation("androidx.room:room-ktx:2.8.4")
     implementation("io.coil-kt.coil3:coil-compose:3.5.0")
@@ -192,10 +228,12 @@ dependencies {
     debugImplementation("androidx.compose.ui:ui-test-manifest")
     testImplementation("junit:junit:4.13.2")
     testImplementation("com.squareup.okhttp3:mockwebserver:5.4.0")
+    testImplementation("com.squareup.okhttp3:okhttp-tls:5.4.0")
     testImplementation("org.jetbrains.kotlinx:kotlinx-coroutines-test:1.11.0")
     androidTestImplementation("androidx.test:core-ktx:1.7.0")
     androidTestImplementation("androidx.test.ext:junit:1.3.0")
     androidTestImplementation("androidx.test:runner:1.7.0")
+    androidTestImplementation("com.squareup.okhttp3:okhttp-tls:5.4.0")
     androidTestImplementation("androidx.room:room-testing:2.8.4")
     androidTestImplementation(composeBom)
     androidTestImplementation("androidx.compose.ui:ui-test-junit4")

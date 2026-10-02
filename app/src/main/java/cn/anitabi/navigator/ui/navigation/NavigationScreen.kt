@@ -40,6 +40,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
@@ -50,6 +51,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.liveRegion
 import androidx.compose.ui.semantics.semantics
@@ -72,11 +74,7 @@ import cn.anitabi.navigator.navigation.NavigationViewModel
 import cn.anitabi.navigator.navigation.ActiveTourEditUiState
 import cn.anitabi.navigator.ui.map.NavigationMapView
 import cn.anitabi.navigator.ui.planner.RoutePreviewMap
-import cn.anitabi.navigator.ui.theme.Ink
-import cn.anitabi.navigator.ui.theme.Moss
-import cn.anitabi.navigator.ui.theme.MutedInk
-import cn.anitabi.navigator.ui.theme.Paper
-import cn.anitabi.navigator.ui.theme.Vermilion
+import cn.anitabi.navigator.ui.theme.MapSurfaceTheme
 
 private val WideNavigationBreakpoint = 840.dp
 
@@ -99,7 +97,8 @@ fun NavigationRoute(
         return
     }
 
-    Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
+    MapSurfaceTheme {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             NavigationTopBar(
                 plan = plan,
@@ -111,7 +110,7 @@ fun NavigationRoute(
                 val externalMap = plan.executionStrategy.isExternalMapNavigation()
                 val hasTransitJourney =
                     plan.mode == TravelMode.TRANSIT && plan.legs.isNotEmpty() && !externalMap
-                val compactPanelHeight = minOf(maxHeight * 0.5f, 360.dp)
+                val compactPanelHeight = minOf(maxHeight * 0.56f, 440.dp)
 
                 if (useSidePanel) {
                     Row(modifier = Modifier.fillMaxSize()) {
@@ -162,20 +161,15 @@ fun NavigationRoute(
                             onPauseExternal = viewModel::pauseExternal,
                             onResumeExternal = viewModel::resumeExternal,
                             onEditFuture = { viewModel.openFutureEditor(availablePoints) },
-                            modifier = if (hasTransitJourney) {
-                                Modifier
-                                    .fillMaxWidth()
-                                    .height(compactPanelHeight)
-                            } else {
-                                Modifier.fillMaxWidth()
-                            },
+                            modifier = Modifier.fillMaxWidth().height(compactPanelHeight),
                             transitDetailsScrollable = hasTransitJourney,
-                            fillAvailableHeight = hasTransitJourney,
+                            fillAvailableHeight = true,
                         )
                     }
                 }
             }
         }
+    }
     }
     if (editState.isOpen) {
         ActiveFutureEditorDialog(
@@ -191,7 +185,7 @@ fun NavigationRoute(
 
 @Composable
 private fun MissingNavigationState(message: String, onBack: () -> Unit) {
-    Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(
             modifier = Modifier
                 .fillMaxSize()
@@ -204,7 +198,7 @@ private fun MissingNavigationState(message: String, onBack: () -> Unit) {
             Text(
                 text = message,
                 style = MaterialTheme.typography.titleMedium,
-                color = Ink,
+                color = MaterialTheme.colorScheme.onSurface,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
             )
             OutlinedButton(onClick = onBack, modifier = Modifier.padding(top = 16.dp).heightIn(min = 50.dp)) {
@@ -222,7 +216,7 @@ private fun NavigationTopBar(
 ) {
     Surface(
         color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 2.dp,
+        tonalElevation = 1.dp,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Row(
@@ -238,14 +232,14 @@ private fun NavigationTopBar(
             Column(modifier = Modifier.weight(1f).padding(horizontal = 4.dp)) {
                 Text(
                     text = plan.anime.nameCn ?: plan.anime.name,
-                    color = Ink,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                 )
                 Text(
                     text = "巡礼导航",
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                 )
             }
@@ -329,17 +323,19 @@ internal fun NavigationDetailPanel(
     Surface(
         color = MaterialTheme.colorScheme.surface,
         shape = RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp),
-        shadowElevation = 5.dp,
+        tonalElevation = 2.dp,
         modifier = modifier.testTag("navigation-control-panel"),
     ) {
+        BoxWithConstraints {
+        val scrollAll = fillAvailableHeight && (maxHeight < 360.dp || LocalDensity.current.fontScale >= 1.5f)
         Column(
-            modifier = if (fillAvailableHeight) Modifier.fillMaxSize() else Modifier.fillMaxWidth(),
+            modifier = if (fillAvailableHeight) {
+                Modifier.fillMaxSize().then(if (scrollAll) Modifier.verticalScroll(rememberScrollState()) else Modifier)
+            } else Modifier.fillMaxWidth(),
         ) {
             if (fillAvailableHeight) {
                 Column(
-                    modifier = Modifier
-                        .weight(1f)
-                        .verticalScroll(rememberScrollState()),
+                    modifier = if (scrollAll) Modifier else Modifier.weight(1f).verticalScroll(rememberScrollState()),
                 ) {
                     NavigationSummary(
                         plan = plan,
@@ -409,6 +405,7 @@ internal fun NavigationDetailPanel(
                 onResumeExternal = onResumeExternal,
             )
         }
+        }
     }
 }
 
@@ -422,13 +419,13 @@ private fun NavigationSummary(
     Column(modifier = modifier.fillMaxWidth()) {
         Row(verticalAlignment = Alignment.Top) {
             Surface(
-                color = Vermilion.copy(alpha = 0.1f),
+                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                 shape = RoundedCornerShape(10.dp),
             ) {
                 Icon(
                     Icons.Rounded.MyLocation,
                     contentDescription = null,
-                    tint = Vermilion,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.padding(8.dp).size(22.dp),
                 )
             }
@@ -436,9 +433,7 @@ private fun NavigationSummary(
                 Text(
                     text = state.instruction,
                     style = MaterialTheme.typography.titleLarge,
-                    color = Ink,
-                    maxLines = 2,
-                    overflow = TextOverflow.Ellipsis,
+                    color = MaterialTheme.colorScheme.onSurface,
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
                 )
                 Text(
@@ -450,7 +445,7 @@ private fun NavigationSummary(
                         "剩余约 ${formatDistance(state.remainingDistanceMeters)}"
                     }) + "  ·  " +
                         "第 ${(state.progress?.legIndex ?: 0) + 1}/${plan.legs.size.coerceAtLeast(1)} 段",
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                     modifier = Modifier.padding(top = 4.dp),
                 )
@@ -464,19 +459,30 @@ private fun NavigationSummary(
                 plan.mode == TravelMode.TRANSIT -> "当前目标：完成本换乘段"
                 else -> "当前目标：返回起点"
             },
-            color = MutedInk,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodyMedium,
             maxLines = 2,
             overflow = TextOverflow.Ellipsis,
             modifier = Modifier.padding(top = 8.dp),
         )
+        val completed = state.progress?.completedPointIds.orEmpty().size
+        val total = plan.selectedPoints.size
+        if (total > 0) {
+            LinearProgressIndicator(
+                progress = { (completed.toFloat() / total).coerceIn(0f, 1f) },
+                modifier = Modifier.fillMaxWidth().padding(top = 12.dp)
+                    .semantics { stateDescription = "已完成 $completed / $total 个巡礼点" },
+                color = MaterialTheme.colorScheme.primary,
+                trackColor = MaterialTheme.colorScheme.surfaceContainerHighest,
+            )
+        }
         if (
             state.isRerouting &&
             !plan.executionStrategy.isExternalMapNavigation()
         ) {
             Text(
                 "检测到持续偏航，正在重算剩余路线…",
-                color = Vermilion,
+                color = MaterialTheme.colorScheme.primary,
                 style = MaterialTheme.typography.bodyMedium,
                 fontWeight = FontWeight.SemiBold,
                 modifier = Modifier
@@ -504,7 +510,7 @@ private fun NavigationSummary(
                 else -> "Google Navigation"
             }) +
                 plan.legs.firstOrNull()?.source?.let { "  ·  $it" }.orEmpty(),
-            color = MutedInk,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.labelSmall,
             modifier = Modifier.padding(top = 8.dp),
         )
@@ -535,7 +541,7 @@ private fun TransitJourneyDetails(
                     Icons.Rounded.DirectionsBus
                 },
                 contentDescription = null,
-                tint = Vermilion,
+                tint = MaterialTheme.colorScheme.primary,
             )
             Column(modifier = Modifier.padding(start = 10.dp)) {
                 Text(
@@ -544,11 +550,11 @@ private fun TransitJourneyDetails(
                         append(" ${legIndex + 1}/$totalLegs")
                         transit?.line?.let { append("  ·  $it") }
                     },
-                    color = Ink,
+                    color = MaterialTheme.colorScheme.onSurface,
                     style = MaterialTheme.typography.titleMedium,
                 )
                 transit?.direction?.let { direction ->
-                    Text("开往 $direction", color = MutedInk, style = MaterialTheme.typography.bodyMedium)
+                    Text("开往 $direction", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
                 }
             }
         }
@@ -561,7 +567,7 @@ private fun TransitJourneyDetails(
                 emphasized = true,
             )
             transit.stopCount?.let { stopCount ->
-                Text("途经 $stopCount 站", color = MutedInk, style = MaterialTheme.typography.bodyMedium)
+                Text("途经 $stopCount 站", color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodyMedium)
             }
             transit.intermediateStops.forEach { stop ->
                 TransitStop(label = "途经", name = stop, details = emptyList(), emphasized = false)
@@ -580,12 +586,12 @@ private fun TransitJourneyDetails(
                     modifier = Modifier.semantics { liveRegion = LiveRegionMode.Assertive },
                 )
             } else if (transit.realtime) {
-                Text("含实时班次信息", color = Moss, style = MaterialTheme.typography.labelMedium)
+                Text("含实时班次信息", color = MaterialTheme.colorScheme.secondary, style = MaterialTheme.typography.labelMedium)
             }
         } else {
             Text(
                 text = if (isWalkingConnector) "步行前往下一段行程" else "正在获取本段公交信息",
-                color = MutedInk,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.semantics { liveRegion = LiveRegionMode.Polite },
             )
@@ -605,18 +611,18 @@ private fun TransitStop(
             modifier = Modifier
                 .padding(top = 6.dp)
                 .size(if (emphasized) 10.dp else 7.dp)
-                .background(if (emphasized) Vermilion else MutedInk, CircleShape),
+                .background(if (emphasized) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant, CircleShape),
         )
         Column(modifier = Modifier.weight(1f).padding(start = 12.dp)) {
-            Text(label, color = MutedInk, style = MaterialTheme.typography.labelSmall)
+            Text(label, color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.labelSmall)
             Text(
                 text = name,
-                color = Ink,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyLarge,
                 fontWeight = if (emphasized) FontWeight.SemiBold else FontWeight.Normal,
             )
             if (details.isNotEmpty()) {
-                Text(details.joinToString("  ·  "), color = MutedInk, style = MaterialTheme.typography.bodySmall)
+                Text(details.joinToString("  ·  "), color = MaterialTheme.colorScheme.onSurfaceVariant, style = MaterialTheme.typography.bodySmall)
             }
         }
     }
@@ -681,12 +687,12 @@ private fun NavigationActions(
                         NavigationState.DWELLING -> Button(
                             onClick = onStartNextExternalLeg,
                             modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         ) { Text("提前离开") }
                         NavigationState.NEXT_STOP -> Button(
                             onClick = onStartNextExternalLeg,
                             modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         ) { Text("开始下一段") }
                         NavigationState.NAVIGATING,
                         NavigationState.ARRIVING,
@@ -694,7 +700,7 @@ private fun NavigationActions(
                         -> Button(
                             onClick = onOpenExternalLeg,
                             modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                            colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                            colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                         ) { Text("打开本段") }
                         else -> Unit
                     }
@@ -743,7 +749,7 @@ private fun NavigationActions(
                 onClick = onArrived,
                 enabled = state.isRunning && state.progress?.state == NavigationState.NAVIGATING,
                 modifier = Modifier.weight(1f).heightIn(min = 50.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
                 shape = RoundedCornerShape(12.dp),
             ) {
                 Icon(Icons.Rounded.Flag, contentDescription = null)
@@ -778,7 +784,7 @@ private fun ActiveFutureEditorDialog(
             ) {
                 Text(
                     "已完成点和当前目标已锁定；这里只会重建当前目标之后的分段。",
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.bodyMedium,
                 )
                 state.errorMessage?.let { message ->
@@ -790,21 +796,19 @@ private fun ActiveFutureEditorDialog(
                 }
                 Text("后续顺序", fontWeight = FontWeight.SemiBold)
                 if (state.futurePoints.isEmpty()) {
-                    Text("没有后续巡礼点", color = MutedInk)
+                    Text("没有后续巡礼点", color = MaterialTheme.colorScheme.onSurfaceVariant)
                 }
                 state.futurePoints.forEachIndexed { index, point ->
                     val fixedEnd = point.id == state.fixedEndPointId
-                    Row(
+                    Column(
                         modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp),
                     ) {
                         Text(
                             "${index + 1}. ${point.name}${if (fixedEnd) "（固定终点）" else ""}",
-                            modifier = Modifier.weight(1f),
-                            maxLines = 2,
-                            overflow = TextOverflow.Ellipsis,
+                            style = MaterialTheme.typography.bodyLarge,
                         )
+                        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                         TextButton(
                             onClick = { onMove(index, -1) },
                             enabled = index > 0 && !fixedEnd && !state.isSaving,
@@ -823,6 +827,8 @@ private fun ActiveFutureEditorDialog(
                         ) {
                             Text("删除")
                         }
+                        }
+                        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
                     }
                 }
                 if (state.addablePoints.isNotEmpty()) {
@@ -865,15 +871,15 @@ private fun SavedTourRecoveryPanel(
     modifier: Modifier = Modifier,
 ) {
     LazyColumn(
-        modifier = modifier.background(Paper),
+        modifier = modifier.background(MaterialTheme.colorScheme.background),
         contentPadding = PaddingValues(horizontal = 20.dp, vertical = 18.dp),
     ) {
         item {
-            Text("已保存的巡礼顺序", style = MaterialTheme.typography.titleLarge, color = Ink)
+            Text("已保存的巡礼顺序", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onSurface)
             Text(
                 "开始导航后将按此顺序前往",
                 style = MaterialTheme.typography.bodyMedium,
-                color = MutedInk,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 4.dp, bottom = 10.dp),
             )
         }
@@ -887,16 +893,16 @@ private fun SavedTourRecoveryPanel(
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Surface(
-                    color = if (completed) Moss.copy(alpha = 0.12f) else Vermilion.copy(alpha = 0.1f),
+                    color = if (completed) MaterialTheme.colorScheme.secondary.copy(alpha = 0.12f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(
                         1.dp,
-                        if (completed) Moss.copy(alpha = 0.25f) else Vermilion.copy(alpha = 0.2f),
+                        if (completed) MaterialTheme.colorScheme.secondary.copy(alpha = 0.25f) else MaterialTheme.colorScheme.primary.copy(alpha = 0.2f),
                     ),
                 ) {
                     Text(
                         "${index + 1}",
-                        color = if (completed) Moss else Vermilion,
+                        color = if (completed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                         fontWeight = FontWeight.Bold,
                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp),
                     )
@@ -904,11 +910,11 @@ private fun SavedTourRecoveryPanel(
                 Text(
                     point.name,
                     modifier = Modifier.weight(1f).padding(horizontal = 12.dp),
-                    color = Ink,
+                    color = MaterialTheme.colorScheme.onSurface,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
-                Text(if (completed) "已完成" else "待前往", color = if (completed) Moss else MutedInk)
+                Text(if (completed) "已完成" else "待前往", color = if (completed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant)
             }
             if (index < plan.orderedPoints.lastIndex) {
                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)

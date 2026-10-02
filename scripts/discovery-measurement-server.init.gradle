@@ -1,0 +1,30 @@
+gradle.projectsEvaluated {
+    def app = gradle.rootProject.project(':app')
+    def hostRuntime = app.configurations.detachedConfiguration(
+        app.dependencies.create('com.squareup.okhttp3:okhttp-jvm:5.4.0'),
+        app.dependencies.create('com.squareup.okhttp3:okhttp-tls:5.4.0'),
+        app.dependencies.create('com.squareup.okhttp3:mockwebserver:5.4.0'),
+        app.dependencies.create('org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0'),
+    )
+    hostRuntime.attributes {
+        attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE,
+            app.objects.named(org.gradle.api.attributes.Usage, org.gradle.api.attributes.Usage.JAVA_RUNTIME))
+        attribute(org.gradle.api.attributes.Attribute.of('org.jetbrains.kotlin.platform.type', String), 'jvm')
+    }
+    app.tasks.register('runControlledDiscoveryMeasurementServer', JavaExec) {
+        dependsOn app.tasks.named('compileDebugUnitTestKotlin')
+        // Keep compiled app/test directories, then select the same pinned release's JVM runtime.
+        def compiledRoot = app.layout.buildDirectory.get().asFile.canonicalFile.toPath()
+        classpath = app.tasks.named('testDebugUnitTest').get().classpath.filter {
+            it.isDirectory() || (it.name.endsWith('.jar') && it.canonicalFile.toPath().startsWith(compiledRoot))
+        } + hostRuntime
+        mainClass.set('cn.anitabi.navigator.data.discovery.ControlledDiscoveryMeasurementServer')
+        maxHeapSize = '1024m'
+        def requested = gradle.rootProject.findProperty('discoveryFixtureDir')
+        if (!requested) throw new GradleException('discoveryFixtureDir is required')
+        def directory = gradle.rootProject.file(requested.toString()).canonicalFile
+        def root = new File(gradle.rootProject.projectDir, 'build').canonicalFile
+        if (!directory.toPath().startsWith(root.toPath())) throw new GradleException('Fixture must stay within workspace build')
+        args directory.absolutePath
+    }
+}

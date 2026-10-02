@@ -19,6 +19,9 @@ import cn.anitabi.navigator.data.local.TourPlanEntity
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.serialization.json.Json
 import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.sync.Mutex
@@ -36,6 +39,10 @@ class TourRepository(
     private val resolvedRoutes = ConcurrentHashMap<String, TourPlan>()
     private val resolvedProgress = ConcurrentHashMap<String, NavigationProgress>()
     private val writeMutex = Mutex()
+    private val mutablePersistedChanges = MutableStateFlow(0L)
+    /** Local invalidation signal after a successful write operation; carries no journey contents. */
+    val persistedChanges: StateFlow<Long> = mutablePersistedChanges.asStateFlow()
+    private var wroteDuringOperation = false
     private val runtimeProgressVersion = AtomicLong()
     private val runtimeProgress = AtomicReference<RuntimeProgressStamp?>()
 
@@ -48,6 +55,35 @@ class TourRepository(
         persist(plan, progress)
         resolvedRoutes.remove(plan.id)
         resolvedProgress.remove(plan.id)
+    }
+
+    suspend fun publishRefreshedRouteIfCurrent(
+        expected: SavedTour,
+        refreshedPlan: TourPlan,
+    ): Boolean = writeAtomically {
+        require(expected.storedTour.id == refreshedPlan.id && expected.plan.id == refreshedPlan.id)
+        val savedPlan = expected.storedTour.toUnresolvedPlan(
+            resolvedExecutionStrategy = expected.plan.executionStrategy,
+            resolvedMapProvider = expected.plan.mapProvider,
+            resolvedRegionDataVersion = expected.plan.regionDataVersion,
+        )
+        if (StoredTourV2.from(savedPlan, null) != StoredTourV2.from(refreshedPlan, null)) {
+            return@writeAtomically false
+        }
+        val progressStamp = runtimeProgress.get()
+        if (
+            progressStamp?.tourId == refreshedPlan.id &&
+            progressStamp.progress != expected.progress
+        ) {
+            return@writeAtomically false
+        }
+        val current = dao.get(refreshedPlan.id)?.toSavedTour() ?: return@writeAtomically false
+        if (current != expected || runtimeProgress.get() != progressStamp) {
+            return@writeAtomically false
+        }
+        // New route legs must not re-derive or persist the user's existing progress.
+        publishResolved(refreshedPlan, expected.progress)
+        true
     }
 
     suspend fun saveActiveEditIfCurrent(
@@ -206,7 +242,14 @@ class TourRepository(
     }
 
     private suspend fun <T> writeAtomically(block: suspend () -> T): T = writeMutex.withLock {
-        withContext(NonCancellable) { block() }
+        withContext(NonCancellable) {
+            wroteDuringOperation = false
+            try {
+                block().also {
+                    if (wroteDuringOperation) mutablePersistedChanges.value += 1
+                }
+            } finally { wroteDuringOperation = false }
+        }
     }
 
     private fun publishResolved(plan: TourPlan, progress: NavigationProgress?) {
@@ -231,6 +274,7 @@ class TourRepository(
         )
         try {
             dao.upsert(entity)
+            wroteDuringOperation = true
         } catch (failure: Throwable) {
             resolvedRoutes.remove(plan.id)
             resolvedProgress.remove(plan.id)
@@ -241,6 +285,10 @@ class TourRepository(
     suspend fun get(id: String): SavedTour? = readConsistently { dao.get(id)?.toSavedTour() }
 
     suspend fun getMostRecent(): SavedTour? = readConsistently { dao.getMostRecent()?.toSavedTour() }
+
+    suspend fun getSavedTours(): List<SavedTour> = readConsistently {
+        dao.getIdsMostRecentFirst().mapNotNull { id -> dao.get(id)?.toSavedTour() }
+    }
 
     suspend fun getMostRecentInStates(states: Set<NavigationState>): SavedTour? = readConsistently {
         findMostRecentInStates(states)

@@ -1,0 +1,26 @@
+gradle.projectsEvaluated {
+    def app = gradle.rootProject.project(':app')
+    def hostRuntime = app.configurations.detachedConfiguration(
+        app.dependencies.create('com.squareup.okhttp3:okhttp-jvm:5.4.0'),
+        app.dependencies.create('com.squareup.okhttp3:okhttp-tls:5.4.0'),
+        app.dependencies.create('com.squareup.okhttp3:mockwebserver:5.4.0'),
+        app.dependencies.create('org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.11.0'),
+    )
+    hostRuntime.attributes {
+        attribute(org.gradle.api.attributes.Usage.USAGE_ATTRIBUTE,
+            app.objects.named(org.gradle.api.attributes.Usage, org.gradle.api.attributes.Usage.JAVA_RUNTIME))
+        attribute(org.gradle.api.attributes.Attribute.of('org.jetbrains.kotlin.platform.type', String), 'jvm')
+    }
+    app.tasks.register('runControlledImageServer', JavaExec) {
+        dependsOn app.tasks.named('compileDebugUnitTestKotlin')
+        // Use the same pinned OkHttp release's JVM variant for the host, not its Android artifact.
+        classpath = app.tasks.named('testDebugUnitTest').get().classpath.filter { it.isDirectory() } + hostRuntime
+        mainClass.set('cn.anitabi.navigator.data.images.ControlledImageServer')
+        def requested = gradle.rootProject.findProperty('imageFixtureDir')
+        if (!requested) throw new GradleException('imageFixtureDir is required')
+        def directory = gradle.rootProject.file(requested.toString()).canonicalFile
+        def root = new File(gradle.rootProject.projectDir, 'build').canonicalFile
+        if (!directory.toPath().startsWith(root.toPath())) throw new GradleException('Fixture must stay within workspace build')
+        args directory.absolutePath
+    }
+}

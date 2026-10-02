@@ -61,6 +61,11 @@ jobs:
         run: python3 scripts/check-backend-compatibility-test.py
       - name: Test the AMap JNI release guard
         run: python3 .github/scripts/test-audit-amap-r8.py
+      - name: Test Discovery artifact and measurement evidence guards
+        run: |
+          python3 .github/scripts/test-audit-discovery-build.py
+          python3 .github/scripts/test-audit-apk-role.py
+          python3 -m unittest discover -s scripts/tests -p 'test_*.py'
       - name: Restore Firebase Android configuration
         env:
           ANITABI_GOOGLE_SERVICES_JSON_BASE64: ${{ secrets.ANITABI_GOOGLE_SERVICES_JSON_BASE64 }}
@@ -122,7 +127,7 @@ jobs:
         run: |
           sudo chmod 666 /dev/kvm
           mkdir -p "$ANDROID_AVD_HOME" smoke-output
-          echo no | avdmanager create avd --force --name anitabi-smoke --package "${{ matrix.image }}"
+          echo no | avdmanager create avd --force --name anitabi-smoke --device pixel_2 --package "${{ matrix.image }}"
           "$ANDROID_HOME/emulator/emulator" -list-avds
           "$ANDROID_HOME/emulator/emulator" -avd anitabi-smoke -no-window -no-audio -no-boot-anim -gpu swiftshader_indirect -camera-back none -camera-front none > smoke-output/emulator.log 2>&1 &
           timeout 180 adb wait-for-device || { cat smoke-output/emulator.log; exit 1; }
@@ -175,16 +180,24 @@ jobs:
             2>&1 | tee smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_PERMISSION_DIALOG_SHOWN" smoke-output/onboarding-smoke.txt
           grep -q "ONBOARDING_SERVICE_GUIDE_SHOWN" smoke-output/onboarding-smoke.txt
-          grep -q "ONBOARDING_COMPLETED_TO_SEARCH" smoke-output/onboarding-smoke.txt
-          grep -q "ONBOARDING_RESTARTED_IN_SEARCH" smoke-output/onboarding-smoke.txt
-      - name: Verify map selection and list fallback
+          grep -q "ONBOARDING_COMPLETED_TO_DISCOVERY" smoke-output/onboarding-smoke.txt
+          grep -q "ONBOARDING_RESTARTED_IN_DISCOVERY" smoke-output/onboarding-smoke.txt
+      - name: Verify discovery, shared navigation and existing UI contracts
         run: |
           set -o pipefail
+          adb shell pm revoke cn.anitabi.navigator android.permission.ACCESS_FINE_LOCATION
+          adb shell pm revoke cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
           adb shell am instrument -w \
-            -e class 'cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_mapUnavailableShowsListAsSelected,cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_landscapeHonorsListFallbackEvenWhenProviderIsAvailable,cn.anitabi.navigator.ui.UiRedesignContractTest#pointSelection_mixedResultsExposeExplicitProviderChoiceAndKeepSelection' \
+            -e captureFrontendReview true \
+            -e class 'cn.anitabi.navigator.ui.discovery.DiscoveryUiContractTest,cn.anitabi.navigator.ui.UiRedesignContractTest,cn.anitabi.navigator.security.AppSettingsStoreMigrationTest,cn.anitabi.navigator.ui.AppShellInstrumentedTest,cn.anitabi.navigator.ui.FrontendRemainingFlowsTest,cn.anitabi.navigator.ui.DiscoveryStartupInstrumentedTest,cn.anitabi.navigator.ui.TransitPresentationInstrumentedTest,cn.anitabi.navigator.ui.discovery.map.DiscoveryMarkerArtworkInstrumentedTest,cn.anitabi.navigator.data.repository.PlannerDraftCompletionInstrumentedTest,cn.anitabi.navigator.data.images.AppImageLoaderTraceInstrumentedTest' \
             cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
             2>&1 | tee smoke-output/map-list-fallback.txt
-          grep -q "OK (3 tests)" smoke-output/map-list-fallback.txt
+          grep -Eq '^OK \([1-9][0-9]* tests\)' smoke-output/map-list-fallback.txt
+          adb pull /sdcard/Android/data/cn.anitabi.navigator/files/frontend-review smoke-output/frontend-review
+          mkdir -p smoke-output/repair
+          for name in committedTerminalRecordsClearLinkedDraftDurablyWithoutRemovingFormalTours oldAndUnrelatedTerminalSavesPreserveTheNewerLinkedOrUnlinkedDraft; do
+            adb pull "/sdcard/Android/data/cn.anitabi.navigator/files/frontend-fix-v2/planner-draft-completion-$name.json" smoke-output/repair/
+          done
       - name: Reset Android 8 after permission-system smoke
         if: matrix.label == 'android-8-api-26'
         run: |

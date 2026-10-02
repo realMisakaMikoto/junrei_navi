@@ -1,13 +1,21 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-if [[ ($# -ne 1 && $# -ne 2) || ! -f "$1" ]]; then
-  echo "Usage: audit-apk.sh <apk> [expected-region-data-sha256]" >&2
+if [[ ($# -ne 1 && $# -ne 2 && $# -ne 4) || ! -f "$1" ]]; then
+  echo "Usage: audit-apk.sh <apk> [expected-region-data-sha256] [--discovery-measurement <source-sha>]" >&2
   exit 2
 fi
 
 apk="$1"
 expected_region_sha256="${2:-}"
+measurement_source_sha=""
+if [[ $# -eq 4 ]]; then
+  if [[ "$3" != --discovery-measurement || ! "$4" =~ ^[0-9a-f]{40}$ || ! "$2" =~ ^[0-9a-f]{64}$ ]]; then
+    echo "Discovery measurement requires its exact mode, source SHA, and protected region SHA-256" >&2
+    exit 2
+  fi
+  measurement_source_sha="$4"
+fi
 audit_dir="$(mktemp -d)"
 trap 'rm -rf "$audit_dir"' EXIT
 
@@ -33,8 +41,27 @@ if LC_ALL=C grep -a -E -r -q -- "$forbidden_pattern" "$audit_dir"; then
 fi
 
 required_pattern='api\.anitabi\.afunnypersonlol0\.site'
+required_description='Anitabi HTTPS backend'
+if [[ -n "$measurement_source_sha" ]]; then
+  if [[ "${OS:-}" == Windows_NT && -n "${ANDROID_HOME:-}" && -f "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer.bat" ]]; then
+    apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer.bat"
+  elif [[ -n "${ANDROID_HOME:-}" && -x "$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer" ]]; then
+    apkanalyzer="$ANDROID_HOME/cmdline-tools/latest/bin/apkanalyzer"
+  elif command -v apkanalyzer >/dev/null 2>&1; then
+    apkanalyzer="$(command -v apkanalyzer)"
+  else
+    echo "Discovery measurement audit requires the Android SDK manifest inspector" >&2
+    exit 2
+  fi
+  script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+  python3 "$script_dir/audit-discovery-build.py" --apk "$apk" --mode measurement \
+    --apkanalyzer "$apkanalyzer" --source-sha "$measurement_source_sha" \
+    --output "$audit_dir/discovery-measurement-role.json"
+  required_pattern='https://localhost:18443/fixture/'
+  required_description='Discovery measurement HTTPS fixture'
+fi
 if ! LC_ALL=C grep -a -E -r -q -- "$required_pattern" "$audit_dir"; then
-  echo "The fixed Anitabi HTTPS backend endpoint is missing from the APK" >&2
+  echo "The fixed $required_description endpoint is missing from the APK" >&2
   exit 1
 fi
 

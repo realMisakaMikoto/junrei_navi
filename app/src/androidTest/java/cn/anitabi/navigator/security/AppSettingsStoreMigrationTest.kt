@@ -7,6 +7,7 @@ import org.junit.After
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertEquals
 import org.junit.Before
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -67,6 +68,30 @@ class AppSettingsStoreMigrationTest {
         val third = AppSettingsStore(context)
         assertFalse(third.telemetryConsent().analyticsEnabled)
         assertTrue(third.telemetryConsent().crashlyticsEnabled)
+    }
+
+    @Test
+    fun appearanceAndImageSettingsPreserveExistingConsentAndGuide() {
+        val store = AppSettingsStore(context)
+        store.markOnboardingComplete()
+        store.setAnalyticsConsent(true)
+        store.setAmapPrivacyConsent(true)
+        assertEquals(AppAppearance.SYSTEM, store.appearance())
+        assertTrue(store.imageMarkersEnabled())
+        store.setAppearance(AppAppearance.DARK)
+        store.setImageMarkersEnabled(false)
+        val restored = AppSettingsStore(context)
+        assertEquals(AppAppearance.DARK, restored.appearance())
+        assertFalse(restored.imageMarkersEnabled())
+        assertTrue(restored.hasCompletedOnboarding())
+        assertTrue(restored.telemetryConsent().analyticsEnabled)
+        assertTrue(restored.hasCurrentAmapPrivacyConsent())
+    }
+
+    @Test
+    fun unknownAppearanceRestoresSystemDefault() {
+        current.edit().putString(AppSettingsStore.PREFERENCE_APPEARANCE, "future-theme").commit()
+        assertEquals(AppAppearance.SYSTEM, AppSettingsStore(context).appearance())
     }
 
     @Test

@@ -6,6 +6,8 @@ import cn.anitabi.navigator.telemetry.TelemetryConsent
 import cn.anitabi.navigator.telemetry.TelemetryConsentStore
 import java.security.KeyStore
 
+enum class AppAppearance { SYSTEM, LIGHT, DARK }
+
 class AppSettingsStore(context: Context) : TelemetryConsentStore {
     private val preferences = context.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
 
@@ -18,6 +20,20 @@ class AppSettingsStore(context: Context) : TelemetryConsentStore {
 
     fun markOnboardingComplete() {
         preferences.edit(commit = true) { putBoolean(PREFERENCE_ONBOARDING_COMPLETE, true) }
+    }
+
+    fun appearance(): AppAppearance = AppAppearance.entries.firstOrNull {
+        it.name == preferences.getString(PREFERENCE_APPEARANCE, null)
+    } ?: AppAppearance.SYSTEM
+
+    fun setAppearance(appearance: AppAppearance) {
+        preferences.edit { putString(PREFERENCE_APPEARANCE, appearance.name) }
+    }
+
+    fun imageMarkersEnabled(): Boolean = preferences.getBoolean(PREFERENCE_IMAGE_MARKERS, true)
+
+    fun setImageMarkersEnabled(enabled: Boolean) {
+        preferences.edit { putBoolean(PREFERENCE_IMAGE_MARKERS, enabled) }
     }
 
     fun hasCurrentAmapPrivacyConsent(): Boolean =
@@ -66,6 +82,8 @@ class AppSettingsStore(context: Context) : TelemetryConsentStore {
     companion object {
         internal const val PREFERENCES_NAME = "anitabi_settings_v2"
         internal const val PREFERENCE_ONBOARDING_COMPLETE = "onboarding_complete"
+        internal const val PREFERENCE_APPEARANCE = "appearance"
+        internal const val PREFERENCE_IMAGE_MARKERS = "image_markers"
         internal const val PREFERENCE_ANALYTICS_CONSENT = "analytics_consent"
         internal const val PREFERENCE_CRASHLYTICS_CONSENT = "crashlytics_consent"
         internal const val PREFERENCE_AMAP_PRIVACY_CONSENT_VERSION = "amap_privacy_consent_version"

@@ -11,6 +11,11 @@ import okhttp3.Interceptor
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.Response
+import okhttp3.ResponseBody
+import okio.Buffer
+import okio.BufferedSource
+import okio.ForwardingSource
+import okio.buffer
 
 class UserAgentInterceptor(
     appName: String,
@@ -50,9 +55,10 @@ class ApiHttpClient(
         deserializer: DeserializationStrategy<T>,
         errorMapper: (status: Int, body: String, retryAfter: String?) -> ApiException =
             { status, body, _ -> ApiException.fromStatus(status, body) },
+        observer: ApiHttpObserver? = null,
     ): T {
         val response = try {
-            client.newCall(request).awaitBody()
+            client.newCall(request).awaitBody(observer)
         } catch (exception: IOException) {
             throw ApiException.Network(exception)
         }
@@ -64,14 +70,18 @@ class ApiHttpClient(
                 response.retryAfter,
             )
         }
+        observer.notifySafely { onParseStarted() }
         return try {
-            json.decodeFromString(deserializer, response.body)
+            json.decodeFromString(deserializer, response.body).also {
+                observer.notifySafely { onParseCompleted(success = true) }
+            }
         } catch (exception: Exception) {
+            observer.notifySafely { onParseCompleted(success = false) }
             throw ApiException.InvalidResponse(exception)
         }
     }
 
-    private suspend fun Call.awaitBody(): HttpResponseBody = suspendCancellableCoroutine { continuation ->
+    private suspend fun Call.awaitBody(observer: ApiHttpObserver?): HttpResponseBody = suspendCancellableCoroutine { continuation ->
         continuation.invokeOnCancellation { cancel() }
         enqueue(object : Callback {
             override fun onFailure(call: Call, e: IOException) {
@@ -81,11 +91,16 @@ class ApiHttpClient(
             override fun onResponse(call: Call, response: Response) {
                 try {
                     response.use {
+                        observer.notifySafely {
+                            onResponse(it.code, fromCache = it.cacheResponse != null && it.networkResponse == null)
+                        }
+                        val body = it.body.readObservedString(observer)
+                        observer.notifySafely { onBodyCompleted() }
                         continuation.resume(
                             HttpResponseBody(
                                 status = it.code,
                                 retryAfter = it.header("Retry-After"),
-                                body = it.body.string(),
+                                body = body,
                             ),
                         )
                     }
@@ -105,6 +120,36 @@ class ApiHttpClient(
             explicitNulls = false
         }
     }
+}
+
+/** Opt-in scalar observation only; never exposes requests, headers, URLs or response contents. */
+interface ApiHttpObserver {
+    fun onResponse(statusCode: Int, fromCache: Boolean)
+    /** Bytes consumed from the response body after OkHttp's transparent decompression, when any. */
+    fun onBodyBytes(count: Long)
+    fun onBodyCompleted()
+    fun onParseStarted()
+    fun onParseCompleted(success: Boolean)
+}
+
+private fun ResponseBody.readObservedString(observer: ApiHttpObserver?): String {
+    if (observer == null) return string()
+    val original = this
+    val observed = object : ResponseBody() {
+        private val counted = object : ForwardingSource(original.source()) {
+            override fun read(sink: Buffer, byteCount: Long): Long = super.read(sink, byteCount).also { count ->
+                if (count > 0) observer.notifySafely { onBodyBytes(count) }
+            }
+        }.buffer()
+        override fun contentType() = original.contentType()
+        override fun contentLength() = original.contentLength()
+        override fun source(): BufferedSource = counted
+    }
+    return observed.string()
+}
+
+private inline fun ApiHttpObserver?.notifySafely(block: ApiHttpObserver.() -> Unit) {
+    if (this != null) try { block() } catch (_: Exception) { /* Diagnostics never change request behavior. */ }
 }
 
 private data class HttpResponseBody(

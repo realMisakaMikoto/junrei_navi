@@ -75,13 +75,9 @@ import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.LocalLifecycleOwner
 import cn.anitabi.navigator.R
+import cn.anitabi.navigator.ui.components.JournalSectionHeading
 import cn.anitabi.navigator.navigation.AndroidLocationProvider
 import cn.anitabi.navigator.security.AppSettingsStore
-import cn.anitabi.navigator.ui.theme.Ink
-import cn.anitabi.navigator.ui.theme.Moss
-import cn.anitabi.navigator.ui.theme.MutedInk
-import cn.anitabi.navigator.ui.theme.Paper
-import cn.anitabi.navigator.ui.theme.Vermilion
 
 private const val WELCOME_STEP = 0
 private const val PERMISSION_STEP = 1
@@ -201,7 +197,7 @@ fun OnboardingRoute(
         }
     }
 
-    Surface(color = Paper, modifier = Modifier.fillMaxSize()) {
+    Surface(color = MaterialTheme.colorScheme.background, modifier = Modifier.fillMaxSize()) {
         Column(modifier = Modifier.fillMaxSize()) {
             OnboardingHeader(currentStep = currentStep, onBack = goBack)
             BoxWithConstraints(modifier = Modifier.fillMaxWidth().weight(1f)) {
@@ -262,8 +258,7 @@ fun OnboardingRoute(
 @Composable
 private fun OnboardingHeader(currentStep: Int, onBack: () -> Unit) {
     Surface(
-        color = MaterialTheme.colorScheme.surface,
-        shadowElevation = 1.dp,
+        color = MaterialTheme.colorScheme.background,
         modifier = Modifier.fillMaxWidth(),
     ) {
         Column(modifier = Modifier.statusBarsPadding()) {
@@ -285,11 +280,11 @@ private fun OnboardingHeader(currentStep: Int, onBack: () -> Unit) {
                     }
                 }
                 Column(modifier = Modifier.weight(1f)) {
-                    Text("初次使用设置", style = MaterialTheme.typography.titleMedium, color = Ink)
+                    Text("初次使用设置", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                     Text(
                         "巡礼手帳",
                         style = MaterialTheme.typography.labelMedium,
-                        color = MutedInk,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
             }
@@ -321,7 +316,7 @@ private fun StepProgress(currentStep: Int) {
             ) {
                 Text(
                     "${index + 1}  $label",
-                    color = if (isCurrent || isComplete) Ink else MutedInk,
+                    color = if (isCurrent || isComplete) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant,
                     style = MaterialTheme.typography.labelMedium,
                     fontWeight = if (isCurrent) FontWeight.SemiBold else FontWeight.Normal,
                 )
@@ -332,7 +327,7 @@ private fun StepProgress(currentStep: Int) {
                         .height(3.dp)
                         .clip(RoundedCornerShape(2.dp))
                         .background(
-                            if (isCurrent || isComplete) Vermilion else MaterialTheme.colorScheme.outlineVariant,
+                            if (isCurrent || isComplete) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outlineVariant,
                         ),
                 )
             }
@@ -342,11 +337,11 @@ private fun StepProgress(currentStep: Int) {
 
 @Composable
 private fun WelcomeStep() {
-    Text("开始前的三件事", style = MaterialTheme.typography.headlineMedium, color = Ink)
+    Text("开始前的三件事", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
     Text(
         "确认权限、路线服务和隐私设置后，就可以进入地图。这个导览只会出现一次。",
         style = MaterialTheme.typography.bodyLarge,
-        color = MutedInk,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 10.dp),
     )
     InformationBlock(
@@ -374,11 +369,11 @@ private fun PermissionStep(
     onOpenOverlaySettings: () -> Unit,
 ) {
     val permissionsReady = hasLocationPermission
-    Text("设置导航所需权限", style = MaterialTheme.typography.headlineMedium, color = Ink)
+    Text("设置导航所需权限", style = MaterialTheme.typography.headlineMedium, color = MaterialTheme.colorScheme.onSurface)
     Text(
         "先完成系统授权，再按需要调整后台设置。巡礼手帳只会在对应功能需要时使用这些权限。",
         style = MaterialTheme.typography.bodyLarge,
-        color = MutedInk,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 10.dp),
     )
     Surface(
@@ -413,13 +408,13 @@ private fun PermissionStep(
     Text(
         "后台导航建议",
         style = MaterialTheme.typography.titleLarge,
-        color = Ink,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.padding(top = 24.dp),
     )
     Text(
         "以下设置不会阻止你继续，但能减少锁屏或切换应用后导航被系统暂停。",
         style = MaterialTheme.typography.bodyMedium,
-        color = MutedInk,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 6.dp),
     )
     Surface(
@@ -522,20 +517,20 @@ private fun BackgroundSetupStatus(
             },
             verticalAlignment = Alignment.Top,
         ) {
-            Icon(icon, contentDescription = null, tint = if (completed) Moss else Vermilion)
+            Icon(icon, contentDescription = null, tint = if (completed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
             Column(modifier = Modifier.weight(1f).padding(start = 16.dp)) {
-                Text(title, style = MaterialTheme.typography.titleMedium, color = Ink)
+                Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
                 Text(
                     stateLabel,
                     style = MaterialTheme.typography.labelMedium,
-                    color = if (completed) Moss else Vermilion,
+                    color = if (completed) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary,
                     fontWeight = FontWeight.SemiBold,
                     modifier = Modifier.padding(top = 2.dp),
                 )
                 Text(
                     description,
                     style = MaterialTheme.typography.bodyMedium,
-                    color = MutedInk,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp),
                 )
             }
@@ -572,15 +567,15 @@ private fun PermissionStatus(
             .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(icon, contentDescription = null, tint = if (granted) Moss else Vermilion)
+        Icon(icon, contentDescription = null, tint = if (granted) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.primary)
         Column(modifier = Modifier.weight(1f).padding(horizontal = 16.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = Ink)
-            Text(description, style = MaterialTheme.typography.bodyMedium, color = MutedInk)
+            Text(title, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
+            Text(description, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         Icon(
             if (granted) Icons.Rounded.CheckCircle else Icons.Rounded.RadioButtonUnchecked,
             contentDescription = null,
-            tint = if (granted) Moss else MutedInk,
+            tint = if (granted) MaterialTheme.colorScheme.secondary else MaterialTheme.colorScheme.onSurfaceVariant,
         )
     }
 }
@@ -594,13 +589,13 @@ private fun ServiceStep(
     Text(
         "路线服务已准备好",
         style = MaterialTheme.typography.headlineMedium,
-        color = Ink,
+        color = MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.testTag("onboarding-service-step"),
     )
     Text(
         "无需申请或填写 API Key。首次生成路线时，应用会自动创建 Firebase 匿名标识，用于验证对项目路线服务的访问。",
         style = MaterialTheme.typography.bodyLarge,
-        color = MutedInk,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
         modifier = Modifier.padding(top = 10.dp),
     )
     InformationBlock(
@@ -629,7 +624,7 @@ private fun ServiceStep(
             )
             Text(
                 "可选同意：大陆及仅允许官方地图的地区会使用高德地图 SDK；地图显示前会向高德提交隐私授权状态，定位和路线坐标仅在选择高德提供方时处理。不同意仍可使用不依赖高德的功能。",
-                color = Ink,
+                color = MaterialTheme.colorScheme.onSurface,
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(start = 8.dp),
             )
@@ -654,21 +649,15 @@ private fun ServiceStep(
 
 @Composable
 private fun InformationBlock(title: String, body: String, modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier.fillMaxWidth(),
-        color = MaterialTheme.colorScheme.surface,
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant),
-    ) {
-        Column(modifier = Modifier.padding(18.dp)) {
-            Text(title, style = MaterialTheme.typography.titleMedium, color = Ink)
-            Text(
-                body,
-                color = MutedInk,
-                style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(top = 6.dp),
-            )
-        }
+    Column(modifier = modifier.fillMaxWidth()) {
+        JournalSectionHeading(title)
+        Text(
+            body,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodyLarge,
+            modifier = Modifier.padding(top = 8.dp, bottom = 20.dp),
+        )
+        HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant)
     }
 }
 
@@ -709,7 +698,7 @@ private fun OnboardingActionBar(
                         },
                     ),
                 shape = RoundedCornerShape(12.dp),
-                colors = ButtonDefaults.buttonColors(containerColor = Vermilion),
+                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.primary),
             ) {
                 Text(
                     when (currentStep) {
