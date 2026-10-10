@@ -204,6 +204,22 @@ The controlled-delay profile is pinned to 750 ms added response latency per appl
 - Real public image sampling remains a small, paced smoke check (up to the task's approximately ten images), not a 20-times full-catalog download. Repeated controlled runs reuse authored fixtures and real decoders. Live smoke results and controlled performance samples are reported separately.
 - Persist one raw record per attempted run. Report attempted/completed/failed counts, success rate, p50/p95/max and missing-stage counts. Use nearest-rank percentiles consistently; with 20 valid samples, p95 is the nineteenth sorted value. Also report timeouts/failures so survivor-only timing cannot imply full success.
 
+### October 10 execution groups fixed before Release B1
+
+This is the execution list selected for this continuation, not a claim that the earlier contract specified a complete Cartesian product. No Release B1/B2 attempt has run under this list. The application candidate is `d861847ef64cacac9ca093b826d6177f6078fcae`; ordinary CI `38054972962` passed all four jobs, and protected signing `38056666409` is pending. Working-image pixel qualification and independent artifact checks remain prerequisites.
+
+Each of API37/ARM64 Google, API37/ARM64 AMap, and API26/x86_64 Google uses these 19 homogeneous groups, with 20 attempted runs per group and the identical list for B2:
+
+| Groups per target/provider | Size | Start state | Data/image profiles |
+| --- | --- | --- | --- |
+| 15 | 10,000 | Each of `cold_no_cache`, `cold_valid_cache`, `warm_return` | Each of `normal/normal`, `delayed/normal`, `offline/normal`, `normal/delayed`, `normal/offline` |
+| 3 | 1,000; 100,000; 51,828 | `cold_no_cache` | `normal/normal` |
+| 1 | 10,000 | `ready_viewport` | `normal/normal` |
+
+This gives 57 groups and 1,140 attempted runs per checkpoint, with failures retained. The expanded local plan is `build/frontend-fix-v2/release-execution-matrix-1010.json`, SHA-256 `5833de309d3e50ac3769863c226a461124e430e7da650b4147df733a08ce8e82`; the unchanged collector SHA-256 is `6ab7d41e4e0ba5ec0abcb69983478140b8f6f11eaaf50f55081e8d78699a2b82`. Excluded preconditions/setup are separate from those counts.
+
+51,828 is the synthetic fixture matching the September 24 aggregate public-directory observation, not an October 10 live count or real geographic distribution. Current paced public sampling remains separate. The current collector clears both Discovery and image caches for `cold_no_cache`, and retains both for valid-cache/warm setup; this list does not prove every independently varied image-cache subtype. Record actual cache hits and request counts: delayed/offline transports may receive no requests when valid caches satisfy the workload. Data-offline/no-cache may correctly end in an empty network-error fallback, with unavailable later stages; it is not a successful map/image load. SDK tile-cache state, geographic basemap proof and independent SDK network-failure injection remain separate limitations.
+
 ## 6. Counters and budgets fixed before optimization
 
 Collect request counts by endpoint category, queue wait/transport/parse duration, bytes, timeout/error category, cache hits, page requests, full-index rebuilds, nearby distance computations/sorts, cache writes and bytes, snapshot-lock wait, marker updates, image decode/update counts, cancellation/restart counts, and SDK-view creation/release counts. No full URLs, IDs, titles, coordinates, tokens, queries or response bodies belong in trace labels or exported counters.
