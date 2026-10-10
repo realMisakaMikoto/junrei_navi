@@ -4,6 +4,7 @@ import android.Manifest
 import android.content.IntentFilter
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.v2.createEmptyComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -56,15 +57,26 @@ class OnboardingOptionalNotificationInstrumentedTest {
             ActivityScenario.launch(MainActivity::class.java).use {
                 composeRule.onNodeWithTag("onboarding-start").assertIsDisplayed().performClick()
                 composeRule.onNodeWithTag("onboarding-permission-continue").assertIsDisplayed().performClick()
-                composeRule.waitUntil(timeoutMillis = 15_000L) {
+                val deadline = SystemClock.elapsedRealtime() + 15_000L
+                fun remainingMillis(): Long = (deadline - SystemClock.elapsedRealtime()).also {
+                    check(it > 0) { "The shared onboarding observation deadline expired" }
+                }
+                composeRule.waitUntil(timeoutMillis = remainingMillis()) {
                     composeRule.onAllNodesWithTag("onboarding-service-step").fetchSemanticsNodes().isNotEmpty()
                 }
                 composeRule.onNodeWithTag("onboarding-service-step").performScrollTo().assertIsDisplayed()
                 assertEquals("Continuing with granted location must not launch another permission request",
                     0, permissionRequests.hits)
-                val root = requireNotNull(instrumentation.uiAutomation.rootInActiveWindow)
+                val automation = instrumentation.uiAutomation
+                var activePackage: String? = null
+                composeRule.waitUntil(timeoutMillis = remainingMillis()) {
+                    activePackage = automation.rootInActiveWindow?.packageName?.toString()
+                    activePackage == application.packageName
+                }
                 assertEquals("The service page must retain focus without a system permission dialog",
-                    application.packageName, root.packageName?.toString())
+                    application.packageName, activePackage)
+                assertEquals("Waiting for the active window must not launch a permission request",
+                    0, permissionRequests.hits)
                 assertPermissions()
                 assertFalse(settings.hasCompletedOnboarding())
                 assertFalse(settings.hasCurrentAmapPrivacyConsent())

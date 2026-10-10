@@ -4,6 +4,10 @@
 
 实施检查点 `0d2b0797d4f9fca2fdf6d40687bb77bffd9975da` 的CI `38063714530`：verify/backend成功，API26/37均在新增引导步骤的首次APK覆盖安装报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，尚未启动instrumentation或配置临时定位权限，不能记为UI回归失败。流程先安装verify作业下载包，再在emulator作业重建；实际错误确认两包签名不一致。修正仅在新建临时CI模拟器 `anitabi-smoke` 中、安装重建包前增加失败即停止的 `adb uninstall cn.anitabi.navigator`，保留此前下载包冷启动验收、全部测试断言和权限恢复；不适用于已有数据的本地模拟器或手机。新CI安装与回归结果待复测。
 
+签名转换修正检查点 `9f2571b` 的CI `38068292139` 已结束：API37、verify、backend成功，API26仅新增引导步骤失败。API26资产 `11676292585` 的指定测试日志在内存核对为1项/1失败，第65行直接读取 `UiAutomation.rootInActiveWindow` 返回null并抛 `IllegalArgumentException`；此前服务页显示和权限请求计数0断言已通过，具体null原因未确认。API37成功属于9f2571b原夹具及该CI作业范围，不是本次等待调整后的通过证据。夹具现让服务页与活动窗口观察共用原15秒单调时钟期限，仅以剩余正时间等待真实应用窗口，保留精确包名断言并再次核对权限请求计数0；生产逻辑、权限与超时预算不变，调整后产物复测仍待。
+
+新窗口观察夹具的本地普通Debug/测试包构建与双Lint通过：各0Fatal/0Error/20Warning，163个源文件构建前后0差异；应用包 `6f01bb6c27e9a239b5ce9c6aaee8f8b1d645b9b9cdc7c5e90ca53125f0020f8c`，测试包 `64aaa9021e48de26c9525277430b4a4c3b572a0415906f5400f89898b358ba3e`，记录在 `build/frontend-fix-v2/onboarding-window-build-1011/`。本轮本地未重跑JVM、未安装包；新CI及固定签名设备验证仍待。
+
 | 项目 | 当前事实 | 尚需完成 |
 |---|---|---|
 | F1 详情权威性 | 原13项一致性测试中7项失败；修复后19项一致性测试全过，保留20轮受控竞态；当前d861完整CI通过 | 当前签名关联与最终整体验收 |
