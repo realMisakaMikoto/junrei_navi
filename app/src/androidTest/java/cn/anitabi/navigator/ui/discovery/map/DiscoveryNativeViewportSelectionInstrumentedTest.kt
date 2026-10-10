@@ -1,6 +1,8 @@
 package cn.anitabi.navigator.ui.discovery.map
 
 import android.os.SystemClock
+import android.view.InputDevice
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import androidx.compose.foundation.layout.Box
@@ -16,6 +18,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
@@ -62,6 +65,7 @@ import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.joinAll
@@ -83,9 +87,12 @@ import kotlin.math.abs
  * Frozen Compose time controls the calculation race; elapsed timestamps are event ordering only.
  * No GNSS, route, production data, rendering-speed or B1/B2 result is established here.
  * Navigation camera-start/idle callbacks run on Main; no camera is moved from those callbacks.
- * Checked 2026-10-02 against Navigation SDK OnCameraMoveStartedListener and OnCameraIdleListener:
+ * Native Android input preserves frozen Compose time; Compose touch injection advances it explicitly.
+ * Checked 2026-10-11 against Navigation SDK callbacks, MainTestClock and Instrumentation.sendPointerSync:
  * https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap.OnCameraMoveStartedListener
  * https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap.OnCameraIdleListener
+ * https://developer.android.com/reference/kotlin/androidx/compose/ui/test/MainTestClock
+ * https://developer.android.com/reference/android/app/Instrumentation#sendPointerSync(android.view.MotionEvent)
  */
 class DiscoveryNativeViewportSelectionInstrumentedTest {
     @get:Rule val composeRule = createComposeRule()
@@ -161,34 +168,35 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         assertEquals(1, value.selectionCalls.get())
         assertEquals(2, value.selectedMembers.get())
         onMain { value.click.set(null); value.selectionCalls.set(0); value.selectedMembers.set(0) }
+        composeRule.onNodeWithTag(SELECT).assertIsEnabled()
+        val mapBounds = screenBounds(MAP)
+        val buttonCenter = screenBounds(SELECT).center
         val native = onMain { nativeViews(value.root).single() }
         val camera = cameraReader(native)
         val originalCamera = onMain(camera)
         val originalViewport = requireNotNull(value.vm.state.value.viewportSnapshot)
         val acceptedBeforePan = value.acceptedPublications.get()
         composeRule.mainClock.autoAdvance = false
+        val frozenClockTime = composeRule.mainClock.currentTime
+        value.frozenClockTime.set(frozenClockTime)
+        var frozenStage = "native_pan"
+        var frozenClockDelta = -1L
         try {
             onMain { value.armed = true }
-            composeRule.onNodeWithTag(MAP).performTouchInput {
-                val start = Offset(width * .75f, height * .4f)
-                val end = Offset(width * .10f, height * .4f)
-                down(start)
-                repeat(12) { step -> moveTo(start + (end - start) * ((step + 1) / 12f), 20L) }
-                up()
-            }
-            try {
-                composeRule.waitUntil(10_000) {
-                    value.gestureAt.get() > 0 && !value.vm.state.value.canSelectViewport && onMain(camera) != originalCamera
-                }
-            } catch (failure: Throwable) {
-                runCatching {
-                    value.panCameraChangedAtFailure.set(onMain(camera) != originalCamera)
-                    writeReadinessFailure(value, provider, "pan_invalidation")
-                }.onFailure(failure::addSuppressed)
-                throw failure
+            val start = Offset(mapBounds.left + mapBounds.width * .75f, mapBounds.top + mapBounds.height * .4f)
+            val end = Offset(mapBounds.left + mapBounds.width * .10f, start.y)
+            nativeTouch(start, end, steps = 12, stepMillis = 20L)
+            assertEquals("Native pan must not advance the frozen Compose clock", frozenClockTime, composeRule.mainClock.currentTime)
+            frozenStage = "pan_invalidation"
+            composeRule.waitUntil(10_000) {
+                value.gestureAt.get() > 0 && !value.vm.state.value.canSelectViewport && onMain(camera) != originalCamera
             }
             // Recomposition is frozen: this is a real enabled button backed by stale area A.
-            composeRule.onNodeWithTag(SELECT).assertIsEnabled().performTouchInput { click() }
+            frozenStage = "stale_enabled_button"
+            composeRule.onNodeWithTag(SELECT).assertIsEnabled()
+            frozenStage = "stale_native_click"
+            nativeTouch(buttonCenter, buttonCenter, steps = 1, stepMillis = 16L)
+            assertEquals("Native click must not advance the frozen Compose clock", frozenClockTime, composeRule.mainClock.currentTime)
             composeRule.waitUntil(5_000) { value.click.get() != null }
             val observed = requireNotNull(value.click.get())
             assertTrue(observed.handledAtNanos >= value.gestureAt.get())
@@ -200,6 +208,14 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
             assertEquals(0, value.selectedMembers.get())
             assertEquals(acceptedBeforePan, value.acceptedPublications.get())
             assertFalse(onMain { value.vm.viewportCalculated(originalViewport.token, originalViewport.visibleIds) })
+            frozenClockDelta = composeRule.mainClock.currentTime - frozenClockTime
+            assertEquals("The entire stale-button phase must keep Compose time frozen", 0L, frozenClockDelta)
+        } catch (failure: Throwable) {
+            runCatching {
+                value.panCameraChangedAtFailure.set(onMain(camera) != originalCamera)
+                writeReadinessFailure(value, provider, frozenStage)
+            }.onFailure(failure::addSuppressed)
+            throw failure
         } finally { composeRule.mainClock.autoAdvance = true }
         composeRule.waitUntil(30_000) {
             val current = value.vm.state.value
@@ -217,8 +233,48 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
             .put("snapshotValidAtHandler", observed.snapshotValid).put("eligibleAtHandler", observed.eligible)
             .put("memberCountAtHandler", observed.memberCount).put("accepted", observed.accepted)
             .put("selectionCalls", value.selectionCalls.get()).put("selectedMembers", value.selectedMembers.get())
+            .put("frozenComposeClockDeltaMillis", frozenClockDelta)
             .put("staleButtonWasEnabled", true).put("nativeViewCount", 1)
             .put("settledEmptyViewport", true).put("sourceRequests", value.requests.get()).toString())
+    }
+
+    private fun screenBounds(tag: String): Rect {
+        val bounds = composeRule.onNodeWithTag(tag).fetchSemanticsNode().boundsInWindow
+        val offset = onMain {
+            val root = requireNotNull(harness).root
+            val screen = IntArray(2).also(root::getLocationOnScreen)
+            val window = IntArray(2).also(root::getLocationInWindow)
+            Offset((screen[0] - window[0]).toFloat(), (screen[1] - window[1]).toFloat())
+        }
+        return bounds.translate(offset)
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private fun nativeTouch(start: Offset, end: Offset, steps: Int, stepMillis: Long) {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val downTime = SystemClock.uptimeMillis()
+        var lastPoint = start
+        fun send(action: Int, point: Offset, eventTime: Long) {
+            lastPoint = point
+            val event = MotionEvent.obtain(downTime, eventTime, action, point.x, point.y, 0).apply {
+                source = InputDevice.SOURCE_TOUCHSCREEN
+            }
+            try { instrumentation.sendPointerSync(event) } finally { event.recycle() }
+            onMain { composeRule.mainClock.scheduler.runCurrent() }
+        }
+        try {
+            send(MotionEvent.ACTION_DOWN, start, downTime)
+            repeat(steps) { step ->
+                val eventTime = downTime + (step + 1) * stepMillis
+                SystemClock.sleep((eventTime - SystemClock.uptimeMillis()).coerceAtLeast(0))
+                send(MotionEvent.ACTION_MOVE, start + (end - start) * ((step + 1f) / steps), eventTime)
+            }
+            send(MotionEvent.ACTION_UP, end, downTime + steps * stepMillis)
+        } catch (failure: Throwable) {
+            runCatching { send(MotionEvent.ACTION_CANCEL, lastPoint, SystemClock.uptimeMillis()) }
+                .onFailure(failure::addSuppressed)
+            throw failure
+        }
     }
 
     private fun show(value: Harness) {
@@ -368,6 +424,9 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 .put("visibleMemberCount", current.visibleIds.size).put("cameraCallbacks", value.cameraChanges.get())
                 .put("commandsApplied", value.commandsApplied.get()).put("invalidations", value.invalidations.get())
                 .put("ackCameraMatchesExpectedRestore", value.ackCameraMatchesExpectedRestore.get() ?: JSONObject.NULL)
+                .put("testClockAtFreezeMillis", value.frozenClockTime.get().takeIf { it >= 0 } ?: JSONObject.NULL)
+                .put("testClockAtFailureMillis", composeRule.mainClock.currentTime)
+                .put("clickObservationPresent", value.click.get() != null)
                 .put("publicationAttempts", value.publicationAttempts.get()).put("acceptedPublications", value.acceptedPublications.get())
                 .put("lastPublicationMembers", value.lastPublicationMembers.get().takeIf { it >= 0 } ?: JSONObject.NULL)
                 .put("lastTokenCurrent", value.lastTokenCurrent.get() ?: JSONObject.NULL)
@@ -409,6 +468,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         val cameraChanges = AtomicInteger()
         val commandsApplied = AtomicInteger()
         val ackCameraMatchesExpectedRestore = AtomicReference<Boolean?>(null)
+        val frozenClockTime = AtomicLong(-1)
         val invalidations = AtomicInteger()
         val publicationAttempts = AtomicInteger()
         val lastPublicationMembers = AtomicInteger(-1)

@@ -1,8 +1,16 @@
 # 图片加载诊断与修复验收
 
-核对日期：2026-10-11。PR #37仍Draft，完整目标继续。最新成功签名来源 `edb8ae00c4c42df3e7d193acfb7b183ec0e62387` 的CI `38070699590` 四绿、双API ZIP独立RAM匹配digest；签名 `38072602734` 五包哈希/包名/固定单签名者v2及三个应用角色独立审计通过。当前新增初始化策略与布尔诊断的本地623/Lint/两包/R8/Google反射/高德JNI与7变异/Debug内容审计已通过，未安装、提交、签名或设备验证；旧结果不能证明这份工作快照。
+核对日期：2026-10-11。PR #37仍Draft，完整目标继续。当前源码/受保护候选 `c676f95baea499696a89bfe2bb8ef989e0663e91` 的初始化策略与布尔诊断已提交，623 JVM、双Lint各0Fatal/Error20Warning、两普通包、R8/Google反射/高德JNI与7变异/Debug内容/实际DEX审计通过，257个编译输入与提交0差异。CI `38077823181` 四绿，API26资产11678664879/API37资产11680180820独立RAM绑定来源/字节数/digest；各引导1项、主UI11类61项与完成7+4标量/请求0/隔离语义通过，主UI个别方法/终止码和namespace移除仍未证明。仅保存标量SHA-256 `b37be900155b955446247a5fc121b300bd51e42db377ec6436cc12791ae2b00e`，含错误字段解析准备拒绝及源码键修正。保护守卫快进c676、main与保护未改；新签名 `38079814906` 带测量/恢复选项成功、清理成功且SSH跳过，五包哈希/包名/固定RSA-4096单签名者v2与三个应用角色Manifest/DEX/内容/JNI审核通过。角色审核仅限普通Release、测量Release、恢复Debug，普通Debug/Test仅有哈希/包名/签名检查；receipt SHA-256 `1cac2328b5e19aad89ac83e5820c0115e2ead87226d738b8466f9e6beac9dd4d`。首轮签名原生控制已有下述结果，真实图片最终验收仍待；edb/`38072602734`原生结果保持历史范围，旧原生控制不证明c676真实网络图片已通过，完整digest见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
 
-## 2026-10-11：edb原生图片控制与尚未闭合的链路
+## 2026-10-11：c676控制与时钟夹具验证
+
+c676原API37首轮引导、Google实际说明→Navigator主题两方法/顺序/终止−1及四origin14813、严格h160注入位图控制通过；宿主最后PID=null保留。F3已过初始ready/A2选择/SDK拖动检查，随后第191行旧enabled断言FAIL，handler和旧clock delta未验证。原三权限/flags、APP XML+.bak、默认引导/高德0、新包哈希及PID缺失恢复一致；不是全Room/缓存保留。锁定ui-test1.11.4触摸显式推进时钟机制已确认，旧SDK初始失败的唯一原因仍未证明。测试专用native pointer/clock0/CANCEL修正仅本地API26 Google单例GREEN，保留全部原断言/时序/期限；构建与双Lint/source0通过、无新JVM执行。b7ff945a绑定/7c85c7d2新鲜标量证明旧启用按钮真实点击后latest VM拒绝、零选择/空B/source0；79989准备失败执行0测试、四个错误缺失文件哈希撤回。新8文件存在性/哈希恢复通过，权限null只能观察字段匹配，不证明完整还原。尚无新CI/固定签名API37/高德、真实网络图片、双API恢复或Release验收；精确记录见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+c676 h160控制receipt SHA-256为 `2524359059d83c8cb43582b19508f6dba343aee87cf6e0d20f5bc8f03cfa9d72`，MEMORY范围来自既有注入夹具，receipt没有DataSource字段；不证明真实HTTP/Coil解码。新本地F3标量SHA-256 `7c85c7d28ab2866001db4e114300d4f1cbc72a7def94c42181ba5582ccae57a9` 只证明合成SDK/VM正确性，不是图片速度。
+
+## 2026-10-11历史：edb原生图片控制与尚未闭合的链路
+
+本节设备控制绑定来源 `edb8ae00c4c42df3e7d193acfb7b183ec0e62387`；c676固定五包已核验，其首轮原生与本地夹具范围见上文；真实图片最终证明仍待。
 
 原API37保留数据ARM64安装edb Debug `ba4f9127d3b299a20d74cb7d5a34992f7ee4f50e69e87e5fefcf892bf7ecf603`、Test `bad2cd7673fe1778e5b92870631aeb8fcf44e2ca0464f43c1ff344c90a562906`。另一视野图片复用夹具的严格h160期望现单例GREEN，`runtime-38072602734-api37-google-viewport-images-base-1011/runtime.json` SHA-256为 `d4ad01a7e13ad3ece7ba277606b28eeca7d415c3117dc384e991d4f9fb8f8be0`。按夹具源码它返回MEMORY注入位图；receipt没有DataSource字段，更没有真实HTTP/解码证明，不关闭F7或Release图片资格。
 
@@ -10,7 +18,7 @@
 
 引导新签名单例已GREEN，通知拒绝且定位已有授权时进入服务页而不再请求权限；未提交引导/高德同意，原三权限/flags及APP设置XML+.bak存在性/哈希精确恢复。Google主题原严格PID包装器FAIL保留，四个真实事件来源12516另补同进程证明，无重跑或持久化原因推断。结束PID缺失、原设置及版本0读回一致；当前高德正常UI临时同意仍未执行，既有授权保留。
 
-当前包真实受控HTTPS、取消/重试/离线缓存/重定向、Search/Bangumi、h360与显式原图、公网小样本及双地图最终图片验收仍待；57组Release B1/B2样本0。NoImage附近Debug比较只属于83d/d861，10k/100k p95改善与1k上升10.525%/原因未知均保留，不能证明图片速度。51,828仅为旧目录聚合计数及同数量合成数据，未证明当前目录或真实分布。手机、API26原生高德、地理底图及已披露具体Key限制未核验/未轮换的边界不变；签名与运行receipt详见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+当前包真实受控HTTPS、取消/重试/离线缓存/重定向、Search/Bangumi、h360与显式原图、公网小样本及双地图最终图片验收仍待；57组Release B1/B2样本0。NoImage附近Debug比较只属于83d/d861，10k/100k p95改善与1k全部20轮上升10.525%均保留。1k第4—7轮仍10.238—22.265ms，只有8—20轮为4.511—8.846ms；没有JIT/GC/调度证据，withContext进入位于排序计时段外，原因未知且未剔除或重跑，不能证明图片速度。保留分析见[性能文档](DISCOVERY_LOAD_PERFORMANCE.md)。51,828仅为旧目录聚合计数及同数量合成数据，未证明当前目录或真实分布。手机、API26原生高德、地理底图及已披露具体Key限制未核验/未轮换的边界不变；签名与运行receipt详见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
 
 ## 2026-10-10历史：d861图片夹具边界
 

@@ -1,8 +1,56 @@
 # PR #37 整合修复验收（进行中）
 
-核对日期：2026-10-11；基线 `6759c8d3e2e7dddb17db51f509e2a30f1d845b75`，最新受保护候选/成功签名来源 `edb8ae00c4c42df3e7d193acfb7b183ec0e62387`。CI `38070699590` 四绿、双API产物独立RAM核验通过；签名 `38072602734` 成功、清理成功且两个SSH作业跳过。其后镜头初始化策略修正及12行布尔诊断的本地623/Lint/两包/R8/SDK与内容审计已通过，尚无新提交、签名或设备证明。完整F1—F7及定位/朝向目标继续，未合并、Ready、发布或部署；历史结果各自绑定来源。
+核对日期：2026-10-11；基线 `6759c8d3e2e7dddb17db51f509e2a30f1d845b75`，最新源码/受保护候选/成功签名来源为 `c676f95baea499696a89bfe2bb8ef989e0663e91`。本地623/Lint/两包/R8/SDK与内容审计、257个编译输入与提交绑定均通过；CI `38077823181` 四绿、双API产物独立RAM核验通过。签名 `38079814906` 成功，五包哈希/包名/固定签名及三个应用角色审核通过；c676首轮引导/Google配对/h160控制通过，F3旧enabled断言FAIL；新夹具仅本地API26单项GREEN，固定签名重跑、真实图片、恢复和Release验收仍待。完整F1—F7及定位/朝向目标继续，未合并、Ready、发布或部署；历史结果各自绑定来源。
 
-## 2026-10-11：edb固定产物与原API37运行
+## 2026-10-11：c676源码、CI与固定签名
+
+镜头初始化策略与布尔诊断已随8个任务文件提交推送c676；257个实际编译输入与该提交规范化内容0差异，暂存源码凭据审计及Draft PR正文读回通过。普通本地包未安装。CI `38077823181` 的verify、backend、API26与API37四作业全部成功；只在RAM读取两份smoke ZIP并独立核对精确来源、字节数和GitHub digest：
+
+| API / asset | 字节数 | ZIP SHA-256 |
+| --- | ---: | --- |
+| API26 /11678664879 | 3,599,141 | `8a994fa61cd4f8a812220aa6adf295bfe8612337fef259eeecf1db13b6e75bf9` |
+| API37 /11680180820 | 5,368,822 | `4cf239a76ca0375dcc88774c84b8396d819dd3d8598a854e4a1f8b898abaabef` |
+
+各API新通知可选引导回归的精确class/method各一次start/end、状态码[1,0]、`OK (1 test)`、终止码−1通过；主UI精确11类/61项成功，日志不提供个别方法或终止码证明。完成草稿两报告7+4检查全true、source/route0，实际true/false语义及独立namespace/文件/偏好关系匹配，未证明namespace删除。仅保存标量 `ci38077823181-independent-scalar-1011.json`，SHA-256 `b37be900155b955446247a5fc121b300bd51e42db377ec6436cc12791ae2b00e`；未保存ZIP、原始日志或截图。首次解析使用错误字段`fixtureNamespace`而报KeyError，按源码真实`namespace`修正后保持全部语义/隔离检查通过；这是解析准备错误，不是CI失败，0d2与9f历史失败保留。
+
+根代理重新核对保护、仅保护分支环境、精确来源/祖先关系后将候选快进c676，main仍 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，保护未改。签名 `38079814906` 带测量/恢复两选项成功，清理成功且两个SSH作业跳过。根代理下载/审核进程最终退出0：全部五包哈希、包名、固定RSA-4096单签名者/v2通过；实际Manifest/DEX/内容/JNI角色审核限普通Release、测量Release、恢复Debug，普通Debug/Test仅据哈希/包名/签名检查。三个角色的实际来源、APK哈希、manifestAndDexVerified及profiling/nondebug字段已读回。`signed-current-38079814906/verified-artifacts.json` SHA-256为 `1cac2328b5e19aad89ac83e5820c0115e2ead87226d738b8466f9e6beac9dd4d`。
+
+| c676产物 | SHA-256 |
+| --- | --- |
+| 普通Release | `0f4d4eab96c160f2cede0a1b8bc4f1fd89f495c24a07afad9cfd553706ec5f3b` |
+| 签名Debug | `1b33bd79d0982bdb978c2ebed5ebf1682809203564ed997fb0342b346a54c1a1` |
+| AndroidTest | `451747391fade9826f68f3f351a1c22371f90229f13aa5e012f2fdd08aede163` |
+| 测量Release | `40960684b23c9db4422c1f70d968a9bb19f1d8bce7b0adf2b0ac438b040de7ca` |
+| 恢复Debug | `a406333d3766d3951820a050be36c5f84256a0803ff2a9dfa293c50393619416` |
+
+准备期一次目录读回发生在下载进程仍运行、目录尚未创建时；未将它当终止失败或重启下载，原进程后续完成并通过。原API37第一阶段已完成，结果与新测试夹具的本地验证见下一节。签名审核不等于原生、真实图片、双API恢复或Release性能通过；下方edb设备失败与控制保持历史范围。
+
+## 2026-10-11：c676首轮API37与本地时钟夹具
+
+当前签名Debug/Test保留数据ARM64安装到原API37后，引导单例GREEN；Google实际说明→Navigator主题两方法按序GREEN、终止码−1，四个真实TestRunner来源均PID14813。配对helper `090dde1357fa2dfab6acc09ee2808b98cc8906db6380d7ed2617d9051163288c` 按条件采用实际origin证明，最后宿主PID=null、hostSamePID=false仍保留；不证明跨进程条款持久化。h160视野图片复用单例GREEN，MEMORY注入范围来自既有夹具，receipt没有DataSource字段，不是F7真实HTTP/解码。
+
+| c676 API37记录 | SHA-256 | 结果范围 |
+| --- | --- | --- |
+| `runtime-38079814906-api37-onboarding-1011/binding.json` | `68828d60655aeb29f4e3333831d73ff7a826d525d5328ccefb1ca717f327d2ca` | 引导通过及声明的还原检查通过 |
+| `runtime-38079814906-api37-google-pair-1011/paired.json` | `5cbb135aacc78d251a517b849f345964c5a7fb96b17459d14a331dce741c833c` | 两方法/顺序/实际origin证明通过，宿主最后观测缺失保留 |
+| `runtime-38079814906-api37-google-viewport-1011/runtime.json` | `31c919244ba13541cba92221b8b82c5efebb077347c07aec1bcee6f583325126` | F3第191行enabled断言失败，非全例通过 |
+| `runtime-38079814906-api37-google-viewport-failure-classification-1011/classification.json` | `da38db1afc19c12c70f8322cfd57c9e5a14de16c20e0bb58662d2dbfc04f9d83` | 只读RAM分类enabled-state/AssertionError、实际origin15124 |
+| `runtime-38079814906-api37-google-viewport-images-1011/runtime.json` | `2524359059d83c8cb43582b19508f6dba343aee87cf6e0d20f5bc8f03cfa9d72` | 严格h160注入位图控制通过 |
+| `runtime-38079814906-api37-final-after-images-1011/final-state.json` | `a62827fc81ed1c0a07af990d3e6802bd05e53072eab19fecd3dbc9f89f9dce98` | 原三权限/flags、APP XML+.bak、默认引导/高德0、新包哈希、PID缺失核对一致 |
+
+F3已越过初始ready、A的2成员实际选择及SDK拖动失效联合检查，随后旧启用按钮断言失败；这是由实际第191行失败与既有顺序断言推得，报告没有单列前述阶段。未到handler验证，旧12行布尔诊断所在的失败标量报告因该位置在初始/pan catch之外而不可得。分类辅助脚本首次语法拒绝在执行前，后续只读分类成功。补充ART查询不支持、退出255，未据此补填当前ART状态。原APP设置与权限范围的恢复不等于Room/草稿/全缓存逐字节保留。
+
+锁定Compose ui-test 1.11.4实际AAR/类字节码确认：触摸dispatcher显式推进正的事件时间差，忽略autoAdvance=false；MAP与SELECT都经过它。旧失败尝试的实际clock delta未记录，不能把库机制当唯一运行时因果，也不改写edb初始SDK失败。最新官方MainTestClock、Instrumentation.sendPointerSync及Navigation回调约束保存在 `compose-native-touch-contracts-1011.json`（SHA-256 `11b0113863e97f1bc141d116529334782871178f123505e369e05964d12f542e`）。
+
+只改原生测试夹具，SHA-256 `8c92cf5e8aa49a419db058e5559d10217fe765d4bf71f2aafe0e5d4305d491c1`：真实Android指针注入保留原地图比例、12×20ms拖动与16ms点击，当前时间任务调度不推进时钟；保留旧启用UI、SDK手势、latest VM拒绝/零选择/旧token拒绝/空B、全部期限，并增加clock delta0断言和失败CANCEL清理。`native-clock-build-cleanup-1011/identity.json` 构建退出0、source差异0、双Lint各0Fatal/0Error/20Warning；app `d4f3e1e723d55a58e1c1b9995bf358cdc3c0ce2341aa92536543f9d48901a432`、test `1db142158f244484cda5b10cfa8cb1d5c0b486804d1c47d7c6f35f2b791a0126`。生产未改，本轮没有新JVM执行。
+
+本地API26第一次包装器准备失败发生在instrumentation前、执行0测试：旧缺失报告的cat返回0并携带错误文本，造成JSON解析失败。`native-clock-api26-local-1011/binding.json` SHA-256 `79989dd0aa210a0f3a9fc0a4ac52d99352e177707f2ba4831bd027189d53ab0d` 保留FAIL；早先四个应不存在文件的“哈希”已撤回，不能据原receipt的true声称保留。只读重新确认4个APP文件存在、4个不存在；协议修正包装器 `3a8c470524a91e22194dffcd6522c1044bd5aba5041c8fc89cf8d39214e56355` 通过标记解析检查后，首次真实本地Google F3单项GREEN。
+
+`native-clock-api26-local-protocol-fixed-1011/binding.json` SHA-256 `b7ff945ac369a5182285ca265681107517747be50408f6e9dfe50fbd3d56b46a`；新鲜 `native-viewport-google.json` 为 `7c85c7d28ab2866001db4e114300d4f1cbc72a7def94c42181ba5582ccae57a9`。精确单项start/end、结束状态0、OK1、终止−1、driver0且无abort；实际clock delta0、旧按钮enabled=true、初始A2、handler在gesture后、snapshot无效/eligible=false/member0/accepted=false/selection calls0/selected0、空B、原生View1/source0。163个编译输入与当前夹具绑定，8个权威文件的存在性/哈希前后相同（4存在、4不存在且null），最后PID缺失。本地证书 `9a8bb6b95efb6af627e065970b7e5b37e77dda37ed6a0e023e9373cc66eafa1e`；API26两定位权限granted/flags均不可得null，仅可观察字段匹配，permissionEvidenceComplete=false、完整权限还原声明=null。该本地单项不证明新CI、固定签名API37、高德、手机/GNSS、真实图片、双API恢复或F6 Release；旧失败均保留。
+
+## 2026-10-11历史：edb固定产物与原API37运行
+
+本节签名/设备证据仅绑定来源 `edb8ae00c4c42df3e7d193acfb7b183ec0e62387`，不证明新c676原生结果。
 
 四绿后严格守卫重新核对保护/仅保护分支环境、精确SHA、工作树与祖先关系，将候选从d861快进edb；main仍 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，保护规则未改。两份CI ZIP字节数及SHA-256独立匹配GitHub digest：
 
@@ -37,7 +85,7 @@ edb Google F3初始30秒等待仍FAIL：2个地图成员，当前token发布被�
 
 原生夹具仅新增12行：回执镜头与预期Restore匹配、失败镜头与源码自造Google概览匹配的布尔值；复用既有镜头捕获，缺失值null，不输出坐标，不增SDK调用/监听/等待，全部原断言、超时和夹具输入保留。
 
-`initial-camera-full-build-1011/`实际全623项JVM零失败/错误/跳过，双Lint各0Fatal/0Error/20Warning、普通两包构建通过，构建源文件前后0差异。app=`d4f3e1e723d55a58e1c1b9995bf358cdc3c0ce2341aa92536543f9d48901a432`，test=`cec6d1b73f9c0d0613aea2a54601f3d830c4e6d4a5c03fd3c1429d3566027c8a`；Lint计数在`lint-counts.json`。`r8-initial-camera-1011/results.json`五步骤全部退出0，实际日志确认R8、Google反射、高德JNI（7类/24成员）、7项变异测试和Debug内容审计通过；同目录`actual-r8-dex.json`确认7个高德类定义、普通Application存在、测量命名空间0。没有安装本地包，新来源提交、CI、固定签名与原生证明仍待，不沿用edb结果证明这一修正已生效。
+`initial-camera-full-build-1011/`实际全623项JVM零失败/错误/跳过，双Lint各0Fatal/0Error/20Warning、普通两包构建通过，构建源文件前后0差异。app=`d4f3e1e723d55a58e1c1b9995bf358cdc3c0ce2341aa92536543f9d48901a432`，test=`cec6d1b73f9c0d0613aea2a54601f3d830c4e6d4a5c03fd3c1429d3566027c8a`；Lint计数在`lint-counts.json`。`r8-initial-camera-1011/results.json`五步骤全部退出0，实际日志确认R8、Google反射、高德JNI（7类/24成员）、7项变异测试和Debug内容审计通过；同目录`actual-r8-dex.json`确认7个高德类定义、普通Application存在、测量命名空间0。257个编译输入现与c676提交绑定0差异，当前CI、双API RAM产物与新固定签名五包审核已通过；这组普通包当时未安装；之后签名c676原生已越过初始ready，但完整F3仍在旧enabled断言失败，新时钟夹具的本地通过范围见上文，不移用edb结果。
 
 ## 2026-10-11历史：两层CI支架失败
 
@@ -51,14 +99,14 @@ edb Google F3初始30秒等待仍FAIL：2个地图成员，当前token发布被�
 
 | 项目 | 当前事实 | 尚需完成 |
 |---|---|---|
-| F1 详情权威性 | 原13项一致性测试中7项失败；修复后19项一致性测试全过，保留20轮受控竞态；edb CI四绿及签名来源关联通过 | 后续源码与最终整体验收 |
-| F2 完整性/重试 | 空/部分响应、独立图片元数据补充、缓存修复通过上述测试；相关64项核心测试全过，edb CI/签名来源关联通过 | 后续源码与最终整体验收 |
-| F3 视野选点 | 原VM红绿证据保留；edb原生初始当前空快照及SDK镜头偏离仍FAIL，5项初始化策略JVM基线1失败/修正后5过 | 新策略编译/CI/签名/原生证明及移动/旧按钮验证 |
+| F1 详情权威性 | 原13项一致性测试中7项失败；修复后19项一致性测试全过，保留20轮受控竞态；c676 CI四绿及签名来源关联通过 | 后续源码与最终整体验收 |
+| F2 完整性/重试 | 空/部分响应、独立图片元数据补充、缓存修复通过上述测试；相关64项核心测试全过，c676 CI/签名来源关联通过 | 后续源码与最终整体验收 |
+| F3 视野选点 | 初始化策略5项基线1失败/修正后5过；c676 API37越过初始ready/A2/SDK拖动后旧enabled断言FAIL；时钟夹具修正本地API26单例GREEN/delta0，旧edb失败保留 | 新夹具提交/CI/固定签名与两家原生复测；本地单项不关闭整项 |
 | F4 持久草稿 | 原5项恢复测试全部失败；10月2日3c4a2ae源码API26实际后台进程死亡5种情况通过；当前CI两API的两项持久完成/Room标量检查通过，图片元数据与生成关联/完成所有权保留JVM回归 | 当前签名双API五种进程恢复；旧包恢复不移用 |
 | F5 附近排序 | 83d B1与d861 B2各三规模/20次，B2每轮一次排序、恰N距离、BACKGROUND、完整成员；10k/100k排序p95下降58.441%/68.623%，1k上升10.525%；源/JVM/CI证据保留 | 1k回退原因未证实；不宣称全规模加速、Release或真机性能 |
-| F6 加载性能 | 默认关闭的trace接线保留；edb测量Release实际角色审计通过，尚无图片正常的Release B1/B2样本 | 像素资格及57组各20次矩阵；附近Debug不替代地图整体性能 |
+| F6 加载性能 | 默认关闭的trace接线保留；c676测量Release实际角色审计通过，尚无图片正常的Release B1/B2样本 | 像素资格及57组各20次矩阵；附近Debug不替代地图整体性能 |
 | F7 图片链路 | B0规范3/3、旧前缀0/3；旧包公网实际6图及缩略图/h360像素通过，保留首次超时；10月2日修复可见集超过256项绕过退避、旧null图片补充和后台暂停丢失重试机会，固定包602项JVM通过；同包API26点位列表真实HTTPS/解码像素/重试1项通过 | 双地图原生图片及最终签名验收；原手机仍未复测 |
-| 新增定位显示 | 逻辑与d861签名Google原生用例通过范围保留；83d高德部分断言通过但完整单例失败 | edb两家原生复测；真实手机传感器/GNSS未验证 |
+| 新增定位显示 | 逻辑与d861签名Google原生用例通过范围保留；83d高德部分断言通过但完整单例失败 | 当前来源两家原生复测；真实手机传感器/GNSS未验证 |
 
 此表不宣称任何整项已经完成。旧CI、旧签名 APK 和旧截图仅保留各自历史范围，不能证明本次工作树通过。
 
@@ -80,7 +128,7 @@ edb Google F3初始30秒等待仍FAIL：2个地图成员，当前token发布被�
 
 ### F5签名B2
 
-三规模各20/20通过，每轮一次排序/恰N距离/BACKGROUND、完整成员滚动、source/route/map调用0及清理通过。根代理和独立读者重算60原始记录，与固定83d B1采用相同字节探针、NoImage合成位置、窗口/字体/主题和已捕获ART/权限/方向设置；前后状态匹配。B1没有逐轮实际屏幕rotation，不能补填。10k/100k排序p95下降58.441%/68.623%；1k上升10.525%，前三轮慢但原因未证实，未剔除、重跑或调优。p50/p95/max、UI上界和三份原始哈希见[性能文档](DISCOVERY_LOAD_PERFORMANCE.md)；不是Release图片/FPS/GNSS或手机证明。
+三规模各20/20通过，每轮一次排序/恰N距离/BACKGROUND、完整成员滚动、source/route/map调用0及清理通过。根代理和独立读者重算60原始记录，与固定83d B1采用相同字节探针、NoImage合成位置、窗口/字体/主题和已捕获ART/权限/方向设置；前后状态匹配。B1没有逐轮实际屏幕rotation，不能补填。10k/100k排序p95下降58.441%/68.623%；1k全部20轮p95上升10.525%，前三轮较慢，4—7轮仍为10.238—22.265ms，只有8—20轮为4.511—8.846ms。原因未证实，没有JIT/GC/调度证据，`withContext`进入位于排序计时段外；未剔除、重跑或调优。保留分析与原始哈希、p50/p95/max和UI上界见[性能文档](DISCOVERY_LOAD_PERFORMANCE.md)；不是Release图片/FPS/GNSS或手机证明。
 
 ### 原生19项与单独的同进程主题验收
 
