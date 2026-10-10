@@ -119,6 +119,22 @@ Google/高德投影与位图锚点用例均在初始投影/圆点像素/首次�
 
 Google测量资格首次 `controlled_workload_timeout` 保留0检查及完整清理；随后collector排除样本的诊断在Manifest门禁误拒绝，0尝试。实际aapt2输出的Android属性使用全URI，旧parser只查 `android:` 别名，导致未识别真实Application/profile/provider；独立APK实际类审计一直通过。限定归一化该精确URI并拒绝重复逻辑属性，23collector/48脚本测试与实际APK解析全过，类型值、SDK、数据、像素、时钟、超时和20次门禁未改。新collector哈希与失败边界在性能doc；先前资格超时原因仍未确定，新诊断待实际状态/trace。没有Release B1/B2或速度结论。
 
+## 工具栏视野失效的确定性回归与修正
+
+真实 `DiscoveryScreen`、Repository及VM在原本地API26/5584上用缓存合成数据与fake-map执行：普通/双倍字体均在单次有效视野发布后，实际出现 `[LAYOUT, LAYOUT]`，第154行快照不再有效的断言失败；不是初始化、超时或清理失败。RED app=`7705df117b3dfc70ded06efe2ad253ec5714268f35bb68fca14f8cf14d1228e6`、test=`a4f15af2c58d89769b22aa1279349e43734d706de6e546e0b893a4ca6f6d712c`，`toolbar-layout-red-1002/device-run-2/`保留合成JUnit与111源文件哈希。
+
+原因链在该回归中成立：视野发布产生作品筛选项，原空LazyRow变高；工具栏测量触发布局失效并清掉viewportSnapshot，使筛选项消失、工具栏变低，又失效。仅给作品LazyRow增加与现有chip一致的48dp最小高度，保留自然更大高度和真正布局变化时的失效；没有移动坐标、降低字体、截断成员、改变SDK或关闭图片。
+
+同一test APK下两字体的视野/token/成员/资格/无后续LAYOUT断言已通过，但原 `didOverflowWidth` 在第168行误报，保留partialGREEN。锁定Compose的实现比较整数Text.size.width与浮点段落分配width；实测普通字体size45×16/段落162、实际字行0..45，无省略且label在chip内；双倍size82×30/段落145、实际字行0..82，亦完整容纳。测试改为严格实际行边界、无省略、完整visibleEnd，保留原高度、chip/label包含关系、视野及超时断言；没有把失败判为成功。
+
+最终两项完整GREEN在 `toolbar-layout-green-1002/width-correctness-green-1/device-run/result.json`，结果SHA256=`ad4193df7102bc4a39d309b772136d8b6b451f41456e39e038b34d3793c84375`：app=`831ecf40805bede630a43596870e052241279206c099f8921c903731ea759d98`、test=`dbcc9dda069d87451fbf78f8a8dcf978cca94e6455ca0d19251fe88eaec08946`，同一本地Debug/v2签名、只用install-r。9偏好/1草稿、可得权限行哈希与111源文件未变；API26未给出runtime grant/flags，未伪称其已核验。新增两项加入普通双API CI；后续门禁/新签名仍待。这证明合成真实UI/VM布局正确性，不证明Release图片成功、总体慢加载根因、SDK像素资格或B1/B2改善。
+
+## 2026-10-10 门禁证据重新核对
+
+10月2日工具栏修正后的 `toolbar-layout-gates-1002/` 已完整结束：双Lint XML均0Fatal/0Error/20Warning、R8成功、Google反射与高德7类/24成员及7变异通过；实际DEX包含普通Application与7个高德类定义、测量命名空间0。普通Debug APK内容及已跟踪源码凭据审计成功。10月10日独立只读复核了实际APK哈希、111个当前源文件与最终GREEN/门禁哈希、严格runner及原始文本摘要、9偏好/1草稿和可得权限字段，全部匹配；无活动Gradle进程。状态文件中的空配置标量未当作证据，普通模式由独立identity记录与实际DEX证明。没有重跑这些旧测试或把日期改成新执行。
+
+这些结果支持提交限定修复及新增双API CI用例；新HEAD普通CI、保护签名、原生/网络图片资格与B1/B2仍待。个人设备未操作，密钥误读事件不因此关闭；未分享含该输出的会话或日志。
+
 ## 定位显示官方约束
 
 2026-09-23 核对 [Google Navigation GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)：`setLocationSource` 仅编译兼容，自定义源不工作。因此使用应用判区后的独立定位 Marker，不启用不可过滤的原生定位源，也不引入另一套 Maps SDK。

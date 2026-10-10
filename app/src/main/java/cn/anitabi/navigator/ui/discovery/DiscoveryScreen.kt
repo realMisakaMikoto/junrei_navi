@@ -304,7 +304,7 @@ internal fun DiscoveryScreen(
                     state.data.snapshot?.subjects.orEmpty().filter { it.id in counts || it.id in state.filters }
                         .sortedByDescending { it.id in state.filters }
                 }
-                LazyRow(contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                LazyRow(Modifier.heightIn(min = 48.dp), contentPadding = PaddingValues(horizontal = 12.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                     items(chips, key = { it.id }) { subject ->
                         FilterChip(
                             selected = subject.id in state.filters, onClick = { onFilter(subject.id) },

@@ -56,6 +56,14 @@ The optional protected-workflow input defaults false and is restricted to the re
 
 ## 1. Baseline identity and comparison order
 
+### Proven toolbar layout feedback (correctness prerequisite)
+
+Two deterministic actual Screen/Repository/VM tests on local API26 reproduce a layout cycle at font1 and2: one accepted viewport creates chips, changes the empty row height, invalidates LAYOUT and clears the snapshot; removing chips changes height and invalidates again. Both original cases fail at the expected assertion with two LAYOUT events. This proves the UI feedback in that fixture; the earlier Release timeout remains separately scoped.
+
+The only production edit reserves the subject LazyRow's existing chip minimum of48dp, without a maximum height or removal of layout invalidation. Both fonts then pass viewport/current-token/full-member/selection-eligibility/no-new-layout checks. An added width assertion initially misreads Compose's allocated paragraph width as content clipping. Measured glyph lines are fully contained and not ellipsized; the evidence-correct strict line bounds/full visible input checks retain the original height and chip/label bounds. Both complete cases pass, with private state and111source hashes unchanged. [The repair checklist](FRONTEND_FIX_ACCEPTANCE.md) binds RED, partial GREEN, width diagnostics and final GREEN exact APKs/results.
+
+This is functional stabilization before a working-image Release baseline. It supplies no SDK pixel observation, loading latency, frame-jank metric, or B2 speedup. The existing nearby probe, observer, collector, data/image profiles,20attempt policy and budgets remain unchanged; new protected artifacts and successful-image qualification are still required.
+
 ### Release qualification and collector namespace correction
 
 The fixed83d measurement APK on API37/ARM64 has actual ART filter `verify` after same-signer installation, with no manual compiler/permission change. All eight host dataset hashes match the fixed fixture. Its first Google qualification times out before any positive check; cleanup restores settings and removes the owned reverse, certificate and bootstrap, with0route attempts. `runtime-36977969429-api37-google-pixel-qualification/qualification.json` preserves0checks and the failure. This supplies no performance sample or native pixel qualification.
