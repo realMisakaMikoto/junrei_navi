@@ -169,6 +169,7 @@ jobs:
       - name: Verify onboarding continues with optional notifications denied
         run: |
           set -o pipefail
+          adb uninstall cn.anitabi.navigator
           adb install -r app/build/outputs/apk/debug/app-debug.apk
           adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
           adb shell am force-stop cn.anitabi.navigator
