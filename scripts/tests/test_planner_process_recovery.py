@@ -13,6 +13,68 @@ MODULE = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(MODULE)
 
 
+def recents_fixture():
+    return MODULE.parse_hierarchy("""<hierarchy>
+        <node package="com.google.android.apps.nexuslauncher" class="android.widget.FrameLayout"
+            resource-id="com.google.android.apps.nexuslauncher:id/task_view_single"
+            bounds="[173,181][907,1486]" clickable="true" enabled="true">
+            <node package="com.google.android.apps.nexuslauncher" class="android.widget.FrameLayout"
+                resource-id="com.google.android.apps.nexuslauncher:id/icon"
+                bounds="[184,192][615,329]" clickable="true" enabled="true">
+                <node text="TEST_ONLY" package="com.google.android.apps.nexuslauncher" class="android.widget.TextView"
+                    resource-id="com.google.android.apps.nexuslauncher:id/icon_title"
+                    bounds="[305,233][531,287]" clickable="false" enabled="true"/>
+            </node>
+            <node content-desc="TEST_ONLY" package="com.google.android.apps.nexuslauncher" class="android.widget.FrameLayout"
+                resource-id="com.google.android.apps.nexuslauncher:id/snapshot"
+                bounds="[173,181][907,1486]" clickable="false" enabled="true"/>
+        </node></hierarchy>""")
+
+
+def snapshot_node(root):
+    return next(node for node in root.iter("node")
+        if node.get("resource-id") == "com.google.android.apps.nexuslauncher:id/snapshot")
+
+
+class PlannerRecoveryRecentsTest(unittest.TestCase):
+    def test_snapshot_center_replaces_icon_center_only_for_recents(self):
+        root = recents_fixture()
+        self.assertEqual((399, 260), MODULE.find_click(root, "TEST_ONLY"))
+        self.assertEqual((540, 833), MODULE.find_recents_click(root, "TEST_ONLY"))
+
+    def test_missing_snapshot_returns_unavailable(self):
+        root = recents_fixture()
+        root[0].remove(snapshot_node(root))
+        self.assertIsNone(MODULE.find_recents_click(root, "TEST_ONLY"))
+
+    def test_ambiguous_snapshots_fail_instead_of_choosing_a_card(self):
+        root = recents_fixture()
+        card = snapshot_node(root)
+        root.append(MODULE.ET.fromstring(MODULE.ET.tostring(card)))
+        with self.assertRaisesRegex(MODULE.HarnessFailure, "recent_task_card_ambiguous"):
+            MODULE.find_recents_click(root, "TEST_ONLY")
+
+    def test_disabled_snapshot_returns_unavailable(self):
+        root = recents_fixture()
+        snapshot_node(root).set("enabled", "false")
+        self.assertIsNone(MODULE.find_recents_click(root, "TEST_ONLY"))
+
+    def test_wrong_snapshot_label_returns_unavailable(self):
+        root = recents_fixture()
+        snapshot_node(root).set("content-desc", "TEST_ONLY_OTHER")
+        self.assertIsNone(MODULE.find_recents_click(root, "TEST_ONLY"))
+
+    def test_wrong_snapshot_package_returns_unavailable(self):
+        root = recents_fixture()
+        snapshot_node(root).set("package", "test.other")
+        self.assertIsNone(MODULE.find_recents_click(root, "TEST_ONLY"))
+
+    def test_wrong_snapshot_resource_returns_unavailable(self):
+        root = recents_fixture()
+        snapshot_node(root).set("resource-id", "test.other:id/snapshot")
+        self.assertIsNone(MODULE.find_recents_click(root, "TEST_ONLY"))
+
+
 class PlannerRecoveryDriverParsingTest(unittest.TestCase):
     def test_provider_report_requires_its_scalar_schema(self):
         result = MODULE.parse_report('Result: Bundle[{report={"schema":1,"pid":123,"plannerReady":true}}]')
@@ -149,6 +211,7 @@ class PlannerRecoveryTargetTest(unittest.TestCase):
                 driver.provider = lambda method: after if restored else before
                 driver.wait = wait
                 driver.click = lambda label: None
+                driver.click_recent_task = lambda: None
                 driver.pid = lambda: 200
                 driver.has_text = lambda text: True
                 if expected_code:

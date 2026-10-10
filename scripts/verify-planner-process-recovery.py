@@ -87,6 +87,16 @@ def find_click(root, label):
     return None
 
 
+def find_recents_click(root, label):
+    cards = [node for node in root.iter("node")
+        if node.get("package") == "com.google.android.apps.nexuslauncher"
+        and node.get("resource-id") == "com.google.android.apps.nexuslauncher:id/snapshot"
+        and (node.get("text") == label or node.get("content-desc") == label)
+        and node.get("enabled") == "true"]
+    require(len(cards) <= 1, "recent_task_card_ambiguous")
+    return bounds_center(cards[0].get("bounds", "")) if cards else None
+
+
 def task_present(output, task_id):
     pattern = re.compile(r"(?:#|taskId=)" + str(task_id) + r"\b")
     return any(PACKAGE in line and pattern.search(line) for line in output.splitlines())
@@ -194,6 +204,10 @@ class Driver:
         point = self.wait(lambda: find_click(self.hierarchy(), label), "ui_control_unavailable")
         self.adb("shell", "input", "tap", str(point[0]), str(point[1]))
 
+    def click_recent_task(self):
+        point = self.wait(lambda: find_recents_click(self.hierarchy(), LABEL), "ui_control_unavailable")
+        self.adb("shell", "input", "tap", str(point[0]), str(point[1]))
+
     def has_text(self, text):
         return any(node.get("text") == text or node.get("content-desc") == text for node in self.hierarchy().iter("node"))
 
@@ -262,7 +276,10 @@ class Driver:
 
         # Only a Recents UI action may restart the process during the measured interval.
         self.adb("shell", "input", "keyevent", "KEYCODE_APP_SWITCH")
-        self.click(LABEL)
+        if self.api == 37:
+            self.click_recent_task()
+        else:
+            self.click(LABEL)
         new_pid = self.wait(self.pid, "recent_task_did_not_restart_process")
         require(new_pid != old_pid, "pid_did_not_change")
         after = self.wait(lambda: self.report_if(lambda r: r["activityReady"] and not r["restoring"] and (r["plannerReady"] or r["recoveryError"])), "restored_activity_unavailable")

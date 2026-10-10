@@ -1,5 +1,24 @@
 # Frontend redesign requirement and evidence matrix
 
+## October 11 functional follow-up: current evidence
+
+Latest compiled APK source/protected candidate `351bafbabd515338c430c1526ccb7e17db55eb36` changes one AndroidTest fixture and five documents only; application/image/recovery sources match c676. CI `38083781456` is four-green, both RAM assets verified, and signing `38085746502` succeeds with cleanup/SSH skips/five fixed-signature APK checks/three actual role audits. Receipt187ec916...63c3; newTest6497 passes its own API37 Google F3 execution; API26 Google/AMap remain pending. Debug/recovery bytes match c676, whose actual functional run38079814906/Test4517 identity remains recorded. This checkpoint includes seven doc/host-driver/test files; app and AndroidTest code are unchanged.
+
+| v2 requirement | New verified scope | Still open |
+| --- | --- | --- |
+| F1/F2 | Production/JVM and exact-source CI remain bound; F7 public sample uses production Parser and snapshot round trips | Final integrated source/acceptance |
+| F3 | New351 fixed-signature API37 Google full case passes/clockdelta0/staleenabled/latestVM rejection0/emptyB; new API26 reaches frozen assertions then fails emptyB wait at220, no complete scalar; local pass/older failures retained | API26 emptyB failure diagnosis and full case, API37 AMap full case |
+| F4 | Signed c676 API26 observed5/5 and API37 corrected-card5/5 actual process death/Recents/task/Bundle cases pass; original8 APP files, ordinary package and PID cleanup restored | Final integrated source acceptance; earlier PID/icon-selection/bootstrap failures retained |
+| F5/F6 | All historical20-round nearby results retained,1k regression10.525%; functional images now work on API37 | Release qualification, B1/B2, current-size addendum, basemap failure observations; Release samples0 |
+| F7 | API26/37 each15 single selectors pass:11 controlled HTTPS,3 injected trace,1 public smoke with actual decoder/UI pixels; declared cleanup verified, API26 permission fields remain unavailable/null | Two-map real images/Release pixels, original phone |
+| Own location/heading | API37 Google single case and14 independent native controls pass, synthetic inputs/source-JUnit scope | Current AMap/GNSS/physical sensors |
+
+The new351 AMap normal-UI attempt stops during onboarding with only AssertionError recorded, before0enable/0native cases. Finald9275fa6...b46f1 confirms original eight APP files/permissions/package/display/PID, while the owned backup stays preserved because no withdrawal/tree gate is proven. This is a preparation failure; diagnostic-copy work is pending, with no native/SDK completion claim.
+
+The public report's51,999 is the production-parsed index point count (`sourcePointTuples` assigned from `index.points.size`), not a revalidated full live catalog/performance sample. Preserve historical51,828 separately. Root readback of API37 functional and API26 recovery final receipts verifies their declared file/permission/package/PID cleanup scopes; no full Room preservation claim. Exact receipt hashes, failures and signing status are in [the repair checklist](FRONTEND_FIX_ACCEPTANCE.md). Draft status and the existing coordinate/API26 AMap evidence limits remain; no merge/Ready/release/deployment/phone action.
+
+## Earlier October 11 checkpoint (historical scope below)
+
 ## October 11 repair work is still open
 
 The user supplied a new F1-F7 repair plan after the accepted redesign, and added the missing own-location dot/phone-heading indicator. Its live checklist is [FRONTEND_FIX_ACCEPTANCE.md](FRONTEND_FIX_ACCEPTANCE.md), with separate [image evidence](IMAGE_LOADING_DIAGNOSIS.md) and [performance evidence](DISCOVERY_LOAD_PERFORMANCE.md). The historical matrix below does not certify these new changes. Each repair commit needs its own CI and protected signed acceptance; a local Debug pass does not satisfy those gates. Draft PR #37 remains open; no merge/release/deployment occurred.
