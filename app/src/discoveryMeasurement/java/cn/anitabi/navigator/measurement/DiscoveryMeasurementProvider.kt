@@ -261,7 +261,7 @@ class DiscoveryMeasurementProvider : ContentProvider() {
 
     private enum class PreferenceType { BOOLEAN, STRING, LONG, FLOAT }
     private companion object {
-        val sizes = setOf(1_000, 10_000, 100_000, 51_828)
+        val sizes = setOf(1_000, 10_000, 100_000, 51_828, 51_999)
         const val settingsName = "anitabi_settings_v2"
         const val cameraName = "discovery_view"
         val settingsKeys = mapOf("onboarding_complete" to PreferenceType.BOOLEAN, "appearance" to PreferenceType.STRING, "image_markers" to PreferenceType.BOOLEAN)

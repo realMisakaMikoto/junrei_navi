@@ -217,9 +217,14 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
             }.onFailure(failure::addSuppressed)
             throw failure
         } finally { composeRule.mainClock.autoAdvance = true }
-        composeRule.waitUntil(30_000) {
-            val current = value.vm.state.value
-            current.viewportSnapshot?.let { current.viewportIsCurrent(it.token) } == true && current.visibleIds.isEmpty()
+        try {
+            composeRule.waitUntil(30_000) {
+                val current = value.vm.state.value
+                current.viewportSnapshot?.let { current.viewportIsCurrent(it.token) } == true && current.visibleIds.isEmpty()
+            }
+        } catch (failure: Throwable) {
+            runCatching { writeReadinessFailure(value, provider, "settled_empty_viewport") }.onFailure(failure::addSuppressed)
+            throw failure
         }
         assertEquals(0, value.selectedMembers.get())
         assertEquals(0, value.requests.get())
@@ -407,7 +412,9 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 .put("membersNearContentCenter", if (content != null) projected?.count { abs(it.x - content.center.x) <= 3f && abs(it.y - content.center.y) <= 3f } ?: JSONObject.NULL else JSONObject.NULL)
                 .put("failureTimeRebuiltQueryMemberCount", queryCount ?: JSONObject.NULL)
             JSONObject().put("provider", provider.name).put("scope", "native_VM_readiness_failure").put("stage", stage)
+                .put("observationTiming", "fresh_after_failed_assertion_not_failed_wait_snapshot")
                 .put("failureProjectionObservation", observation)
+                .put("selectionCalls", value.selectionCalls.get()).put("selectedMembers", value.selectedMembers.get())
                 .put("lifecycle", value.hostLifecycle?.currentState?.name ?: JSONObject.NULL).put("nativeViewCount", views.size)
                 .put("allNativeViewsAttached", views.isNotEmpty() && views.all { it.isAttachedToWindow })
                 .put("allNativeViewsHaveSize", views.isNotEmpty() && views.all { it.width > 0 && it.height > 0 })

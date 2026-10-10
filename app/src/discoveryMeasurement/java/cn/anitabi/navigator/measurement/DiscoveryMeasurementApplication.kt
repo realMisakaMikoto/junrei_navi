@@ -214,7 +214,7 @@ internal data class MeasurementLayout(
     val singletonPhotoPointIds: List<String> = emptyList(),
 ) {
     fun validate() {
-        require(schema == 1 && size in setOf(1_000, 10_000, 100_000, 51_828))
+        require(schema == 1 && size in setOf(1_000, 10_000, 100_000, 51_828, 51_999))
         GeoPoint(centerLatitude, centerLongitude)
         require(zoom == 15f && subjectCount == (size + 127) / 128 && pageSize == 16 && pageCount == (subjectCount + 15) / 16)
         require(uniqueImages == 6 && datasetSha256.matches(Regex("[a-f0-9]{64}")))
@@ -266,7 +266,7 @@ internal class MeasurementTransport(context: Context, expectedCertificate: Strin
         .followRedirects(false).followSslRedirects(false)
 
     fun layout(provider: MapProvider, size: Int, json: Json): MeasurementLayout {
-        require(size in setOf(1_000, 10_000, 100_000, 51_828))
+        require(size in setOf(1_000, 10_000, 100_000, 51_828, 51_999))
         val request = Request.Builder().url("https://localhost:18443/fixture/${provider.name}/$size/layout.json").build()
         return builder().callTimeout(java.time.Duration.ofSeconds(15)).build().newCall(request).execute().use { response ->
             check(response.code == 200) { "Fixture layout unavailable" }

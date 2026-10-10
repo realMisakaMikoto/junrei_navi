@@ -19,7 +19,7 @@ import sys
 
 CONDITIONS = {
     "provider": {"google", "amap"},
-    "size": {1000, 10000, 100000, 51828},
+    "size": {1000, 10000, 100000, 51828, 51999},
     "dataKind": {"synthetic"},
     "startState": {"cold_no_cache", "cold_valid_cache", "warm_return", "ready_viewport"},
     "dataProfile": {"normal", "delayed", "offline", "failure"},

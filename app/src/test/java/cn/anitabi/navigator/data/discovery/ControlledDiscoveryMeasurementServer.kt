@@ -32,7 +32,7 @@ object ControlledDiscoveryMeasurementServer {
     private const val PORT = 18443
     private const val POINTS_PER_SUBJECT = 128
     private const val SUBJECTS_PER_PAGE = 16
-    private val sizes = listOf(1_000, 10_000, 100_000, 51_828)
+    private val sizes = listOf(1_000, 10_000, 100_000, 51_828, 51_999)
     private val resources = listOf(
         "/points/synthetic-measurement/photo-0.png", "/user/synthetic-measurement/photo-1.png",
         "/bangumi/synthetic-measurement/photo-2.png", "/points/synthetic-measurement/photo-3.png",

@@ -2,6 +2,8 @@
 
 ## 2026-10-11：功能续验与新签名构建（当前状态）
 
+主机恢复驱动/五份验收记录检查点 `7c97f957d41d8bd9686408c7aa77415a085ba716` 已提交推送七文件，应用/AndroidTest/build/workflow与351差异0，PR37正文精确读回仍OPEN/Draft。CI `38089175659` 四绿，双API RAM资产独立核验通过，scalar=`29cb74f6bdbb9701bf74f03af369be805700c49deb2cba2f8508690709dca8f2`；API26 asset11682933723/3,604,308字节/`11938dd32b359d75fc8dc00eda540a5527f2fd4899abb141cd0bfcc574229916`，API37 asset11684012706/5,397,655字节/`b62db13daf915b8315f0325b334a5b36488345f6e66b2181aea50093ea2fb430`。各optional1精确单项、main11类61成功、completion7+4/source-route0/隔离语义通过，方法/terminal/XML/namespace移除证据限制保留；不覆盖随后未提交的失败标量/51999源码修改。无需为host/docs检查点冒称新签名，候选/已核验APK编译来源仍351。
+
 最新提交与受保护候选为 `351bafbabd515338c430c1526ccb7e17db55eb36`，只改一份原生测试夹具与五份文档；应用、图片测试和恢复夹具与 c676 的源码差异为 0。CI `38083781456` 四项成功，两 API 资产在 RAM 独立核对来源、字节数及 GitHub digest：API26 `11682805632` / 3,618,412 字节 / `601b95332706c9deb1e4ae9b0253d8702de25c6aa090efabc90ba1d33065f3b2`；API37 `11682616095` / 5,427,525 字节 / `b30f5531cb0d843d97bd99928b5fbe854f9986946c3321cb88b91529097af89c`。各 optional 精确单项、主 UI 11 类 61 项、完成草稿 7+4 检查及 source/route=0 通过；主 UI 个别方法/终止码与 namespace 删除仍未证明。标量摘要 `ci38083781456-independent-scalar-1011.json` SHA-256=`b1d57ff9e914061e711cef5f06931ff9bd051270aa9cbe1b6a8e99665d67f6fe`。子代理 thread-limit 拒绝发生在资产操作前，审阅代理随后分别核验两份资产；该工具拒绝不是 CI 失败。
 
 根代理新鲜核对保护、环境、精确 SHA、干净工作树及祖先关系后快进候选到 351，main 仍为 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，保护未改。签名 `38085746502` 带测量/恢复两选项成功，清理成功、SSH两作业跳过；根代理下载/审核70367退出0，五包实际哈希/包名/固定RSA4096单签名者v2及三个角色Manifest/DEX/内容/JNI审核通过。新receipt SHA-256=`187ec916922abf41c43398b9d6d1458b810a79d28d9c183ab979a097d4dc63c3`，实际三个role JSON已读回；普通Debug/Test没有角色审计声明。
@@ -18,10 +20,10 @@
 
 | 当前要求 | 本轮实际结果 | 未闭合范围 |
 | --- | --- | --- |
-| F3 视野选点 | 351 固定签名 API37 Google 完整单例通过；新夹具本地 API26 全例通过，旧失败保留 | 351 固定签名 API26 Google及API37高德完整流程 |
+| F3 视野选点 | 351 固定签名 API37 Google/高德完整单例均通过；本地API26旧范围通过，新签名API26末段失败保留 | API26空B失败诊断及最终来源复测 |
 | F4 持久草稿 | c676 API26 观察尝试五例通过；API37 修正卡片点击后五例通过，声明原状态/普通包/PID恢复 | 最终来源整体验收；原两次点击失败与入口失败保留 |
 | F7 图片 | c676 API26/37 各 15 单例通过：各 11 受控 HTTPS、3 注入 trace 控制、1 公网小样本 | 两家地图真实图片与 Release 像素资格；手机未复测 |
-| 定位/原生 Google | c676 API37 定位一例及 14 项独立控制通过 | 高德当前来源、实体传感器/GNSS |
+| 定位/原生地图 | c676 API37 Google定位/14独立控制通过；351高德定位/方向完整例及投影/重叠/切换通过 | 实体传感器/GNSS、Release真实地图图片/底图 |
 | F5/F6 | 历史 83d/d861 附近三规模各 20 次保留，1k p95 上升 10.525%；Release 样本 0 | 工作图片资格、相同条件 B1/B2、实际规模附加计划与 SDK 底图失败覆盖 |
 
 ### F7：生产图片链路与证据边界
@@ -60,11 +62,35 @@ API26随后完成保留数据x86_64更新并只执行一次新F3，FAIL位于第
 
 根代理已读回API26失败runtime与final：`e97e78212a9212a980be9591aa56f0b719efe4ff9e6315b7dcc47218f5586314` 确认原八文件全absent、harness/PID缺失、Debug1b33/Test6497、user0/x86_64、实际configuration font1/rotation0及原null settings/auto1恢复一致。权限字段依旧null/仅可观察字段匹配，完整权限还原声明=null，未改权限。高德正常GUI可能写额外APP camera偏好；原八文件独立备份guardian只在准备阶段，不能把尚未执行的开启/撤回描述为完成。
 
+全部设备阶段暂停并清理后，只应用末段失败标量catch及51999测量允许集扩展：Test源码=`10bc2552d370d4a517716b56bcff2f384a771a75d9a0d7492e207e29200d9997`，保留原30秒空B断言/输入/冻结段，失败后新观察明确标记 fresh-after-failure，不反推旧几何；历史51828保留，新增51999沿用原合成布局，未声称真实空间分布。39项collector/analyzer定向检查通过。`diagnostics-current-size-build-1011/identity.json` 新执行623 JVM零失败/错误/跳过、双Lint各0Fatal/Error20Warning、普通两包/source前后0差异；app=`d4f3e1e723d55a58e1c1b9995bf358cdc3c0ce2341aa92536543f9d48901a432`、test=`8480edb75aeac2f36ac8e2681c94768979513ffa7805286d8bddc20fc91b26da`，未安装。measurement gated Lint/compile/R8进行中，尚无新签名/运行证据；API26权限观测接线未改，Release样本0。原patch CRLF context检查拒绝在修改前，后用精确工具应用并核对10bc；构建准备的嵌套引号失败未写文件/执行构建，独立ASCII脚本修正后启动，不改门禁。
+
+随后 gated7044编译/R8退出0、源前后相同，三个测量组件各1实际class文件、两个DEX中三个定义均true；result=`27e1ef343d2b49d409816887fc908c58569a5f3f5f6540eb3dde35d52fa71314`。flagged Lint实际0Fatal/Error23Warning，XML=`dd4d75c15a7524774778e45e61bbb1dc1053832f24ec8daced9e79016206f782` 保留。普通Release反射/JNI/变异/内容门禁另行执行中，未宣称本地class/R8证明签名APK或设备/速度。源码/新提交/新CI/保护签名及新51999 host实际校验仍待。
+
+普通R8后续63701退出0，五步均成功，实际日志确认Google反射、高德JNI7类/24成员、7变异、当前普通Debug内容审核通过；实际ordinary DEX确认7高德定义/普通Application/measurement namespace0。265个本次编译输入仍与实际工作文件哈希一致，manifest=`3dcb74f92373fc35b0980c982650d8b66f76d6aae915a38bc729c7cd81ac7063`；源码提交绑定待新检查点后核对。监督新controlled HTTPS host仅为主机10数据集/214页/12PNG与旧8哈希/延迟验证，已开始准备但实际结果待收，排除性能样本，不安装证书到设备/不操作Android。60组/1200次每检查点附加计划准备=`60af60f0d7758b662c97517e2fccf772433724c618fc0fc729872c34435cf325`，原57组/预算/失败与原始数据保留；执行0，当前新签名/角色及API26权限接线仍待。
+
 ### 新351高德正常UI准备：首次引导失败，未开启
 
 原八文件独立sandbox备份核验后，既有正常GUI助手单次尝试进入引导，FAIL=`AssertionError`；原助手只保留异常类型，确切断言未观测。child=`132229b63331d03039b3b9f68db396b5ada6f4cd5f1228b0e1a8beed00545ddb`，`guideStarted=true`、`enableAttempted=false`、`cases=[]`；高德开启次数0、native/JUnit执行0，不能称高德SDK测试失败或原生通过。child清理验证无开启/无案例/版本0、原两settings精确恢复、三权限flags恢复/PID缺失与child自有备份移除；没有正常撤回或attached-tree证明。
 
 guardian=`4244b6926989fb98df09e3464b7622d0705624ce8ee6e127f0be534a14e3a653` 的严格撤回/树门禁保持false，未恢复六extra文件、未删除独立备份。最终只读 `d9275fa6a5439ae732ed22c52a832f27c9b518526fb53149c1718235c68b46f1` 核对原八presence/hash全同、原三拒绝权限flags、默认引导/高德0、PID缺失、Debug1b33/Test6497/API37-user0-ARM64、font1/rotation0-auto1/1080×1920/420。独立备份的两个present副本哈希均为原3325…c793，其余六原文件absent；备份保留，不声明正常SDK撤回已经发生。正在准备仅补引导失败标量的新助手副本，原输入/断言/期限/助手与失败保留；尚未再执行或更改SDK私有设置。
+
+### 新351高德正常开启/五例/撤回：已通过并完成清理
+
+第二次观察尝试在原断言处仍失败，但记录到确切stage `assert_service_amap_off`/helper317及四个checkable：三个进度 `android.view.View` checked=[false,false,true]，一个 `android.widget.CheckBox` unchecked，均为目标包且enabled。观察 child=`4fd3c49584da22207a9c2752fa61eabeb008bf0cde3634f04e45ecc753a42184`，final=`19b43409a7a5ccb842a032cace0827639636d3c1659cd26a347258af8569d471`；开启/原生仍0，原状态恢复。该观察仅证明第二次助手全局计数缺陷，首轮未观测确切断言不补填。
+
+新助手只把已有service树候选限定为目标包/真实Checkbox/checkable，保留unique1/unchecked并要求enabled；无新的点击、等待、SDK私有设置或自动同意。实际四节点原谓词RED、精确候选GREEN及9反例等25纯控制通过（`e9119dde9870dcf35f9142e1d341d3baba484cce0e4a54f1808bade39988f25c`）。修正后单次正常引导完成且高德保持off，candidateCount1；正常设置开启0→1=`c03a8e885c473d9a31e048faceec9efb86157ab5d1a7417f0b89785a7eed5078`，随后五个精确单项均exit0/start-end0/OK1/terminal−1/noabort：
+
+| 高德单项 | runtime SHA-256 |
+| --- | --- |
+| 视野选点 | `c8f5b3fc29e3b48ce5245cecc9925c212158e1afcbc659a098614e33ed30e0e5` |
+| 投影/锚点/展示 | `83141b0ae9a892469134fc0e46b2718b56f9c5f2f6bda33f6fecbba13551ff01` |
+| 定位/方向/过期/不抢镜头 | `5d7e3cc52ad28d66ac3c301388b1f299a25674a2bfe7967df719ad17b41008a4` |
+| 重叠/可访问计数 | `29172c8e255efd08fb0226cd2629dc74a1fd71ad33f818d9096efae0b120e3f7` |
+| 提供方切换/单视图/释放 | `5bf024c71ebb717247e9cb1ff610be786475b098505f582dbadbf132cbca0a6f` |
+
+F3新鲜标量 `bbe39efa41a1c6110282fec9c527f75906c916b6a854c07c55ae0ed4c7dcca81` 证明clock0、旧按钮enabled、A2、handler最新snapshot invalid/ineligible/member0、selectionCalls0/selected0/accepted=false、空B/nativeView1/source0。输入为合成点位，原生图片用例含既有MEMORY注入；不证明手机/GNSS/地理底图或真实网络地图图片。
+
+正常撤回1→0=`6f4178127c1f40f0f4490ed547ce0961296d94368595e935ef7b2bd4946327b6`，同一真实MainActivity/非空attached hierarchy PID31990 的高德/Google/Surface/Texture计数均0，随后PID消失；范围仅当前attached树与进程，不声明SDK detached native资源/私有存储状态。child=`76df4116cc5dfb04bf7b511eadd0ef9f9947c133e4db2b454fcaae01ce9ada91`、guardian=`32fc73be8b7afbe18249e284a99bd236c2a2e26581bcd49e028552276fa97d2a` 严格门禁通过；六extra已与原值同，不需恢复写入。final=`64020e42c156d98c862b830e9abe6486be46716a00a066131b3b98dedb626738` 核对原八文件/三权限flags/默认引导-高德0/SDK包/显示/PID，新备份及三个child备份缺失。随后只删除两个明确已验证旧owned备份，new cleanup=`5b76ad95a5bacd16f9531ff8f7febb1a73a181937e18d9b4c481caf69a4b56f7` 再核对原状态与两目录缺失；旧final和失败均未改。来源为351/run380857，7c97只含host/docs修改，无新7c97签名执行声明。
 
 ## 较早 10 月 11 日检查点（以下记录保留当时范围）
 

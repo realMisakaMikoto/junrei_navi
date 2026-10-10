@@ -741,7 +741,7 @@ def main():
     parser.add_argument("--output", required=True, type=Path)
     parser.add_argument("--serial", required=True, choices=TARGETS)
     parser.add_argument("--provider", required=True, choices=("google", "amap"))
-    parser.add_argument("--size", required=True, type=int, choices=(1000, 10000, 100000, 51828))
+    parser.add_argument("--size", required=True, type=int, choices=(1000, 10000, 100000, 51828, 51999))
     parser.add_argument("--start-state", required=True, choices=("cold_no_cache", "cold_valid_cache", "warm_return", "ready_viewport"))
     parser.add_argument("--data-profile", choices=("normal", "delayed", "offline"), default="normal")
     parser.add_argument("--image-profile", choices=("normal", "delayed", "offline"), default="normal")

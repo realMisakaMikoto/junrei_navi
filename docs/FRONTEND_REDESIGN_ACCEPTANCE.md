@@ -12,6 +12,8 @@ New351/run380857 API37 onboarding and ordered Google notice/Navigator pair now p
 
 New351 API26 Google F3 ran once and failed the final empty-B wait at220, after preceding frozen assertions, with no success scalar/old B geometry (runtimee39acb73...fdc23). Final e97e7821...6314 restores declared original APP/package/PID/configuration scope; unavailable permission/settings fields remain null. Diagnostic-catch extension and AMap preservation guardian are preparation only, with no retry/altered assertions or timeout.
 
+Subsequent corrected351 AMap normal-UI phase passes all5 native cases once and restores consent0 afteractual0→1→0, current attached SDK tree absence, exact original eight files/permissions/display/packages/PID (final64020e42...26738). Separate cleanup5b76ad95...b56f7 removes botholdowned backups afterfresh path/hash/state guards, preserving old reports. API26/native-basemap/phone/Release limits remain. Afterphasepause, failure-only scalar and51,999 measurement allowlists are applied locally;39 script controls pass, newnormalbuild/signature/runtime gates remain pending.
+
 ## Earlier repair checkpoints (historical scope below)
 
 ## Subsequent repair acceptance
