@@ -42,6 +42,13 @@ sealed interface DiscoveryCameraCommand {
     data class Locate(override val sequence: Long, val coordinate: GeoPoint) : DiscoveryCameraCommand
 }
 
+internal fun shouldUseInitialDiscoveryOverview(
+    initializedCamera: Boolean,
+    currentCommand: DiscoveryCameraCommand?,
+    provider: MapProvider,
+    consumedCommand: Long?,
+): Boolean = !initializedCamera && currentCommand == null && provider == MapProvider.GOOGLE && consumedCommand == null
+
 data class ScreenPoint(val x: Float, val y: Float)
 
 data class ScreenRect(val left: Float, val top: Float, val right: Float, val bottom: Float) {

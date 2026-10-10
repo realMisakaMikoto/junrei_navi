@@ -1,6 +1,45 @@
 # PR #37 整合修复验收（进行中）
 
-核对日期：2026-10-10；基线 `6759c8d3e2e7dddb17db51f509e2a30f1d845b75`，应用及受保护候选 `d861847ef64cacac9ca093b826d6177f6078fcae`。普通CI `38054972962` 与文档577fcc0的CI `38057079661` 均四项成功，签名 `38056666409` 成功且五包独立核验通过。沿用用户完整 v2 计划与新增定位点/手机朝向要求；未合并、Ready、发布或部署。历史检查点保持下方各自来源范围。
+核对日期：2026-10-11；基线 `6759c8d3e2e7dddb17db51f509e2a30f1d845b75`，最新受保护候选/成功签名来源 `edb8ae00c4c42df3e7d193acfb7b183ec0e62387`。CI `38070699590` 四绿、双API产物独立RAM核验通过；签名 `38072602734` 成功、清理成功且两个SSH作业跳过。其后镜头初始化策略修正及12行布尔诊断的本地623/Lint/两包/R8/SDK与内容审计已通过，尚无新提交、签名或设备证明。完整F1—F7及定位/朝向目标继续，未合并、Ready、发布或部署；历史结果各自绑定来源。
+
+## 2026-10-11：edb固定产物与原API37运行
+
+四绿后严格守卫重新核对保护/仅保护分支环境、精确SHA、工作树与祖先关系，将候选从d861快进edb；main仍 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，保护规则未改。两份CI ZIP字节数及SHA-256独立匹配GitHub digest：
+
+| API / asset | 字节数 | ZIP SHA-256 |
+| --- | ---: | --- |
+| API26 /11677068527 | 3,776,304 | `62ce267ee5f184819664a0394c3a61d10675e1690dac220d6b9993115bda4016` |
+| API37 /11677286082 | 5,400,490 | `d4c2cd6ab6d8002cfe0be469d6e6b4c89d600e9eb0a991f95855a351eeee99cb` |
+
+各API新引导回归精确class/method的start1/end0、`OK (1 test)`、终止码−1通过；主UI规定11类/61项成功，普通日志没有独立方法状态或终止码。完成草稿两份标量7+4检查全true、source/route0、隔离关系匹配，仍不证明命名空间已删除。0d2安装失败与9f API26窗口null失败保留，未被重写。
+
+五包独立哈希、包名、固定RSA-4096单签名者/v2核验通过；实际Manifest/DEX/内容/地区/JNI角色审计限普通Release、测量Release和恢复Debug，普通Debug/Test只据哈希/包名/签名检查。记录 `signed-current-38072602734/verified-artifacts.json` SHA-256为 `bec06ee96ef439abb24b934a1788131521d3c3d8b756565892943ed1a1255427`。
+
+| edb产物 | SHA-256 |
+| --- | --- |
+| 普通Release | `78687fde0d45b9d209ff001492c7381e5b98094ac733a4161c30498d18102d3c` |
+| 签名Debug | `ba4f9127d3b299a20d74cb7d5a34992f7ee4f50e69e87e5fefcf892bf7ecf603` |
+| AndroidTest | `bad2cd7673fe1778e5b92870631aeb8fcf44e2ca0464f43c1ff344c90a562906` |
+| 测量Release | `488e9d1883b49c170e6bdc9160b871fed0e532bfd754875761e0480b2f8f27e5` |
+| 恢复Debug | `4e1ff2f763e5ebe898f2fbc9a03c968be1b26562d7157592fd2fa2fb67b6228e` |
+
+普通Debug/Test仅在原API37经当前PID停止证明后保留数据`install -r`并明确ARM64。引导新签名单例GREEN：已有定位/通知拒绝仍进入服务页、权限请求0，未提交引导或高德同意；三权限/flags及原APP设置XML/.bak存在性和哈希精确恢复。`runtime-38072602734-api37-onboarding-1011/binding.json` SHA-256为 `7d5e7537afa208a57cd857945729f97cab1eb5f5500525e21d2318fa234337ac`。
+
+Google同意→Navigator主题两方法JUnit/order/`OK (2 tests)`通过，但旧严格包装器最后一次宿主PID读取缺失，原`runtime-38072602734-api37-google-paired-1011/paired.json`仍FAIL（SHA-256 `3924a150667ad7a313add3fcc34df5f148caff58382593435527f9add0f1108c`）。后续只读`runtime-38072602734-api37-readonly-diagnostic-1011/pair-event-origin.json`补充4个真实TestRunner start/finish来源均PID12516，补齐同进程证据（SHA-256 `fa49216f95887402de00494d30f76bb8afb50dba7a0066a336aef0a8ada84ba7`），没有重跑或改写原失败。未证明跨进程同意持久化或PID后续出现的唯一原因。
+
+edb Google F3初始30秒等待仍FAIL：2个地图成员，当前token发布被接受但成员0；失败时真实SDK镜头target/zoom不匹配预期Restore，fresh bounds/query/native viewport/padded-content计数均0、projected2、source0。此诊断仅属于失败时的新投影，不能反推原计算时刻；尚无实际默认概览分支执行证据，也不能归因于没有出现在此Map/Button夹具中的工具栏。严格h160原生图片复用单例GREEN（`runtime-38072602734-api37-google-viewport-images-base-1011/runtime.json` SHA-256 `d4ad01a7e13ad3ece7ba277606b28eeca7d415c3117dc384e991d4f9fb8f8be0`）；MEMORY注入边界来自夹具源码，receipt本身没有DataSource字段，不能证明真实HTTP/解码或关闭F7/Release像素资格。
+
+结束时PID缺失、已安装edb哈希/原三权限及flags/APP设置XML+.bak/引导false与高德版本0均核对一致；这不是Room、草稿或全缓存逐字节保留证明。设备阶段暂停，高德正常UI临时同意/撤回授权仍有效、尚未执行；双API进程恢复、真实图片和57组Release B1/B2仍待，Release样本0，手机未动。
+
+### 镜头初始化策略：JVM红绿与后续门禁
+
+现有谓词只看`initializedCamera`与当前命令；真实VM确认初始Restore后会清命令，未初始化状态因此仍可能允许隐式概览。等价提取后5项JVM基线中1项失败、0错误/跳过，失败方法为`acknowledgedInitialRestoreMustNotBecomeAnImplicitOverview`；仅增加`consumedCommand == null`条件后5项全过，各次构建源哈希前后0差异。`initial-camera-red-1011/results.json` SHA-256 `647d4fcdd609d38482603da43f8d1de383651072cfcac9f3aca871574e477a68`，`initial-camera-green-1011/results.json`为 `6da668da60a2fde64f9c616c4d72b1be1a3537e0f16560151f587ad9e2777d22`，两目录保留XML。结果JSON没有提交SHA，只证明各次工作快照的策略缺口，不证明上述设备失败实际走过默认概览。
+
+原生夹具仅新增12行：回执镜头与预期Restore匹配、失败镜头与源码自造Google概览匹配的布尔值；复用既有镜头捕获，缺失值null，不输出坐标，不增SDK调用/监听/等待，全部原断言、超时和夹具输入保留。
+
+`initial-camera-full-build-1011/`实际全623项JVM零失败/错误/跳过，双Lint各0Fatal/0Error/20Warning、普通两包构建通过，构建源文件前后0差异。app=`d4f3e1e723d55a58e1c1b9995bf358cdc3c0ce2341aa92536543f9d48901a432`，test=`cec6d1b73f9c0d0613aea2a54601f3d830c4e6d4a5c03fd3c1429d3566027c8a`；Lint计数在`lint-counts.json`。`r8-initial-camera-1011/results.json`五步骤全部退出0，实际日志确认R8、Google反射、高德JNI（7类/24成员）、7项变异测试和Debug内容审计通过；同目录`actual-r8-dex.json`确认7个高德类定义、普通Application存在、测量命名空间0。没有安装本地包，新来源提交、CI、固定签名与原生证明仍待，不沿用edb结果证明这一修正已生效。
+
+## 2026-10-11历史：两层CI支架失败
 
 实施检查点 `0d2b0797d4f9fca2fdf6d40687bb77bffd9975da` 的CI `38063714530`：verify/backend成功，API26/37均在新增引导步骤的首次APK覆盖安装报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`，尚未启动instrumentation或配置临时定位权限，不能记为UI回归失败。流程先安装verify作业下载包，再在emulator作业重建；实际错误确认两包签名不一致。修正仅在新建临时CI模拟器 `anitabi-smoke` 中、安装重建包前增加失败即停止的 `adb uninstall cn.anitabi.navigator`，保留此前下载包冷启动验收、全部测试断言和权限恢复；不适用于已有数据的本地模拟器或手机。新CI安装与回归结果待复测。
 
@@ -8,26 +47,28 @@
 
 新窗口观察夹具的本地普通Debug/测试包构建与双Lint通过：各0Fatal/0Error/20Warning，163个源文件构建前后0差异；应用包 `6f01bb6c27e9a239b5ce9c6aaee8f8b1d645b9b9cdc7c5e90ca53125f0020f8c`，测试包 `64aaa9021e48de26c9525277430b4a4c3b572a0415906f5400f89898b358ba3e`，记录在 `build/frontend-fix-v2/onboarding-window-build-1011/`。本轮本地未重跑JVM、未安装包；新CI及固定签名设备验证仍待。
 
+## 2026-10-11：要求状态
+
 | 项目 | 当前事实 | 尚需完成 |
 |---|---|---|
-| F1 详情权威性 | 原13项一致性测试中7项失败；修复后19项一致性测试全过，保留20轮受控竞态；当前d861完整CI通过 | 当前签名关联与最终整体验收 |
-| F2 完整性/重试 | 空/部分响应、独立图片元数据补充、缓存修复通过上述测试；相关64项核心测试全过，当前d861完整CI通过 | 当前签名关联与最终整体验收 |
-| F3 视野选点 | 8项生产 VM 基线7失败；20项修复回归及2项数据准备屏障测试全过；d861原生初始快照虽有效却为空，未到移动/旧按钮阶段，失败保留 | 新失败投影诊断与原生移动/布局期间即时点击验证 |
+| F1 详情权威性 | 原13项一致性测试中7项失败；修复后19项一致性测试全过，保留20轮受控竞态；edb CI四绿及签名来源关联通过 | 后续源码与最终整体验收 |
+| F2 完整性/重试 | 空/部分响应、独立图片元数据补充、缓存修复通过上述测试；相关64项核心测试全过，edb CI/签名来源关联通过 | 后续源码与最终整体验收 |
+| F3 视野选点 | 原VM红绿证据保留；edb原生初始当前空快照及SDK镜头偏离仍FAIL，5项初始化策略JVM基线1失败/修正后5过 | 新策略编译/CI/签名/原生证明及移动/旧按钮验证 |
 | F4 持久草稿 | 原5项恢复测试全部失败；10月2日3c4a2ae源码API26实际后台进程死亡5种情况通过；当前CI两API的两项持久完成/Room标量检查通过，图片元数据与生成关联/完成所有权保留JVM回归 | 当前签名双API五种进程恢复；旧包恢复不移用 |
 | F5 附近排序 | 83d B1与d861 B2各三规模/20次，B2每轮一次排序、恰N距离、BACKGROUND、完整成员；10k/100k排序p95下降58.441%/68.623%，1k上升10.525%；源/JVM/CI证据保留 | 1k回退原因未证实；不宣称全规模加速、Release或真机性能 |
-| F6 加载性能 | 默认关闭的trace已接入数据、缓存、地图、Window帧和Coil请求/解码；d861测量Release签名/实际组件与独立APK审计通过，尚无图片正常的Release B1/B2样本 | 测量包设备像素资格、57组各20次的同条件矩阵；附近Debug比较不替代地图整体性能 |
+| F6 加载性能 | 默认关闭的trace接线保留；edb测量Release实际角色审计通过，尚无图片正常的Release B1/B2样本 | 像素资格及57组各20次矩阵；附近Debug不替代地图整体性能 |
 | F7 图片链路 | B0规范3/3、旧前缀0/3；旧包公网实际6图及缩略图/h360像素通过，保留首次超时；10月2日修复可见集超过256项绕过退避、旧null图片补充和后台暂停丢失重试机会，固定包602项JVM通过；同包API26点位列表真实HTTPS/解码像素/重试1项通过 | 双地图原生图片及最终签名验收；原手机仍未复测 |
-| 新增定位显示 | 位置/方向逻辑回归已过；d861签名API37 Google定位原生用例通过；83d高德部分像素/过期/镜头断言通过但重叠回调失败，d861高德尚未执行 | 当前签名高德原生复测；真实手机传感器/GNSS未验证 |
+| 新增定位显示 | 逻辑与d861签名Google原生用例通过范围保留；83d高德部分断言通过但完整单例失败 | edb两家原生复测；真实手机传感器/GNSS未验证 |
 
 此表不宣称任何整项已经完成。旧CI、旧签名 APK 和旧截图仅保留各自历史范围，不能证明本次工作树通过。
 
-## 2026-10-10：当前CI、保护签名与固定测量安排
+## 2026-10-10历史：d861 CI、保护签名与固定测量安排
 
 独立在内存核对CI `38054972962` 的API26资产 `11671676083` 和API37资产 `11671037672`，字节数和GitHub digest一致，各11个规定类/61项UI全部成功，新增工具栏类两字体共2项。方法覆盖证据是精确源码的方法数量和成功JUnit类进度，没有独立方法状态或JUnit XML。两份完成草稿清理标量的11个布尔检查均true、source/route调用0、隔离契约匹配；标量要求进程退出后清理，后续干净重装与网络恢复步骤成功，但没有显式命名空间不存在报告。脱敏摘要 `ci38054972962-independent-scalar-1010.json` SHA-256为 `fd040974aa30189e25672c9f408753286995192f6f82d7c5695b0c1df8e20644`。
 
 四绿后守卫重新核对main/候选保护、仅保护分支环境、精确SHA与祖先关系，候选从83d快进d861；main仍 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，未修改保护规则。签名 `38056666409` 明确启用测量和恢复选项，流程及清理成功、两个SSH作业跳过。新5包独立哈希/包名/固定RSA-4096单签名者v2核验通过；实际角色/Manifest/DEX/内容/地区/JNI审计针对普通Release、测量Release、恢复Debug，不混称普通Debug和androidTest也通过角色审计。文档提交 `577fcc0da5e5f9cc3c5c3d337cbbca829b0e1eed` 的CI `38057079661` 四绿，不产生新的应用来源。
 
-| 当前d861产物 | SHA-256 |
+| 历史d861产物 | SHA-256 |
 | --- | --- |
 | 普通Release | `9bda26862098e3195859f154fba51c8e3b271dc79afcfafd4bef3ff67cf967d2` |
 | 签名Debug | `4b6d67628c1fab00147e1e2f29691172ee966a28507db5897267ae41aaa0f8bd` |
@@ -57,13 +98,13 @@
 
 用户已明确允许仅原API37经正常设置临时开启高德，完成后恢复版本0。实际入口仍在首次引导：通知被写为可选，但“继续”条件要求通知已授权；定位已有授权、通知拒绝时却再次请求通知，拒绝后仍停在权限页，未进入服务页。正常UI RED在当前d861复现，高德同意仍缺失/版本0，尚未运行高德原生用例，没有写偏好或绕过SDK隐私门禁。
 
-`runtime-38056666409-api37-onboarding-red-1010/red.json` SHA-256为 `8ee2aa909b7dc183cfaa02afcf02f30d433b9864c49061d37cd15b2a5882d917`；`passed=true`仅表示RED复现成功，`onboardingCompleted=false`、`amapConsentToggled=false`。三项原权限/flags及应用设置存在性/哈希均恢复，结束PID消失。源码仅让“继续”与既有完成条件一样只要求定位，并准备81行真实MainActivity回归及CI入口；这些后续未提交修改正统一构建，尚无GREEN，不移用d861签名证据。
+`runtime-38056666409-api37-onboarding-red-1010/red.json` SHA-256为 `8ee2aa909b7dc183cfaa02afcf02f30d433b9864c49061d37cd15b2a5882d917`；`passed=true`仅表示RED复现成功，`onboardingCompleted=false`、`amapConsentToggled=false`。三项原权限/flags及应用设置存在性/哈希均恢复，结束PID消失。源码仅让“继续”与既有完成条件一样只要求定位，并准备81行真实MainActivity回归及CI入口；该检查点尚无GREEN，后续edb结果见上文，不移用d861签名证据或重写旧RED。
 
-10月10日重新核对官方[Projection](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/Projection)、[GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)、[OnMapReadyCallback](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap.OnMapReadyCallback)约束：像素相对地图左上角，projection冻结当时镜头，ready不等于布局完成，padding影响可见范围。[NavigationApi](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/NavigationApi)确认未同意时Application入口返回TERMS_NOT_ACCEPTED，真实对话框接受与获取单例有前提；[Navigator.cleanup](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/Navigator)只记录会话资源/待处理目的地清理，没有说明同意重置。诊断仅在失败时同一Main读取新投影，不增加生产SDK等待；不能把跨进程false归因于cleanup。
+10月10—11日核对官方[Projection](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/Projection)、[GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)、[OnMapReadyCallback](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/OnMapReadyCallback)约束：像素相对地图左上角，projection冻结当时镜头，ready不等于布局完成，padding影响可见范围。此前猜测的嵌套ready引用不可用，10月11日改为上述真实顶层引用并核对约束。[NavigationApi](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/NavigationApi)确认未同意时Application入口返回TERMS_NOT_ACCEPTED，真实对话框接受与获取单例有前提；[Navigator.cleanup](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/Navigator)只记录会话资源/待处理目的地清理，没有说明同意重置。诊断仅在失败时同一Main读取新投影，不增加生产SDK等待；不能把跨进程false归因于cleanup。
 
 此前静态字体审查误读取配置，使一个Google Navigation Android Key出现在该子代理工具输出；已停止并告知用户，根代理未读取/复述，未入Git/文档。该具体Key限制未核验、未轮换，不能声明本轮零敏感输出；后续不读凭据配置。F1—F7整体仍进行中，历史失败、地理底图和真机限制保留。
 
-### 后续修正的本地构建：设备验收仍待
+### 0d2历史：后续修正的本地构建
 
 `native-followup-build-1010/` 已完成618项JVM、0失败/错误/跳过、双Lint各0Fatal/0Error/20Warning、普通Debug应用与测试APK构建，源文件构建前后0差异。app=`6f01bb6c27e9a239b5ce9c6aaee8f8b1d645b9b9cdc7c5e90ca53125f0020f8c`、test=`72f86bf6fce883ddd824786fb05c57a097afd1a2f59b038cbb2e0102691a340f`；未安装这些本地包。新失败诊断、h160夹具和通知可选UI回归已编译，不等于设备通过。
 

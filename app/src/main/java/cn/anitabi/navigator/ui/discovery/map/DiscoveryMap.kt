@@ -271,7 +271,7 @@ fun DiscoveryMap(
                 map.stop()
             }
             map.configure(darkTheme, padding, width, height)
-            if (!initializedCamera && currentCommand.value == null && provider == MapProvider.GOOGLE) {
+            if (shouldUseInitialDiscoveryOverview(initializedCamera, currentCommand.value, provider, consumedCommand)) {
                 // Authored country overview, not a source/user location or a route target.
                 map.restore(DiscoveryCameraPosition(GeoPoint(37.0, 138.0), 4.5f))
             }

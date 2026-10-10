@@ -1,8 +1,16 @@
 # Discovery loading performance: measurement contract
 
-Prepared 2026-09-21 for PR #37. Current status, October 10: **signed Debug nearby B1/B2 recorded; 10k/100k sorting improves, 1k p95 regresses; image-enabled Release B1/B2 pending**.
+Prepared 2026-09-21 for PR #37. Current status, October 11: **edb signed/runtime controls recorded, F3 remains failed; signed Debug nearby B1/B2 retains its earlier scope and 1k regression; image-enabled Release samples remain 0**.
 
-Candidate `d861847ef64cacac9ca093b826d6177f6078fcae` passes all four ordinary CI jobs in `38054972962`; documentation-only `577fcc0da5e5f9cc3c5c3d337cbbca829b0e1eed` also passes all four in `38057079661`. Protected signing `38056666409` succeeds with cleanup and both SSH jobs skipped. Five downloaded APKs pass independent checksum/fixed-signer/v2 checks; ordinary Release, measurement Release and recovery Debug additionally pass their distinct actual Manifest/DEX/content/region/JNI role audits. Exact hashes and runtime failures are in [the repair checklist](FRONTEND_FIX_ACCEPTANCE.md). No current-source Release measurement group has run.
+Latest successful signed source `edb8ae00c4c42df3e7d193acfb7b183ec0e62387` passes all four jobs in CI `38070699590`. API26 asset 11677068527 and API37 asset 11677286082 independently match their GitHub ZIP digests in RAM: each new optional-notification selector passes exactly one test, main UI has 11 classes/61 successes and completion scalars have 7+4 true checks with source/route 0. Main UI has no individual method or terminal evidence, and scalars do not prove namespace removal. Signing `38072602734` succeeds with cleanup/SSH skips; five APK checksum/package/fixed-signer/v2 checks and the three distinct application-role audits pass. Receipt SHA-256 is `bec06ee96ef439abb24b934a1788131521d3c3d8b756565892943ed1a1255427`; full hashes and retained failures are in [the repair checklist](FRONTEND_FIX_ACCEPTANCE.md).
+
+### October 11 functional prerequisites, before Release B1
+
+Only signed Debug/Test are installed with retained data/ARM64 on original API37. Optional onboarding passes with exact original permissions/flags and APP settings presence/hashes restored. Google consent/theme's two JUnit methods pass in order; the original strict receipt remains FAIL because its final host PID observation is absent. Four later read-only TestRunner origin markers all identify 12516 and prove the two methods ran in the same process, without a rerun or rewriting that failure. Strict h160 native image reuse passes, but its MEMORY bitmap is injected by the fixture: no real image HTTP/decoder or Release pixel qualification is established.
+
+Actual edb F3 still fails its initial 30s wait. Failure-time current SDK camera target/zoom differ from the intended Restore; fresh bounds/query/native-viewport/padded-content member counts are 0, while 2 members project, data membership is 2, the accepted current snapshot is empty and source calls are 0. This is internally consistent failure-time geometry, not the original calculation, a confirmed old-projection defect, a toolbar cause or proof that the default-overview branch executed.
+
+An equivalent extraction of the existing initialization predicate gives a real VM JVM baseline of 5 tests/1 failure/0 errors/skips; adding only `consumedCommand == null` makes all 5 pass. This establishes a policy hole after a consumed Restore, not the runtime cause above. Twelve new native diagnostic lines compare acknowledged Restore and failure-time authored overview using booleans/nulls only, with original input/assertions/timeouts and SDK call counts retained. The subsequent local 623 JVM cases, both Lints and ordinary app/test assembly pass with source hashes unchanged. All five R8/Google reflection/AMap JNI/seven-mutation/Debug content steps pass in `r8-initial-camera-1011/`. No local package is installed and new commit/CI/signature/device proof remains pending. There are still 0 Release B1/B2 samples across the fixed 57 groups, with budgets, data/image profiles and collector unchanged.
 
 ### Historical preparation, September 23–October 2
 
@@ -166,7 +174,7 @@ These are setup references, not a record that these commands were run for F6.
 
 ### Minimal proposed measurement configuration
 
-Prefer the existing optimized Release target, with a narrowly gated local-profiling manifest setting for the internal measurement build and sanitized application trace points. Keep it non-debuggable, keep R8/resource shrinking, and retain the fixed signature. The profiling option defaults off outside the internal measurement artifact; record the manifest and option in its identity. The manifest and scalar runtime instrumentation are implemented as described in the September 24 update. The latest d861 protected measurement artifact passes independent audits; successful device qualification and the Release groups remain pending.
+Prefer the existing optimized Release target, with a narrowly gated local-profiling manifest setting for the internal measurement build and sanitized application trace points. Keep it non-debuggable, keep R8/resource shrinking, and retain the fixed signature. The profiling option defaults off outside the internal measurement artifact; record the manifest and option in its identity. The manifest and scalar runtime instrumentation are implemented as described in the September 24 update. The latest edb protected measurement artifact passes independent audits; successful device qualification and the Release groups remain pending.
 
 For API 37, an external Perfetto/UI Automator harness against that target is the minimal route without inventing a Gradle module. If Macrobenchmark is selected instead, add a real separate test module and inspect its generated tasks before publishing commands. The Android guide recommends a non-debuggable release-like target and reports configuration problems for debuggable targets/emulators; do not suppress those checks and label the result physical-device release acceptance. [Android Macrobenchmark setup](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview).
 
@@ -230,7 +238,7 @@ The controlled-delay profile is pinned to 750 ms added response latency per appl
 
 ### October 10 execution groups fixed before Release B1
 
-This is the execution list selected for this continuation, not a claim that the earlier contract specified a complete Cartesian product. No Release B1/B2 attempt has run under this list. The application candidate is `d861847ef64cacac9ca093b826d6177f6078fcae`; ordinary CI `38054972962` passed all four jobs and protected signing `38056666409` succeeds with independent artifact checks. Working-image pixel qualification remains a prerequisite; nearby Debug B2 is a separate comparison.
+This is the execution list selected for this continuation, not a claim that the earlier contract specified a complete Cartesian product. It was fixed before Release B1 at d861 and is unchanged. Latest audited signed source is edb from `38072602734`; the later initialization policy change still needs its own final-source gates. No Release B1/B2 attempt has run under this list. Working-image pixel qualification remains a prerequisite; nearby Debug B2 is a separate comparison.
 
 Each of API37/ARM64 Google, API37/ARM64 AMap, and API26/x86_64 Google uses these 19 homogeneous groups, with 20 attempted runs per group and the identical list for B2:
 
@@ -277,7 +285,7 @@ The following are candidate sources of delay only: serial request scheduling, fu
 | Group | Source / APK / configuration | Attempted / completed | Key results | Status |
 | --- | --- | --- | --- | --- |
 | B0 original image failure | Baseline source identified above; runtime artifact not yet recorded here | 0 / 0 | Not measured in this document | Pending |
-| B1 working-image baseline | Latest audited d861 measurement Release `aa5ddc4895f1f70352ffca6f5136ae6c3f06a42e9b9ba35d1297e00ffa76c25c`, protected run 38056666409; earlier 83d qualification failures retained | 0 / 0 | No startup/viewport/image/SDK distribution; 57 groups unrun | Device qualification pending |
+| B1 working-image baseline | Latest audited edb measurement Release `488e9d1883b49c170e6bdc9160b871fed0e532bfd754875761e0480b2f8f27e5`, protected run 38072602734; later policy fix not signed, earlier 83d qualification failures retained | 0 / 0 | No startup/viewport/image/SDK distribution; 57 groups unrun | Device qualification pending |
 | B2 image-enabled Release comparison | Same-condition candidate not yet measured | 0 / 0 | No Release before/after claim | Pending |
 | Nearby signed Debug B1 / B2 | 83d / d861, API37/ARM64, fixed NoImage probe | 60 / 60 per checkpoint | Once-per-member/BACKGROUND confirmed; 10k/100k improve, 1k p95 rises 10.525% | Scoped F5 comparison; not F6 |
 | User-device reproduction | Prior read-only binding: API37/ARM64, previous internal Release `573db32f9743dff1471e9dbe1d33f3ea760cec2d86b705c48a01123906efb450`; current runtime state not rechecked | 0 / 0 | No handset failed-request or loading trace; total slow-load cause unobserved | Unverified |

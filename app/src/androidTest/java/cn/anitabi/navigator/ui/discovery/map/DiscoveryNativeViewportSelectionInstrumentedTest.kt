@@ -240,6 +240,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                         onManualMove = { if (value.armed) value.gestureAt.compareAndSet(0, SystemClock.elapsedRealtimeNanos()); value.vm.manualMove() },
                         onUnavailable = { value.unavailable = true; value.vm.mapUnavailable() },
                         modifier = Modifier.fillMaxSize().testTag(MAP), onCameraCommandApplied = { sequence, camera ->
+                            value.ackCameraMatchesExpectedRestore.set(cameraMatches(camera, value.expectedRestore))
                             value.commandsApplied.incrementAndGet(); value.vm.cameraCommandApplied(sequence, camera)
                         },
                         viewportToken = state.viewportToken, onViewportInvalidated = {
@@ -341,6 +342,8 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 .put("cameraZoomMatchesInitialRestore", camera?.let { abs(it.zoom - value.expectedRestore.zoom) < .001f } ?: JSONObject.NULL)
                 .put("cameraBearingMatchesInitialRestore", camera?.let { abs(it.bearing - value.expectedRestore.bearing) < .001f } ?: JSONObject.NULL)
                 .put("cameraTiltMatchesInitialRestore", camera?.let { abs(it.tilt - value.expectedRestore.tilt) < .001f } ?: JSONObject.NULL)
+                .put("failureCameraMatchesAuthoredGoogleOverview", (if (provider == MapProvider.GOOGLE)
+                    camera?.let { cameraMatches(it, AUTHORED_GOOGLE_OVERVIEW) } else null) ?: JSONObject.NULL)
                 .put("boundsContainMemberCount", if (bounds != null) display?.count { bounds.contains(it.coordinate) } ?: JSONObject.NULL else JSONObject.NULL)
                 .put("projectedMemberCount", projected?.size ?: JSONObject.NULL)
                 .put("membersInsideNativeViewport", if (native != null) projected?.count { it.x >= 0f && it.x < native.width && it.y >= 0f && it.y < native.height } ?: JSONObject.NULL else JSONObject.NULL)
@@ -364,6 +367,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 .put("panCameraChangedAtFailure", value.panCameraChangedAtFailure.get() ?: JSONObject.NULL)
                 .put("visibleMemberCount", current.visibleIds.size).put("cameraCallbacks", value.cameraChanges.get())
                 .put("commandsApplied", value.commandsApplied.get()).put("invalidations", value.invalidations.get())
+                .put("ackCameraMatchesExpectedRestore", value.ackCameraMatchesExpectedRestore.get() ?: JSONObject.NULL)
                 .put("publicationAttempts", value.publicationAttempts.get()).put("acceptedPublications", value.acceptedPublications.get())
                 .put("lastPublicationMembers", value.lastPublicationMembers.get().takeIf { it >= 0 } ?: JSONObject.NULL)
                 .put("lastTokenCurrent", value.lastTokenCurrent.get() ?: JSONObject.NULL)
@@ -404,6 +408,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         var padding: DiscoveryMapPadding? = null
         val cameraChanges = AtomicInteger()
         val commandsApplied = AtomicInteger()
+        val ackCameraMatchesExpectedRestore = AtomicReference<Boolean?>(null)
         val invalidations = AtomicInteger()
         val publicationAttempts = AtomicInteger()
         val lastPublicationMembers = AtomicInteger(-1)
@@ -425,6 +430,13 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         const val VERSION = "100:synthetic-native-viewport"
         const val MAP = "viewport-native-map"
         const val SELECT = "viewport-select"
+        val AUTHORED_GOOGLE_OVERVIEW = DiscoveryCameraPosition(GeoPoint(37.0, 138.0), 4.5f)
+        fun cameraMatches(camera: DiscoveryCameraPosition, expected: DiscoveryCameraPosition): Boolean =
+            abs(camera.center.latitude - expected.center.latitude) < 0.000001 &&
+                abs(camera.center.longitude - expected.center.longitude) < 0.000001 &&
+                abs(camera.zoom - expected.zoom) < .001f &&
+                abs(camera.bearing - expected.bearing) < .001f &&
+                abs(camera.tilt - expected.tilt) < .001f
         fun nativeViews(root: View): List<View> = buildList {
             if (root is NavigationView || root is AmapNativeView) add(root)
             else if (root is ViewGroup) repeat(root.childCount) { addAll(nativeViews(root.getChildAt(it))) }
