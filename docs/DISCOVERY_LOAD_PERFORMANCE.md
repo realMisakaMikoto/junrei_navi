@@ -1,6 +1,12 @@
 # Discovery loading performance: measurement contract
 
-Prepared 2026-09-21 for PR #37. Current status: **nearby UI B1 recorded and F5 source/JVM verification complete; image-enabled Release B1/B2 pending**.
+Prepared 2026-09-21 for PR #37. Current status, October 10: **signed Debug nearby B1/B2 recorded; 10k/100k sorting improves, 1k p95 regresses; image-enabled Release B1/B2 pending**.
+
+Candidate `d861847ef64cacac9ca093b826d6177f6078fcae` passes all four ordinary CI jobs in `38054972962`; documentation-only `577fcc0da5e5f9cc3c5c3d337cbbca829b0e1eed` also passes all four in `38057079661`. Protected signing `38056666409` succeeds with cleanup and both SSH jobs skipped. Five downloaded APKs pass independent checksum/fixed-signer/v2 checks; ordinary Release, measurement Release and recovery Debug additionally pass their distinct actual Manifest/DEX/content/region/JNI role audits. Exact hashes and runtime failures are in [the repair checklist](FRONTEND_FIX_ACCEPTANCE.md). No current-source Release measurement group has run.
+
+### Historical preparation, September 23–October 2
+
+The following preparation records retain their original source/artifact scope. Their then-pending signing, F5 and nearby B2 statements are superseded by the October 10 results below; they do not certify the remaining Release matrix.
 
 October 2 checkpoint: production retry and draft-image correctness fixes pass 602 JVM cases in the normal local build. Gated Release compilation and Lint also pass with the native visual probe, before the later ready-span change. The probe projects the actual SDK markers and copies the native SurfaceView or TextureView pixels; scalar reports retain current viewport/member/photo match counts, capture cost and stale-result rejection. The matcher has not been qualified on a device, so these are prepared mechanisms, not observed native point/image timings. A SurfaceView copy does not establish final Window composition or successful geographic tiles. Fresh official [PixelCopy](https://developer.android.com/reference/android/view/PixelCopy) and [Google Projection](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/Projection) constraints informed this separation.
 
@@ -84,7 +90,25 @@ All three API37/ARM64 groups use protected source `83d86d8a271533403d941f324344a
 
 Each round has exactly one observed full-member sort span; source, route and SDK-map calls are0, and cleanup succeeds. Root independently validates all60records and nearest-rank statistics. Raw `nearby.json` files and companion exact-selector/API/installed-ABI reports are in `runtime-36977969429-api37-nearby-b1-{1000,10000,100000}/`. Their SHA256 values, in that size order, are `fd2d61852378de3bbdd0ea3363e4c00959e5360bcfbb986a1f032b559bbd1d21`, `13789e8bdb427e027e65a90aaff00db09b40e3722cfb753542cf6a8364e5d1c4`, and `c4e7dff64856408d847a8168aa04681ecced20504ca4bb5936bf1de37faf63f4`. The observed excess calculations and main execution justify F5's one-distance-per-member/background change. They do not establish the cause of total map loading, actual frame jank, true phone sensors, or a B2 improvement. Image-enabled Release groups remain pending. An initial ad-hoc analysis command failed at shell quoting before reading/writing samples; stdin-script analysis then validated the unchanged reports.
 
-F5 source now moves full-membership ranking to a cancellable background worker, computes each distance once and reuses stored meters in rows. Display metadata, source generation and camera changes do not change its separate ranking key. Fifteen targeted regressions and all618JVM tests pass, as do both Lints, ordinary app/test assembly, R8, Google/AMap audits, seven mutation checks, actual ordinary DEX isolation and local APK/source audits. Seven modified source hashes remain unchanged. The nearby Android probe and Release measurement/server/collector files remain unchanged. Verification ran after all three nearby B1 groups paused, avoiding host-build load inside their samples. Signed Debug B2 and the image-enabled Release matrix remain pending; source/JVM success does not establish a measured speedup.
+F5 source moves full-membership ranking to a cancellable background worker, computes each distance once and reuses stored meters in rows. Display metadata, source generation and camera changes do not change its separate ranking key. Fifteen targeted regressions and all618JVM tests pass, as do both Lints, ordinary app/test assembly, R8, Google/AMap audits, seven mutation checks, actual ordinary DEX isolation and local APK/source audits. Seven modified source hashes remain unchanged. The nearby Android probe and Release measurement/server/collector files remain unchanged. Verification ran after all three nearby B1 groups paused, avoiding host-build load inside their samples. The following signed Debug comparison supplies the separate F5 runtime evidence; the image-enabled Release matrix remains pending.
+
+### October 10 nearby UI B2 and bounded comparison
+
+The same API37/ARM64 target now runs signed d861 Debug `4b6d67628c1fab00147e1e2f29691172ee966a28507db5897267ae41aaa0f8bd` and AndroidTest `4ea7d44cbea2d7b553536585085a49f43c5433fc9ec96fe3d55bdcab5fe32668`, with byte-unchanged probe SHA-256 `be49c59d3e1ddf8b50999b73f7135f778133c12ebb7ea401e6cecd4928b0edda`. Each size completes 20/20 attempts with 0 failures, one sort, exactly N distance calculations on BACKGROUND, complete membership/scroll and successful cleanup; source/route/map calls remain 0. No host server, Gradle build or API26 execution runs during these timed groups.
+
+All values below are nearest-rank p50 / p95 / max in milliseconds. UI settlement is the instrumentation upper bound, not a Window frame or SDK FPS measurement.
+
+| Members | B1 sort | B2 sort | B1 UI-settle upper bound | B2 UI-settle upper bound | Sort p95 change |
+| --- | --- | --- | --- | --- | --- |
+| 1,000 | 17.136 / 40.047 / 40.345 | 7.859 / 44.262 / 45.557 | 155.006 / 200.946 / 206.838 | 150.477 / 217.316 / 266.048 | +10.525% |
+| 10,000 | 209.611 / 235.568 / 239.122 | 82.600 / 97.899 / 118.490 | 342.322 / 387.037 / 393.067 | 233.929 / 316.020 / 316.587 | −58.441% |
+| 100,000 | 2,847.252 / 2,957.828 / 2,963.667 | 833.463 / 928.079 / 1,006.010 | 3,011.329 / 3,137.208 / 3,150.787 | 1,048.354 / 1,165.721 / 1,216.594 | −68.623% |
+
+The 1k p95 increase exceeds the contract's 10% investigation signal. Its first three rounds are slower than the later 4.511–8.846 ms rounds, but the cause is unproven; all 20 attempts remain, with no pruning, retry or tuning to remove the regression. These results support the 10k/100k isolated sorting improvement, not an all-size speedup or F6 closure.
+
+Post-install `before-b2.json` and `after-b2.json` match each other and B1's captured ART `run-from-apk`, permissions/flags, font and orientation-setting fields. Window 1080×1920/420dpi/font1/LIGHT/seed37 and explicit NoImage membership match. B1 did not record per-round actual display rotation; B2's observed rotation 0 cannot fill that gap. This is signed Debug-to-Debug synthetic-location evidence, not Release image loading, geographic tiles, true sensors, FPS or handset evidence.
+
+Root and an independent reader recompute all 60 raw records. `runtime-38056666409-api37-install-1010/nearby-b2-comparison.json` SHA-256 is `9626be78bdde5cf5f6cf32974abec1330689764676e8056a226d6e4971477305`. Raw `runtime-38056666409-api37-nearby-b2-{1000,10000,100000}-1010/nearby.json` hashes, in that order, are `228f9ff6b520f44f2d4fdeed19b20aaa0e63ff406ad52489b914f2ca6e5d2ef9`, `a592bdd9c3a33bd1a8e7b75ae8ccfb5885d4c2b685d38112a09df4064d0d33c4`, and `14430741b3cfa504fab87c1d57de3c50a2bc3de2a9141a53669d227343aa5d89`.
 
 Keep three distinct checkpoints. Record the full application SHA, measurement-harness SHA, build execution SHA, target/test APK SHA-256, signer verification, and measurement configuration for each. Instrumentation added to an old source snapshot is a separate measured artifact and must be identified as such.
 
@@ -142,7 +166,7 @@ These are setup references, not a record that these commands were run for F6.
 
 ### Minimal proposed measurement configuration
 
-Prefer the existing optimized Release target, with a narrowly gated local-profiling manifest setting for the internal measurement build and sanitized application trace points. Keep it non-debuggable, keep R8/resource shrinking, and retain the fixed signature. The profiling option defaults off outside the internal measurement artifact; record the manifest and option in its identity. The manifest and scalar runtime instrumentation are now implemented as described in the September 24 update; the protected optimized measurement artifact and external harness are still pending.
+Prefer the existing optimized Release target, with a narrowly gated local-profiling manifest setting for the internal measurement build and sanitized application trace points. Keep it non-debuggable, keep R8/resource shrinking, and retain the fixed signature. The profiling option defaults off outside the internal measurement artifact; record the manifest and option in its identity. The manifest and scalar runtime instrumentation are implemented as described in the September 24 update. The latest d861 protected measurement artifact passes independent audits; successful device qualification and the Release groups remain pending.
 
 For API 37, an external Perfetto/UI Automator harness against that target is the minimal route without inventing a Gradle module. If Macrobenchmark is selected instead, add a real separate test module and inspect its generated tasks before publishing commands. The Android guide recommends a non-debuggable release-like target and reports configuration problems for debuggable targets/emulators; do not suppress those checks and label the result physical-device release acceptance. [Android Macrobenchmark setup](https://developer.android.com/topic/performance/benchmarking/macrobenchmark-overview).
 
@@ -206,7 +230,7 @@ The controlled-delay profile is pinned to 750 ms added response latency per appl
 
 ### October 10 execution groups fixed before Release B1
 
-This is the execution list selected for this continuation, not a claim that the earlier contract specified a complete Cartesian product. No Release B1/B2 attempt has run under this list. The application candidate is `d861847ef64cacac9ca093b826d6177f6078fcae`; ordinary CI `38054972962` passed all four jobs, and protected signing `38056666409` is pending. Working-image pixel qualification and independent artifact checks remain prerequisites.
+This is the execution list selected for this continuation, not a claim that the earlier contract specified a complete Cartesian product. No Release B1/B2 attempt has run under this list. The application candidate is `d861847ef64cacac9ca093b826d6177f6078fcae`; ordinary CI `38054972962` passed all four jobs and protected signing `38056666409` succeeds with independent artifact checks. Working-image pixel qualification remains a prerequisite; nearby Debug B2 is a separate comparison.
 
 Each of API37/ARM64 Google, API37/ARM64 AMap, and API26/x86_64 Google uses these 19 homogeneous groups, with 20 attempted runs per group and the identical list for B2:
 
@@ -253,8 +277,9 @@ The following are candidate sources of delay only: serial request scheduling, fu
 | Group | Source / APK / configuration | Attempted / completed | Key results | Status |
 | --- | --- | --- | --- | --- |
 | B0 original image failure | Baseline source identified above; runtime artifact not yet recorded here | 0 / 0 | Not measured in this document | Pending |
-| B1 working-image baseline | `83d86d8`; measurement Release `b586dfec0d75cb92007998823d58c2d442db5882eb436aac7f87d764b33b047b`, protected run36977969429; actual device configuration pending | 0 / 0 | Artifact independently verified; no startup/viewport/image/SDK distribution | Device qualification pending |
-| B2 optimized comparison | Not yet pinned | 0 / 0 | No before/after performance claim | Pending |
+| B1 working-image baseline | Latest audited d861 measurement Release `aa5ddc4895f1f70352ffca6f5136ae6c3f06a42e9b9ba35d1297e00ffa76c25c`, protected run 38056666409; earlier 83d qualification failures retained | 0 / 0 | No startup/viewport/image/SDK distribution; 57 groups unrun | Device qualification pending |
+| B2 image-enabled Release comparison | Same-condition candidate not yet measured | 0 / 0 | No Release before/after claim | Pending |
+| Nearby signed Debug B1 / B2 | 83d / d861, API37/ARM64, fixed NoImage probe | 60 / 60 per checkpoint | Once-per-member/BACKGROUND confirmed; 10k/100k improve, 1k p95 rises 10.525% | Scoped F5 comparison; not F6 |
 | User-device reproduction | Prior read-only binding: API37/ARM64, previous internal Release `573db32f9743dff1471e9dbe1d33f3ea760cec2d86b705c48a01123906efb450`; current runtime state not rechecked | 0 / 0 | No handset failed-request or loading trace; total slow-load cause unobserved | Unverified |
 | API 26 native AMap | Compatible environment unavailable under the existing record | 0 / 0 | Fallback is not native rendering evidence | Unverified |
 

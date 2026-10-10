@@ -166,6 +166,21 @@ jobs:
           ! grep -q "cn.anitabi.navigator" smoke-output/crash.log
       - name: Build runtime instrumentation APK
         run: ./gradlew :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+      - name: Verify onboarding continues with optional notifications denied
+        run: |
+          set -o pipefail
+          adb install -r app/build/outputs/apk/debug/app-debug.apk
+          adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          adb shell am force-stop cn.anitabi.navigator
+          trap 'adb shell pm revoke cn.anitabi.navigator android.permission.ACCESS_FINE_LOCATION; adb shell pm revoke cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION' EXIT
+          adb shell pm grant cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
+          adb shell pm grant cn.anitabi.navigator android.permission.ACCESS_FINE_LOCATION
+          adb shell am instrument -w -r \
+            -e onboardingLocationPreconfiguredApproved true \
+            -e class 'cn.anitabi.navigator.ui.onboarding.OnboardingOptionalNotificationInstrumentedTest#grantedLocationContinuesWithoutRequestingOptionalNotifications' \
+            cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
+            2>&1 | tee smoke-output/onboarding-optional-notification.txt
+          grep -Eq '^OK \(1 test\)' smoke-output/onboarding-optional-notification.txt
       - name: Verify complete first-run onboarding
         run: |
           set -o pipefail

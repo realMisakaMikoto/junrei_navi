@@ -161,7 +161,7 @@ fun OnboardingRoute(
 
     val requestPermissions: () -> Unit = {
         refreshPermissions()
-        if (hasLocationPermission && hasNotificationPermission) {
+        if (hasLocationPermission) {
             currentStep = SERVICE_STEP
         } else {
             val missingPermissions = buildList {

@@ -1,17 +1,17 @@
 # PR #37 整合修复验收（进行中）
 
-核对日期：2026-10-10；基线 `6759c8d3e2e7dddb17db51f509e2a30f1d845b75`，应用及受保护候选 `d861847ef64cacac9ca093b826d6177f6078fcae`。当前普通CI `38054972962` 四项成功，签名 `38056666409` 运行中。沿用用户完整 v2 计划与新增定位点/手机朝向要求；未合并、Ready、发布或部署。历史检查点保持下方各自来源范围。
+核对日期：2026-10-10；基线 `6759c8d3e2e7dddb17db51f509e2a30f1d845b75`，应用及受保护候选 `d861847ef64cacac9ca093b826d6177f6078fcae`。普通CI `38054972962` 与文档577fcc0的CI `38057079661` 均四项成功，签名 `38056666409` 成功且五包独立核验通过。沿用用户完整 v2 计划与新增定位点/手机朝向要求；未合并、Ready、发布或部署。历史检查点保持下方各自来源范围。
 
 | 项目 | 当前事实 | 尚需完成 |
 |---|---|---|
 | F1 详情权威性 | 原13项一致性测试中7项失败；修复后19项一致性测试全过，保留20轮受控竞态；当前d861完整CI通过 | 当前签名关联与最终整体验收 |
 | F2 完整性/重试 | 空/部分响应、独立图片元数据补充、缓存修复通过上述测试；相关64项核心测试全过，当前d861完整CI通过 | 当前签名关联与最终整体验收 |
-| F3 视野选点 | 8项生产 VM 基线7失败；20项修复回归及2项数据准备屏障测试全过，已接入地图/按钮事件；14项发现界面契约复测通过 | 原生移动/布局期间即时点击验证 |
+| F3 视野选点 | 8项生产 VM 基线7失败；20项修复回归及2项数据准备屏障测试全过；d861原生初始快照虽有效却为空，未到移动/旧按钮阶段，失败保留 | 新失败投影诊断与原生移动/布局期间即时点击验证 |
 | F4 持久草稿 | 原5项恢复测试全部失败；10月2日3c4a2ae源码API26实际后台进程死亡5种情况通过；当前CI两API的两项持久完成/Room标量检查通过，图片元数据与生成关联/完成所有权保留JVM回归 | 当前签名双API五种进程恢复；旧包恢复不移用 |
-| F5 附近排序 | 固定83d签名Debug的1k/10k/100k各20次B1全过，确认MAIN重复距离计算；e5已提交可取消后台、单次距离复用，15项专项及618全量/双Lint/两包/R8/全部本地审计通过；d861 CI四绿 | 新签名Debug同条件B2与实际后台/每点一次验证 |
-| F6 加载性能 | 默认关闭的trace已接入数据、缓存、地图、Window帧和Coil请求/解码；83d测量Release签名/实际组件与独立APK审计通过，尚无图片正常的Release B1/B2样本 | 测量包设备像素资格、同条件至少20次及完整矩阵；附近B1不替代地图整体性能 |
+| F5 附近排序 | 83d B1与d861 B2各三规模/20次，B2每轮一次排序、恰N距离、BACKGROUND、完整成员；10k/100k排序p95下降58.441%/68.623%，1k上升10.525%；源/JVM/CI证据保留 | 1k回退原因未证实；不宣称全规模加速、Release或真机性能 |
+| F6 加载性能 | 默认关闭的trace已接入数据、缓存、地图、Window帧和Coil请求/解码；d861测量Release签名/实际组件与独立APK审计通过，尚无图片正常的Release B1/B2样本 | 测量包设备像素资格、57组各20次的同条件矩阵；附近Debug比较不替代地图整体性能 |
 | F7 图片链路 | B0规范3/3、旧前缀0/3；旧包公网实际6图及缩略图/h360像素通过，保留首次超时；10月2日修复可见集超过256项绕过退避、旧null图片补充和后台暂停丢失重试机会，固定包602项JVM通过；同包API26点位列表真实HTTPS/解码像素/重试1项通过 | 双地图原生图片及最终签名验收；原手机仍未复测 |
-| 新增定位显示 | 位置/方向逻辑回归已过；API26本地和83d签名API37 Google各自定位用例通过；83d高德部分像素/过期/镜头断言通过，但重叠回调失败，完整单例未过 | 当前签名Google/高德原生复测；真实手机传感器/GNSS未验证 |
+| 新增定位显示 | 位置/方向逻辑回归已过；d861签名API37 Google定位原生用例通过；83d高德部分像素/过期/镜头断言通过但重叠回调失败，d861高德尚未执行 | 当前签名高德原生复测；真实手机传感器/GNSS未验证 |
 
 此表不宣称任何整项已经完成。旧CI、旧签名 APK 和旧截图仅保留各自历史范围，不能证明本次工作树通过。
 
@@ -19,9 +19,49 @@
 
 独立在内存核对CI `38054972962` 的API26资产 `11671676083` 和API37资产 `11671037672`，字节数和GitHub digest一致，各11个规定类/61项UI全部成功，新增工具栏类两字体共2项。方法覆盖证据是精确源码的方法数量和成功JUnit类进度，没有独立方法状态或JUnit XML。两份完成草稿清理标量的11个布尔检查均true、source/route调用0、隔离契约匹配；标量要求进程退出后清理，后续干净重装与网络恢复步骤成功，但没有显式命名空间不存在报告。脱敏摘要 `ci38054972962-independent-scalar-1010.json` SHA-256为 `fd040974aa30189e25672c9f408753286995192f6f82d7c5695b0c1df8e20644`。
 
-四绿后守卫重新核对main/候选保护、仅保护分支环境、精确SHA与祖先关系，候选从83d快进d861；main仍 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，未修改保护规则。签名 `38056666409` 明确启用测量和恢复选项，两个SSH作业已跳过。新5包下载/验签仍待流程成功；独立角色/Manifest/DEX/内容审计针对普通Release、测量Release、恢复Debug，普通Debug和androidTest另有哈希/包名/固定签名检查，不混称5包角色审计。
+四绿后守卫重新核对main/候选保护、仅保护分支环境、精确SHA与祖先关系，候选从83d快进d861；main仍 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`，未修改保护规则。签名 `38056666409` 明确启用测量和恢复选项，流程及清理成功、两个SSH作业跳过。新5包独立哈希/包名/固定RSA-4096单签名者v2核验通过；实际角色/Manifest/DEX/内容/地区/JNI审计针对普通Release、测量Release、恢复Debug，不混称普通Debug和androidTest也通过角色审计。文档提交 `577fcc0da5e5f9cc3c5c3d337cbbca829b0e1eed` 的CI `38057079661` 四绿，不产生新的应用来源。
 
-当前仅原API37模拟器保留数据隐藏boot，未安装新产物或更改高德同意；新双API进程恢复包装器已准备，API26只在RAM增加原专用AVD目标，实际驱动SHA不变。用户明确批准API37正常设置临时开启高德、验收后恢复版本0；手机未动。Release执行选择在开始前固定为每支持组合19组/共57组，每组20尝试，详见性能文档；尚无新Release或附近B2样本。
+| 当前d861产物 | SHA-256 |
+| --- | --- |
+| 普通Release | `9bda26862098e3195859f154fba51c8e3b271dc79afcfafd4bef3ff67cf967d2` |
+| 签名Debug | `4b6d67628c1fab00147e1e2f29691172ee966a28507db5897267ae41aaa0f8bd` |
+| AndroidTest | `4ea7d44cbea2d7b553536585085a49f43c5433fc9ec96fe3d55bdcab5fe32668` |
+| 测量Release | `aa5ddc4895f1f70352ffca6f5136ae6c3f06a42e9b9ba35d1297e00ffa76c25c` |
+| 恢复Debug | `7fad30480c105ed98d1b04655bf4de382a30e22e2d6a791dcf524aa6588fb87c` |
+
+下载核验记录 `signed-current-38056666409/verified-artifacts.json` SHA-256为 `1c93a63c5627bcb80e7f1973c6d622ae101574369972ca46bdc971ca05411dd8`。只有普通Debug/Test保留数据更新到原API37专用模拟器、明确ARM64；双API当前源码五种进程恢复、真实图片最终验收和Release像素资格尚未执行。Release安排保持每组合19组/共57组、每组20尝试，执行0；手机未动。
+
+### F5签名B2
+
+三规模各20/20通过，每轮一次排序/恰N距离/BACKGROUND、完整成员滚动、source/route/map调用0及清理通过。根代理和独立读者重算60原始记录，与固定83d B1采用相同字节探针、NoImage合成位置、窗口/字体/主题和已捕获ART/权限/方向设置；前后状态匹配。B1没有逐轮实际屏幕rotation，不能补填。10k/100k排序p95下降58.441%/68.623%；1k上升10.525%，前三轮慢但原因未证实，未剔除、重跑或调优。p50/p95/max、UI上界和三份原始哈希见[性能文档](DISCOVERY_LOAD_PERFORMANCE.md)；不是Release图片/FPS/GNSS或手机证明。
+
+### 原生19项与单独的同进程主题验收
+
+`runtime-38056666409-api37-native-*-1010/runtime.json` 共19个独立选择器，16通过、3失败。Google定位、投影/位图锚点、迟到/失败图片、ready/detach跨度、聚合/聚焦/fit、浏览主题、密集成员及图标回归各自通过；自造位图不替代F7网络解码，虚拟时钟跨度不替代性能。下列失败保留，不能称原计划25项全过：
+
+| 失败 | 当前证据与边界 | 后续修正/诊断状态 |
+| --- | --- | --- |
+| Google F3初始视野 | readiness标量：2个mapPoints，1次有效当前token发布却有0成员；快照当前、可选=false，原生View附着/尺寸有效，SDK回调与投影资格未直接观测（null）；未到拖动/旧按钮阶段 | 此夹具直接组合Map与Button，没有发现工具栏，不能把此前工具栏反馈当根因。新仅失败时读取当前SDK投影的标量诊断待编译/运行，原等待/断言不变 |
+| Google视野图片复用 | 第303行等待图片失败；另一性能夹具仍比较裸URL，生产THUMBNAIL实际带h160 | 严格共享resolver测试期望已准备，待编译/原生复测；不改生产路径、计数或超时 |
+| Navigator主题独立运行 | 第66行说明前提失败，启动前真实`areTermsAccepted=false`；原权限/flags已恢复 | 下述真实同进程说明→主题双方法通过，保留独立失败；未确认跨进程同意状态原因 |
+
+独立同进程执行实际说明选择器→Navigator主题选择器，共2方法按预期start/end顺序、同PID10776、status均0、终止码−1及`OK (2 tests)`；Navigator-ready日/夜/日、同View，无目的地或引导。`runtime-38056666409-api37-google-paired-1010/paired.json` SHA-256为 `d757af44762aceebde88fc4518b6bc2a0624d3505a1b28bf2139cba953f49de9`，三项权限状态及所有flags精确恢复，结束PID消失。此项不是说明跨进程持久化证明，也不把独立失败报告改为通过。
+
+### 高德正常UI入口与引导RED
+
+用户已明确允许仅原API37经正常设置临时开启高德，完成后恢复版本0。实际入口仍在首次引导：通知被写为可选，但“继续”条件要求通知已授权；定位已有授权、通知拒绝时却再次请求通知，拒绝后仍停在权限页，未进入服务页。正常UI RED在当前d861复现，高德同意仍缺失/版本0，尚未运行高德原生用例，没有写偏好或绕过SDK隐私门禁。
+
+`runtime-38056666409-api37-onboarding-red-1010/red.json` SHA-256为 `8ee2aa909b7dc183cfaa02afcf02f30d433b9864c49061d37cd15b2a5882d917`；`passed=true`仅表示RED复现成功，`onboardingCompleted=false`、`amapConsentToggled=false`。三项原权限/flags及应用设置存在性/哈希均恢复，结束PID消失。源码仅让“继续”与既有完成条件一样只要求定位，并准备81行真实MainActivity回归及CI入口；这些后续未提交修改正统一构建，尚无GREEN，不移用d861签名证据。
+
+10月10日重新核对官方[Projection](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/Projection)、[GoogleMap](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap)、[OnMapReadyCallback](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/gms/maps/GoogleMap.OnMapReadyCallback)约束：像素相对地图左上角，projection冻结当时镜头，ready不等于布局完成，padding影响可见范围。[NavigationApi](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/NavigationApi)确认未同意时Application入口返回TERMS_NOT_ACCEPTED，真实对话框接受与获取单例有前提；[Navigator.cleanup](https://developers.google.com/maps/documentation/navigation/android-sdk/reference/com/google/android/libraries/navigation/Navigator)只记录会话资源/待处理目的地清理，没有说明同意重置。诊断仅在失败时同一Main读取新投影，不增加生产SDK等待；不能把跨进程false归因于cleanup。
+
+此前静态字体审查误读取配置，使一个Google Navigation Android Key出现在该子代理工具输出；已停止并告知用户，根代理未读取/复述，未入Git/文档。该具体Key限制未核验、未轮换，不能声明本轮零敏感输出；后续不读凭据配置。F1—F7整体仍进行中，历史失败、地理底图和真机限制保留。
+
+### 后续修正的本地构建：设备验收仍待
+
+`native-followup-build-1010/` 已完成618项JVM、0失败/错误/跳过、双Lint各0Fatal/0Error/20Warning、普通Debug应用与测试APK构建，源文件构建前后0差异。app=`6f01bb6c27e9a239b5ce9c6aaee8f8b1d645b9b9cdc7c5e90ca53125f0020f8c`、test=`72f86bf6fce883ddd824786fb05c57a097afd1a2f59b038cbb2e0102691a340f`；未安装这些本地包。新失败诊断、h160夹具和通知可选UI回归已编译，不等于设备通过。
+
+最初本地 `assembleRelease` 在配置阶段被既有“未配置Release签名”保护拒绝，尚未执行R8；没有读取或注入签名材料。改回既有允许的 `minifyReleaseWithR8` 后，`r8-native-followup-fixed-1010/` 的R8、Google反射、高德JNI与7变异、Debug APK内容审计全部退出0；实际两份Release DEX包含7高德类定义和普通Application，测量命名空间0。最初源审计助手误用不存在的文件名，未执行审计；查实际入口 `.github/scripts/audit-source-secrets.sh` 后退出0。新测试文件仍需暂存后纳入tracked-source扫描，完整签名与运行仍走受保护CI，不声称本地签名Release或全部整合GREEN。
 
 ## 2026-10-02：当前固定产物与新增回归
 
@@ -82,7 +122,7 @@ cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快�
 
 本地Node 24.14.0/npm 11.18.0实际执行 `npm ci`、类型检查、测试、构建及 `npm audit --omit=dev --json`，全部退出0；78项测试全部通过且无跳过，生产依赖审计所有风险等级及总数均为0。文件SHA-256：package=`492ca7920251243df2195226dc40e55d291621c3569f43132b16ef9095853152`，lock=`cd0dea64b7ca10321d477ac75ff9e78a456f68d7d485d6123cfda176712d03fc`。这只证明本地依赖修正；新提交CI和容器构建仍待，不将原失败run写为通过。源码没有HTTP/2配置、注册响应trailer或直接导入fast-uri，属于适用性观察，不能替代依赖审计，也不声称观察到实际攻击。
 
-## 2026-10-02：当前保护签名构建成功
+## 2026-10-02历史：83d保护签名构建成功
 
 `83d86d8a271533403d941f324344a80d8abd4697` 的普通 CI `36975549732` 四项成功。重新核对 main/候选保护及签名环境后，候选按祖先关系快进至该 SHA，main 保持 `2b6d971f489fdb93b1db0b46ed7f3950dec03209`。保护签名 `36977969429` 已成功：普通构建与审计、可选测量构建与实际 Manifest/DEX/内容/签名审计、私有产物上传及秘密/地区材料清理全部成功；两个 SSH 作业跳过。此前三次签名失败各自保留其来源和失败原因。
 
@@ -99,7 +139,7 @@ cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快�
 
 完整 API37 恢复需独立 Debug 夹具：普通签名 Debug 无法记录保存 Bundle、两进程路线尝试数与完整输入相等性。已有恢复源码不变；新增默认关闭的保护签名选项与严格 `planner-recovery` APK 身份审计，并将现有驱动限定参数化为专用 API26/5584 或 API37/5554。25项审计控制、9项驱动测试、7项内容审计集成控制和14个工作流 Bash 块通过；实际新夹具打包、独立签名核验及 API37 五种恢复仍待。夹具还原原文件并删除哨兵后，必须以同签名 `install -r` 恢复普通 APK 才能再次启动。文件备份清单不证明 Room/WAL 或全 Discovery 缓存逐字节未变。
 
-## 当前工作树 F5 实现与基线
+## 2026-10-02历史：F5源码验证与B1
 
 固定83d签名Debug的附近列表基线在API37/ARM64分别完成1k/10k/100k各20次：排序p95为40.047/235.568/2957.828ms，每轮距离计算17393/240767/3069059次，全部在MAIN。完整成员滚动、0 source/route/map调用和清理验证通过；原始文件哈希与逐组统计在性能文档。这是独立合成位置/NoImage列表基线，不证明用户手机或底图总耗时的原因。
 
@@ -107,13 +147,13 @@ cfa705e普通CI `36968112961`四绿后，保护/环境重新核对并候选快�
 
 新15项JVM回归通过，覆盖1k/10k/100k计算计数、稳定相等距离、相关/无关输入、计算与比较阶段取消、回主线程前迟到结果、元数据刷新及位置消失；`f5-targeted-1002/`保留XML及7个修改源文件前后相等的哈希。随后 `f5-full-1002/` 全量618项0失败/错误/跳过、双Lint0Fatal/Error（各20条警告）、应用/测试APK构建通过；普通本地app=`7705df117b3dfc70ded06efe2ad253ec5714268f35bb68fca14f8cf14d1228e6`、test=`bbae42d3d25f6aea92a6c7c62541944b4856ae84da83d1bb7b9d00f9b790da6c`，没有安装到固定签名AVD或手机。`f5-r8-1002/` 普通Release R8、Google反射、高德7类/24成员及7变异通过；实际两份DEX含7个高德定义与普通Application，测量命名空间0，7源文件哈希仍相同。当前普通Debug APK内容和源凭据审计也通过。保留既有SDK资源非致命警告，未修改keep或门禁。
 
-签名B2仍待。原附近Android计时探针、Release测量源码、Parser/Models/服务及collector未修改，以便保留相同观察方法。真实计时期间未运行本地Gradle；全量/构建/R8只在暂停后执行，完成后才释放运行代理的主机构建所有权。
+该检查点的签名B2当时仍待，10月10日结果见上文。原附近Android计时探针、Release测量源码、Parser/Models/服务及collector未修改，以便保留相同观察方法。真实计时期间未运行本地Gradle；全量/构建/R8只在暂停后执行，完成后才释放运行代理的主机构建所有权。
 
 2026-10-02以锁定coroutines1.11.0的官方 [collectLatest](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines.flow/collect-latest.html)、[withContext](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/with-context.html) 与 [ensureActive](https://kotlinlang.org/api/kotlinx.coroutines/kotlinx-coroutines-core/kotlinx.coroutines/ensure-active.html) 文档确认：新输入取消上一动作，切dispatcher返回时取消会丢弃结果，非挂起的计算/比较需主动检查取消。实现遵循这些约束并保留最终键复核。
 
 F3初始超时的静态复核未发现必然阻止就绪的生产缺陷。固定83d签名包的Google ready-viewport跨度用例已在API37通过（`runtime-36977969429-api37-google-ready-span/runtime.json`），实际SDK/投影/聚合/防抖及token接收路径可工作；这是采用Focus命令的独立作者夹具，只将排查缩到真实VM/Restore集成范围，不能推断根因。下一测试APK仅补失败时的VM/回调/原生View标量快照，原30秒等待、拖动与旧按钮断言不变；无法直接观察的SDK回调/投影资格填null，不假填成功。该诊断已在上述AndroidTest APK编译，但尚未签名/运行，不构成F3修复证明。
 
-## 当前签名原生运行与图片夹具契约
+## 2026-10-02历史：83d签名原生运行与图片夹具契约
 
 固定83d签名Debug/Test在API37的Google定位用例通过：实际像素验证合成圆点/方向、屏幕旋转处理、2秒过期回退、定位点不选入草稿且位置更新不跟随镜头，仍不代表真机传感器/GNSS。
 

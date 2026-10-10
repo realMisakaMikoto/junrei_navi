@@ -49,9 +49,14 @@ import cn.anitabi.navigator.ui.discovery.viewportIsCurrent
 import cn.anitabi.navigator.ui.map.OfficialAmapCoordinateConverter
 import cn.anitabi.navigator.ui.theme.AnitabiTheme
 import com.amap.api.maps.MapView as AmapNativeView
+import com.amap.api.maps.model.LatLng as AmapLatLng
 import com.google.android.gms.maps.GoogleMap
+import com.google.android.gms.maps.model.LatLng
 import com.google.android.libraries.navigation.NavigationView
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import java.util.concurrent.atomic.AtomicReference
@@ -71,6 +76,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Rule
 import org.junit.Test
+import kotlin.math.abs
 
 /**
  * Real SDK gesture and real VM selection, with a deliberately stale enabled Compose button.
@@ -128,6 +134,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
                 override fun read() = snapshot
                 override fun write(snapshot: DiscoverySnapshot) = Unit
             }, CoroutineScope(repositoryJob + Dispatchers.IO))
+            val restoredCamera = DiscoveryCameraPosition(center, 15f, provider = provider)
             val vm = DiscoveryViewModel(repository, object : DiscoveryCameraStore {
                 override fun lastCamera() = DiscoveryCameraPosition(center, 15f, provider = provider)
                 override fun saveCamera(camera: DiscoveryCameraPosition) = Unit
@@ -136,7 +143,7 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
             }, { if (provider == MapProvider.AMAP) TerritoryRegion.MAINLAND_CHINA else TerritoryRegion.OTHER }, SavedStateHandle())
             owner.put("native-viewport", vm)
             modelJob = requireNotNull(vm.viewModelScope.coroutineContext[Job])
-            Harness(vm, requests).also { harness = it }
+            Harness(vm, requests, restoredCamera, source).also { harness = it }
         }
         show(value)
         try {
@@ -221,11 +228,13 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
             val lifecycle = androidx.lifecycle.compose.LocalLifecycleOwner.current.lifecycle
             SideEffect { value.root = root; value.hostLifecycle = lifecycle }
             val bottom = with(LocalDensity.current) { 80.dp.roundToPx() }
+            val padding = DiscoveryMapPadding(bottom = bottom)
+            SideEffect { value.padding = padding }
             AnitabiTheme {
                 Box(Modifier.fillMaxSize()) {
                     if (value.showMap) DiscoveryMap(state.mapDataVersion, state.mapPoints, state.provider,
                         privacyReady = true, selectedIds = emptySet(), focusedPointId = null, imagesEnabled = true,
-                        darkTheme = false, padding = DiscoveryMapPadding(bottom = bottom), cameraCommand = state.cameraCommand,
+                        darkTheme = false, padding = padding, cameraCommand = state.cameraCommand,
                         onVisibleIdsChanged = {}, onPointClick = {}, onOverlapClick = {},
                         onCameraChanged = { value.cameraChanges.incrementAndGet(); value.vm.cameraChanged(it) },
                         onManualMove = { if (value.armed) value.gestureAt.compareAndSet(0, SystemClock.elapsedRealtimeNanos()); value.vm.manualMove() },
@@ -260,10 +269,86 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
     }
 
     private fun writeReadinessFailure(value: Harness, provider: MapProvider, stage: String = "initial_ready") {
+        val native = onMain { runCatching { nativeViews(value.root).singleOrNull() }.getOrNull() }
+        val google = AtomicReference<GoogleMap?>()
+        val callback = CountDownLatch(1)
+        val accepting = AtomicBoolean(true)
+        // Post-failure acquisition only: wait on the instrumentation thread, never Main or Compose time.
+        val acquired = if (native is NavigationView) runCatching {
+            onMain { native.getMapAsync { map ->
+                if (accepting.get()) google.set(map)
+                callback.countDown()
+            } }
+            callback.await(2, TimeUnit.SECONDS)
+        }.getOrNull() else null
+        accepting.set(false)
         val report = onMain {
+            // Navigation Projection/GoogleMap/OnMapReadyCallback checked 2026-10-10:
+            // one fresh projection is a camera snapshot; its pixels are map-relative, and map-ready does not prove layout.
             val current = value.vm.state.value
             val views = runCatching { nativeViews(value.root) }.getOrDefault(emptyList())
+            val sdk = google.get().takeIf { acquired == true && native in views }
+            val amap = (native as? AmapNativeView)?.takeIf { it in views }?.let { runCatching { it.map }.getOrNull() }
+            val googleProjection = runCatching { sdk?.projection }.getOrNull()
+            val amapProjection = runCatching { amap?.projection }.getOrNull()
+            val bounds = runCatching {
+                googleProjection?.visibleRegion?.latLngBounds?.let {
+                    DiscoveryGeoBounds(it.southwest.latitude, it.southwest.longitude, it.northeast.latitude, it.northeast.longitude)
+                } ?: amapProjection?.visibleRegion?.latLngBounds?.let {
+                    DiscoveryGeoBounds(it.southwest.latitude, it.southwest.longitude, it.northeast.latitude, it.northeast.longitude)
+                }
+            }.getOrNull()
+            val camera = runCatching {
+                sdk?.cameraPosition?.let {
+                    DiscoveryCameraPosition(GeoPoint(it.target.latitude, it.target.longitude), it.zoom, it.bearing, it.tilt, provider)
+                } ?: amap?.cameraPosition?.let {
+                    DiscoveryCameraPosition(GeoPoint(it.target.latitude, it.target.longitude), it.zoom, it.bearing, it.tilt, provider)
+                }
+            }.getOrNull()
+            val members = current.mapPoints.filter { it.provider == provider }
+            // This fixture has two identical sources; reuse its already-converted AMap center without another SDK conversion.
+            val display = if (provider == MapProvider.GOOGLE || members.all { it.coordinate == value.fixtureSource }) members.map {
+                IndexedDiscoveryPoint(it.id, if (provider == MapProvider.GOOGLE) it.coordinate else value.expectedRestore.center)
+            } else null
+            val projected = if (googleProjection != null || amapProjection != null) runCatching {
+                display?.map { point ->
+                    googleProjection?.toScreenLocation(LatLng(point.coordinate.latitude, point.coordinate.longitude))?.let {
+                        ScreenPoint(it.x.toFloat(), it.y.toFloat())
+                    } ?: requireNotNull(amapProjection).toScreenLocation(AmapLatLng(point.coordinate.latitude, point.coordinate.longitude)).let {
+                        ScreenPoint(it.x.toFloat(), it.y.toFloat())
+                    }
+                }
+            }.getOrNull() else null
+            val content = native?.takeIf { it in views && it.width > 0 && it.height > 0 }?.let {
+                value.padding?.content(it.width, it.height)
+            }
+            val queryCount = if (bounds != null && display != null) runCatching {
+                DiscoverySpatialIndex(DiscoveryIndexKey(current.mapDataVersion, provider), display).query(bounds).size
+            }.getOrNull() else null
+            val observation = JSONObject().put("scope", "failure_time_fresh_projection_and_rebuilt_query_not_original_calculation")
+                .put("googleCallbackAcquisition", if (native !is NavigationView) "not_requested" else when (acquired) {
+                    true -> "observed"; false -> "timeout"; null -> "request_failed"
+                })
+                .put("sameNativeViewAtCapture", native != null && native in views)
+                .put("nativeWidth", native?.width ?: JSONObject.NULL).put("nativeHeight", native?.height ?: JSONObject.NULL)
+                .put("paddingBottomPx", value.padding?.bottom ?: JSONObject.NULL)
+                .put("paddingObserved", value.padding != null).put("contentNonEmpty", content?.let { it.right > it.left && it.bottom > it.top } ?: JSONObject.NULL)
+                .put("cameraAvailable", camera != null).put("projectionAvailable", googleProjection != null || amapProjection != null)
+                .put("boundsAvailable", bounds != null)
+                .put("displayCoordinatesAvailable", display != null)
+                .put("cameraTargetMatchesInitialRestore", camera?.let { abs(it.center.latitude - value.expectedRestore.center.latitude) < 0.000001 &&
+                    abs(it.center.longitude - value.expectedRestore.center.longitude) < 0.000001 } ?: JSONObject.NULL)
+                .put("cameraZoomMatchesInitialRestore", camera?.let { abs(it.zoom - value.expectedRestore.zoom) < .001f } ?: JSONObject.NULL)
+                .put("cameraBearingMatchesInitialRestore", camera?.let { abs(it.bearing - value.expectedRestore.bearing) < .001f } ?: JSONObject.NULL)
+                .put("cameraTiltMatchesInitialRestore", camera?.let { abs(it.tilt - value.expectedRestore.tilt) < .001f } ?: JSONObject.NULL)
+                .put("boundsContainMemberCount", if (bounds != null) display?.count { bounds.contains(it.coordinate) } ?: JSONObject.NULL else JSONObject.NULL)
+                .put("projectedMemberCount", projected?.size ?: JSONObject.NULL)
+                .put("membersInsideNativeViewport", if (native != null) projected?.count { it.x >= 0f && it.x < native.width && it.y >= 0f && it.y < native.height } ?: JSONObject.NULL else JSONObject.NULL)
+                .put("membersInsidePaddedContent", if (content != null) projected?.count(content::contains) ?: JSONObject.NULL else JSONObject.NULL)
+                .put("membersNearContentCenter", if (content != null) projected?.count { abs(it.x - content.center.x) <= 3f && abs(it.y - content.center.y) <= 3f } ?: JSONObject.NULL else JSONObject.NULL)
+                .put("failureTimeRebuiltQueryMemberCount", queryCount ?: JSONObject.NULL)
             JSONObject().put("provider", provider.name).put("scope", "native_VM_readiness_failure").put("stage", stage)
+                .put("failureProjectionObservation", observation)
                 .put("lifecycle", value.hostLifecycle?.currentState?.name ?: JSONObject.NULL).put("nativeViewCount", views.size)
                 .put("allNativeViewsAttached", views.isNotEmpty() && views.all { it.isAttachedToWindow })
                 .put("allNativeViewsHaveSize", views.isNotEmpty() && views.all { it.width > 0 && it.height > 0 })
@@ -309,12 +394,14 @@ class DiscoveryNativeViewportSelectionInstrumentedTest {
         return result.get().getOrThrow()
     }
 
-    private class Harness(val vm: DiscoveryViewModel, val requests: AtomicInteger) {
+    private class Harness(val vm: DiscoveryViewModel, val requests: AtomicInteger,
+        val expectedRestore: DiscoveryCameraPosition, val fixtureSource: GeoPoint) {
         lateinit var root: View
         var showMap by mutableStateOf(true)
         @Volatile var unavailable = false
         @Volatile var armed = false
         var hostLifecycle: Lifecycle? = null
+        var padding: DiscoveryMapPadding? = null
         val cameraChanges = AtomicInteger()
         val commandsApplied = AtomicInteger()
         val invalidations = AtomicInteger()

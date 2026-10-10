@@ -29,6 +29,8 @@ import androidx.compose.ui.unit.Density
 import androidx.test.platform.app.InstrumentationRegistry
 import cn.anitabi.navigator.core.model.GeoPoint
 import cn.anitabi.navigator.core.model.MapProvider
+import cn.anitabi.navigator.data.images.AnitabiImageReference
+import cn.anitabi.navigator.data.images.AnitabiImageVariant
 import cn.anitabi.navigator.ui.theme.AnitabiTheme
 import coil3.ImageLoader
 import coil3.SingletonImageLoader
@@ -154,7 +156,7 @@ class DiscoveryNativeMapPerformanceTest {
         val fixtureLoader = ImageLoader.Builder(context).components {
             add(object : Interceptor {
                 override suspend fun intercept(chain: Interceptor.Chain): ImageResult {
-                    check(chain.request.data == IMAGE_URL) { "Unexpected viewport fixture image request" }
+                    check(chain.request.data == AnitabiImageReference.request(IMAGE_URL, AnitabiImageVariant.THUMBNAIL)) { "Unexpected viewport fixture image request" }
                     imageRequests.incrementAndGet()
                     val bitmap = Bitmap.createBitmap(120, 90, Bitmap.Config.ARGB_8888).apply { eraseColor(IMAGE_COLOR) }
                     return SuccessResult(image = bitmap.asImage(), request = chain.request, dataSource = DataSource.MEMORY)
