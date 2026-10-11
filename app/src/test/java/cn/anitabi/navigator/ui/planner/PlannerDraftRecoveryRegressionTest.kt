@@ -29,6 +29,7 @@ import cn.anitabi.navigator.data.network.bangumi.BangumiApi
 import cn.anitabi.navigator.data.repository.PilgrimageRepository
 import cn.anitabi.navigator.data.repository.TourRepository
 import cn.anitabi.navigator.data.repository.PlannerDraftRepository
+import cn.anitabi.navigator.data.repository.PlannerDraftState
 import cn.anitabi.navigator.data.repository.FilePlannerDraftStorage
 import cn.anitabi.navigator.data.repository.PlannerDraftStorage
 import cn.anitabi.navigator.data.repository.PlannerDraftRead
@@ -46,6 +47,7 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.resetMain
@@ -250,6 +252,176 @@ class PlannerDraftRecoveryRegressionTest {
         assertEquals(saved.storedTour.id, restored.state.value.restoredTourId)
         assertEquals(before.selectedPoints.map { it.copy(imageUrl = images.getValue(it.id)) }, restored.state.value.selectedPoints)
         assertEquals(saved, repository.get(saved.storedTour.id))
+    }
+
+    @Test
+    fun `image supplement during saved lookup restores latest images without changing inputs or progress`() = runTest(dispatcher) {
+        saveOldTour()
+        val repository = TourRepository(dao, json)
+        val initial = requireNotNull(repository.getMostRecent())
+        val progress = NavigationProgress(tourId = initial.plan.id,
+            completedPointIds = setOf(initial.plan.selectedPoints.first().id), isPaused = true, pausedAtEpochMillis = 123L)
+        repository.saveUnresolved(initial.plan, progress)
+        val saved = requireNotNull(repository.get(initial.plan.id))
+        val entitiesBefore = dao.entities.toMap()
+        val shared = drafts()
+        val requests = mutableListOf<String>()
+        val id = requireNotNull(plannerOwner(shared, recoveryRequests = requests).prepareSavedDraft(saved))
+        val before = requireNotNull(shared.state.value.draft)
+        val images = before.selectedPoints.associate { it.id to "https://image.anitabi.cn/points/test-only.png?v=late" }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        dao.beforeGet = { lookupId ->
+            assertEquals(saved.storedTour.id, lookupId)
+            started.complete(Unit)
+            release.await()
+        }
+        val restored = plannerOwner(shared, recoveryRequests = requests)
+        try {
+            restored.restoreDraft(id)
+            started.await()
+            assertTrue(restored.state.value.isRestoringDraft)
+            assertTrue(shared.supplementPointImages(id, images))
+            assertTrue(shared.flush(id))
+        } finally {
+            release.complete(Unit)
+        }
+        advanceUntilIdle()
+        dao.beforeGet = {}
+
+        assertTrue(restored.state.value.canGenerate)
+        assertNull(restored.state.value.draftRecoveryError)
+        assertFalse(restored.state.value.isRestoringDraft)
+        assertEquals(before.selectedPoints.map { it.copy(imageUrl = images.getValue(it.id)) }, restored.state.value.selectedPoints)
+        assertEquals(before.copy(selectedPoints = restored.state.value.selectedPoints), shared.state.value.draft)
+        assertNull(restored.state.value.plan)
+        assertEquals(saved, repository.get(saved.storedTour.id))
+        assertEquals(entitiesBefore, dao.entities)
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    @OptIn(kotlinx.coroutines.ExperimentalForInheritanceCoroutinesApi::class)
+    fun `same draft retry restores images published after the owned snapshot`() = runTest(dispatcher) {
+        saveOldTour()
+        val repository = TourRepository(dao, json)
+        val initial = requireNotNull(repository.getMostRecent())
+        val progress = NavigationProgress(tourId = initial.plan.id,
+            completedPointIds = setOf(initial.plan.selectedPoints.first().id), isPaused = true, pausedAtEpochMillis = 123L)
+        repository.saveUnresolved(initial.plan, progress)
+        val saved = requireNotNull(repository.get(initial.plan.id))
+        val entitiesBefore = dao.entities.toMap()
+        val shared = drafts()
+        val requests = mutableListOf<String>()
+        val id = requireNotNull(plannerOwner(shared, recoveryRequests = requests).prepareSavedDraft(saved))
+        val originalState = shared.state
+        val beforeState = originalState.value
+        val before = requireNotNull(beforeState.draft)
+        val images = before.selectedPoints.associate { it.id to "https://image.anitabi.cn/points/test-only.png?v=snapshot" }
+        val expectedPoints = before.selectedPoints.map { it.copy(imageUrl = images.getValue(it.id)) }
+        var injectNextRead = true
+        var injected = false
+        val observed = object : StateFlow<PlannerDraftState> by originalState {
+            override val value: PlannerDraftState
+                get() {
+                    val captured = originalState.value
+                    if (injectNextRead) {
+                        injectNextRead = false
+                        assertEquals(beforeState, captured)
+                        // Reentrant publication controls the read boundary; this is not physical IO concurrency.
+                        assertTrue(shared.supplementPointImages(id, images))
+                        injected = true
+                    }
+                    return captured
+                }
+        }
+        val stateField = PlannerDraftRepository::class.java.getDeclaredField("state").apply { isAccessible = true }
+        val started = CompletableDeferred<Unit>()
+        val release = CompletableDeferred<Unit>()
+        dao.beforeGet = { lookupId ->
+            assertEquals(saved.storedTour.id, lookupId)
+            started.complete(Unit)
+            release.await()
+        }
+        val restored = plannerOwner(shared, recoveryRequests = requests)
+        try {
+            restored.restoreDraft(id)
+            started.await()
+            assertTrue(restored.state.value.isRestoringDraft)
+            stateField.set(shared, observed)
+            release.complete(Unit)
+            runCurrent()
+        } finally {
+            injectNextRead = false
+            stateField.set(shared, originalState)
+            release.complete(Unit)
+            dao.beforeGet = {}
+        }
+
+        assertTrue(injected)
+        assertTrue(restored.state.value.canGenerate)
+        assertNull(restored.state.value.draftRecoveryError)
+        assertFalse(restored.state.value.isRestoringDraft)
+        assertEquals(before.selectedPoints, restored.state.value.selectedPoints)
+        assertEquals(before.copy(selectedPoints = expectedPoints), shared.state.value.draft)
+        assertTrue(shared.state.value.revision > beforeState.revision)
+        assertTrue(shared.flush(id))
+
+        restored.restoreDraft(id)
+        advanceUntilIdle()
+
+        assertEquals(expectedPoints, restored.state.value.selectedPoints)
+        assertTrue(restored.state.value.canGenerate)
+        assertNull(restored.state.value.draftRecoveryError)
+        assertFalse(restored.state.value.isRestoringDraft)
+        assertEquals(saved.storedTour.id, restored.state.value.restoredTourId)
+        assertEquals(before.copy(selectedPoints = expectedPoints), shared.state.value.draft)
+        assertNull(restored.state.value.plan)
+        assertEquals(saved, repository.get(saved.storedTour.id))
+        assertEquals(entitiesBefore, dao.entities)
+        assertTrue(requests.isEmpty())
+    }
+
+    @Test
+    fun `input edit or clear during saved lookup rejects captured restoration`() = runTest(dispatcher) {
+        saveOldTour()
+        val repository = TourRepository(dao, json)
+        val saved = requireNotNull(repository.getMostRecent())
+        val entitiesBefore = dao.entities.toMap()
+        for (clear in listOf(false, true)) {
+            val shared = drafts()
+            val requests = mutableListOf<String>()
+            val id = requireNotNull(plannerOwner(shared, recoveryRequests = requests).prepareSavedDraft(saved))
+            val started = CompletableDeferred<Unit>()
+            val release = CompletableDeferred<Unit>()
+            dao.beforeGet = { lookupId ->
+                assertEquals(saved.storedTour.id, lookupId)
+                started.complete(Unit)
+                release.await()
+            }
+            val restored = plannerOwner(shared, recoveryRequests = requests)
+            try {
+                restored.restoreDraft(id)
+                started.await()
+                assertTrue(restored.state.value.isRestoringDraft)
+                if (clear) shared.clear() else shared.update(id) { it.copy(dwellMinutesInput = "29") }
+                assertTrue(shared.flush())
+            } finally {
+                release.complete(Unit)
+            }
+            advanceUntilIdle()
+            dao.beforeGet = {}
+
+            assertFalse(restored.state.value.canGenerate)
+            assertNotNull(restored.state.value.draftRecoveryError)
+            assertFalse(restored.state.value.isRestoringDraft)
+            assertTrue(restored.state.value.selectedPoints.isEmpty())
+            if (clear) assertNull(shared.state.value.draft)
+            else assertEquals("29", shared.state.value.draft?.dwellMinutesInput)
+            assertEquals(saved, repository.get(saved.storedTour.id))
+            assertEquals(entitiesBefore, dao.entities)
+            assertTrue(requests.isEmpty())
+        }
     }
 
     @Test
@@ -520,19 +692,29 @@ class PlannerDraftRecoveryRegressionTest {
         draftRepository: PlannerDraftRepository = drafts(),
         ownerClock: Clock = clock,
         roadProvider: RoadRoutingProvider? = null,
+        recoveryRequests: MutableList<String>? = null,
     ): PlannerViewModel = PlannerViewModel(
         planner = TourPlanner(roadProvider ?: object : RoadRoutingProvider {
-            override suspend fun matrix(mode: TravelMode, points: List<GeoPoint>, objective: RouteObjective): TravelMatrix =
+            override suspend fun matrix(mode: TravelMode, points: List<GeoPoint>, objective: RouteObjective): TravelMatrix {
+                recoveryRequests?.add("matrix")
                 error("Recovery must not call a routing provider")
-            override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute =
+            }
+            override suspend fun directions(mode: TravelMode, points: List<GeoPoint>): RoadRoute {
+                recoveryRequests?.add("directions")
                 error("Recovery must not call a routing provider")
+            }
         }, object : TransitJourneyProvider {
-            override suspend fun journey(from: GeoPoint, to: GeoPoint, query: TransitJourneyQuery): TransitJourney =
+            override suspend fun journey(from: GeoPoint, to: GeoPoint, query: TransitJourneyQuery): TransitJourney {
+                recoveryRequests?.add("journey")
                 error("Recovery must not call a routing provider")
+            }
         }),
         repository = TourRepository(dao, json),
         locationProvider = object : CurrentLocationProvider {
-            override suspend fun currentLocation(): GeoPoint = error("Recovery must not access location")
+            override suspend fun currentLocation(): GeoPoint {
+                recoveryRequests?.add("location")
+                error("Recovery must not access location")
+            }
         },
         clock = ownerClock,
         draftRepository = draftRepository,
@@ -563,7 +745,11 @@ class PlannerDraftRecoveryRegressionTest {
 
 private class DraftRecoveryTourDao : TourPlanDao {
     val entities = linkedMapOf<String, TourPlanEntity>()
-    override suspend fun get(id: String): TourPlanEntity? = entities[id]
+    var beforeGet: suspend (String) -> Unit = {}
+    override suspend fun get(id: String): TourPlanEntity? {
+        beforeGet(id)
+        return entities[id]
+    }
     override suspend fun getMostRecent(): TourPlanEntity? = entities.values.lastOrNull()
     override suspend fun getIdsMostRecentFirst(): List<String> = entities.keys.toList().asReversed()
     override suspend fun upsert(entity: TourPlanEntity) { entities[entity.id] = entity }

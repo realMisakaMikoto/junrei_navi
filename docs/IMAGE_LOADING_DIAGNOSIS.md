@@ -1,5 +1,15 @@
 # 图片加载诊断与修复验收
 
+## October 11 restored image snapshot and revision pairing
+
+The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.
+
+A controlled actual-VM RED23/1expected failure/0errors-skips reproduces same-ID retry skipping a newer image update when displayed draft and applied revision are read separately. The repository now returns their atomic ownership-guarded snapshot;66 recovery/image/storage/saved-tour cases pass with prior cases/formal progress/passive0 protections retained. Publication is controlled reentrant test injection, not actual IO/device evidence. Full637/dualLint/ordinary APKs pass with267 unchanged inputs; final-source CI/signature/runtime gates are pending. [Current evidence](FRONTEND_FIX_ACCEPTANCE.md#october-11-atomic-restored-metadata-and-revision-current-working-tree).
+
+## October 11 image supplement during saved-draft restoration
+
+Current working-tree F4/F7 regression holds the real saved-tour DAO read, supplements missing images, then resumes restoration. Original35f production rejects the valid draft as MISSING:22 cases/1 expected failure/0errors-skips. The fix reads latest metadata only while the captured input-ownership revision remains valid.52 recovery/image/storage cases pass and retain formal inputs/progress with passive requests0; actual edits/clears still reject old restoration. Full636/dualLint/ordinary APKs now pass with unchanged inputs, including SavedTour13; final Release/source/signature/runtime gates remain pending. [Current evidence](FRONTEND_FIX_ACCEPTANCE.md#october-11-saved-draft-image-restoration-race-current-working-tree).
+
 ## October 11 initial preparation progress fix (current)
 
 The current VM fix prevents loading/metadata updates from cancelling useful initial coordinate classification before it commits. Actual production parser/repository/VM RED3/2fail/0error becomes GREEN5/5; full634 JVM/dualLint/ordinary APKs pass with unchanged inputs. Image resolver/transport/cache and SDK methods are unchanged. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending; neither the original phone's unique cause nor a new image-performance improvement is established. [Source cause, contracts and evidence limits](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).

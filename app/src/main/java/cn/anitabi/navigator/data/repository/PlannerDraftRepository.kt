@@ -201,6 +201,13 @@ class PlannerDraftRepository(
         true
     }
 
+    /** Read display metadata with its revision only while the captured input ownership still holds. */
+    fun stateForUnchangedInputs(draftId: String, expectedRevision: Long): PlannerDraftState? = synchronized(lock) {
+        val current = state.value
+        if (!current.initialized || expectedRevision !in ownershipRevision..current.revision) return@synchronized null
+        current.takeIf { it.draft?.draftId == draftId }
+    }
+
     /** Link the captured planning revision only while input ownership has stayed unchanged. */
     fun linkGeneratedTour(draftId: String, expectedRevision: Long, tourId: String): Boolean = synchronized(lock) {
         require(tourId.isNotBlank())

@@ -1,5 +1,15 @@
 # Frontend redesign requirement and evidence matrix
 
+## October 11 F4/F7 metadata revision consistency
+
+The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.
+
+Actual-VM RED23/1expected failure/0errors-skips identifies separately read metadata/revision suppressing a later same-ID image refresh. One ownership-guarded state snapshot now supplies both;66 recovery/image/storage/saved-tour cases pass. Full637/dualLint/ordinary APKs pass with267 unchanged inputs; final-source CI/signature/runtime/B2 remain pending. This is controlled consistency evidence, not physical IO or device proof. [Details](FRONTEND_FIX_ACCEPTANCE.md#october-11-atomic-restored-metadata-and-revision-current-working-tree).
+
+## October 11 F4/F7 suspended restoration follow-up
+
+Actual held-DAO RED22/1fail/0errors-skips verifies false MISSING after image-only supplementation during restoration. Working-tree ownership-aware latest-metadata recovery passes52 recovery/image/storage cases, with edit/clear rejection, unchanged formal progress and passive requests0. Full636 including SavedTour13, dualLint and ordinary APKs pass with267 unchanged inputs; final-source Release/CI/signature/runtime/B2 gates remain pending. This is current correctness progress, not transferred35f runtime evidence. [Details](FRONTEND_FIX_ACCEPTANCE.md#october-11-saved-draft-image-restoration-race-current-working-tree).
+
 ## October 11 initial preparation progress fix (current)
 
 F6 has a source-level repeated-initial-classification fix: VM-owned pending work survives same-coordinate metadata/loading emissions while geometry/generation and owner cancellation retain stale-result protection. Actual RED3/2fail/0error, GREEN5/5 and full634 JVM/dualLint/ordinary APK builds pass. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending. This does not close F6 or transfer fa0 device evidence to the new application. All71 original B1 attempts remain retained. [Details and limits](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).

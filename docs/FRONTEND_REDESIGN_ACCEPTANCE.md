@@ -1,5 +1,15 @@
 # Frontend discovery redesign acceptance
 
+## October 11 restored metadata revision follow-up
+
+The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.
+
+Current working tree pairs restored metadata and revision in one ownership-guarded state snapshot. Actual-VM RED23/1expected failure/0errors-skips becomes66 passing recovery/image/storage/saved-tour cases; true input edits/clears and formal-progress/passive-request protections remain. Controlled reentrant publication does not prove physical IO/device behavior. Full637/dualLint/ordinary APKs pass with267 unchanged inputs; final-source CI/signature/runtime gates are pending; earlier636/R8 results retain their earlier source scope. [Evidence](FRONTEND_FIX_ACCEPTANCE.md#october-11-atomic-restored-metadata-and-revision-current-working-tree).
+
+## October 11 saved-draft image restoration follow-up
+
+The working tree fixes a verified F4/F7 race during suspended saved-tour lookup: image-only supplementation previously caused false MISSING. Actual RED22/1 expected failure/0errors-skips becomes52 passing recovery/image/storage cases. Latest image metadata is accepted under the existing input-ownership barrier; true edits/clears remain rejected and formal data/passive-request protections pass. Full636/dualLint/ordinary APKs pass with unchanged inputs, including SavedTour13; new final-source Release/CI/signature/runtime gates are pending. [Evidence and limitations](FRONTEND_FIX_ACCEPTANCE.md#october-11-saved-draft-image-restoration-race-current-working-tree).
+
 ## October 11 initial preparation progress fix (current)
 
 Metadata/loading updates now preserve the VM's one pending coordinate preparation; changed geometry/generation and VM cleanup still cancel it, with stale-result rejection before commit. Production parser/repository/VM RED3/2fail/0error becomes GREEN5/5 (two extra controls are GREEN-only). Full634 JVM/dualLint/ordinary APKs pass, input hashes unchanged; independent source/evidence reviews find no concrete issue. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending. No new device result or speedup is inferred from JVM evidence. The71 fa0 B1 records and their failures remain. [Current evidence and contract](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).

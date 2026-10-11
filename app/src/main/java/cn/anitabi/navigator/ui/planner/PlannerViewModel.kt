@@ -88,18 +88,20 @@ class PlannerViewModel(
             try {
                 val loaded = drafts.awaitLoaded()
                 if (generation != restoreGeneration) return@launch
-                val draft = loaded.draft?.takeIf { it.draftId == draftId }
-                if (draft == null || draft.selectedPoints.size < 2) {
+                val captured = loaded.draft?.takeIf { it.draftId == draftId }
+                if (captured == null || captured.selectedPoints.size < 2) {
                     showDraftProblem(loaded.problem ?: PlannerDraftProblem.MISSING)
                     return@launch
                 }
-                val saved = draft.sourceTourId?.let { repository.get(it) }
+                val saved = captured.sourceTourId?.let { repository.get(it) }
                 if (generation != restoreGeneration) return@launch
-                if (drafts.state.value.draft != draft) {
+                val owned = drafts.stateForUnchangedInputs(draftId, loaded.revision)
+                val draft = owned?.draft
+                if (owned == null || draft == null) {
                     showDraftProblem(PlannerDraftProblem.MISSING)
                     return@launch
                 }
-                appliedDraftRevision = drafts.state.value.revision
+                appliedDraftRevision = owned.revision
                 if (draft.sourceTourId != null && saved == null) {
                     showDraftProblem(PlannerDraftProblem.MISSING)
                     return@launch
