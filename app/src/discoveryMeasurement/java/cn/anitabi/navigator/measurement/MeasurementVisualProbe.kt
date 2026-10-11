@@ -15,10 +15,11 @@ import cn.anitabi.navigator.MainActivity
 import cn.anitabi.navigator.core.model.MapProvider
 import cn.anitabi.navigator.data.discovery.DiscoveryLoadPhase
 import cn.anitabi.navigator.diagnostics.DiscoveryVisualFrame
+import cn.anitabi.navigator.diagnostics.NativePixelSample
+import cn.anitabi.navigator.diagnostics.nativePixelTemplatesMatch
 import com.amap.api.maps.MapView
 import com.google.android.libraries.navigation.NavigationView
 import java.lang.ref.WeakReference
-import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonObject
@@ -247,8 +248,8 @@ internal class MeasurementVisualProbe(private val application: DiscoveryMeasurem
         worker = null
     }
 
-    private data class Pixel(val x: Int, val y: Int, val color: Int)
-    private data class Patch(val bounds: Rect, val pixels: List<Pixel>, val glyph: List<Pixel>, val image: Boolean, val members: Int)
+    private data class Patch(val bounds: Rect, val pixels: List<NativePixelSample>,
+        val glyph: List<NativePixelSample>, val image: Boolean, val members: Int)
 
     private fun patches(current: DiscoveryVisualFrame): List<Patch> = current.markers.mapNotNull { marker ->
         val bitmap = marker.icon.bitmap
@@ -259,12 +260,16 @@ internal class MeasurementVisualProbe(private val application: DiscoveryMeasurem
         val bounds = Rect(left, top, left + bitmap.width, top + bitmap.height)
         if (bounds.left < current.content.left || bounds.top < current.content.top ||
             bounds.right > current.content.right || bounds.bottom > current.content.bottom) return@mapNotNull null
-        fun grid(rect: Rect, columns: Int, rows: Int): List<Pixel> = buildList {
+        fun grid(rect: Rect, columns: Int, rows: Int): List<NativePixelSample> = buildList {
             repeat(rows) { row -> repeat(columns) { column ->
                 val x = (rect.left + (column + .5f) * rect.width() / columns).toInt().coerceIn(0, bitmap.width - 1)
                 val y = (rect.top + (row + .5f) * rect.height() / rows).toInt().coerceIn(0, bitmap.height - 1)
-                val color = bitmap.getPixel(x, y)
-                if (Color.alpha(color) == 255) add(Pixel(x, y, color))
+                if (x in 1 until bitmap.width - 1 && y in 1 until bitmap.height - 1) {
+                    val neighbors = IntArray(9) { index -> bitmap.getPixel(x + index % 3 - 1, y + index / 3 - 1) }
+                    if (neighbors.all { Color.alpha(it) == 255 }) {
+                        add(NativePixelSample(x, y, neighbors))
+                    }
+                }
             } }
         }
         val pixels = grid(Rect(0, 0, bitmap.width, bitmap.height), 24, 24)
@@ -276,19 +281,11 @@ internal class MeasurementVisualProbe(private val application: DiscoveryMeasurem
     }
 
     private fun matches(bitmap: Bitmap, patch: Patch, area: Rect): Boolean {
-        fun ratio(pixels: List<Pixel>, dx: Int, dy: Int): Float = if (pixels.isEmpty()) 1f else pixels.count { reference ->
-            val x = patch.bounds.left - area.left + reference.x + dx
-            val y = patch.bounds.top - area.top + reference.y + dy
-            if (x !in 0 until bitmap.width || y !in 0 until bitmap.height) false else {
-                val actual = bitmap.getPixel(x, y)
-                abs(Color.red(actual) - Color.red(reference.color)) <= 28 &&
-                    abs(Color.green(actual) - Color.green(reference.color)) <= 28 &&
-                    abs(Color.blue(actual) - Color.blue(reference.color)) <= 28
-            }
-        }.toFloat() / pixels.size
-        return (-2..2).any { dx -> (-2..2).any { dy ->
-            ratio(patch.pixels, dx, dy) >= .96f && ratio(patch.glyph, dx, dy) >= .98f
-        } }
+        return nativePixelTemplatesMatch(patch.pixels, patch.glyph) { px, py ->
+            val x = patch.bounds.left - area.left + px
+            val y = patch.bounds.top - area.top + py
+            if (x in 0 until bitmap.width && y in 0 until bitmap.height) bitmap.getPixel(x, y) else null
+        }
     }
 
     private fun descendants(root: View): List<View> = buildList {

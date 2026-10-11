@@ -25,6 +25,8 @@ gradle.projectsEvaluated {
         def directory = gradle.rootProject.file(requested.toString()).canonicalFile
         def root = new File(gradle.rootProject.projectDir, 'build').canonicalFile
         if (!directory.toPath().startsWith(root.toPath())) throw new GradleException('Fixture must stay within workspace build')
-        args directory.absolutePath
+        def coordinateLayoutVersion = gradle.rootProject.findProperty('discoveryFixtureCoordinateLayoutVersion') ?: '1'
+        if (!(coordinateLayoutVersion.toString() in ['1', '2'])) throw new GradleException('Fixture coordinate layout must be 1 or 2')
+        args directory.absolutePath, coordinateLayoutVersion.toString()
     }
 }

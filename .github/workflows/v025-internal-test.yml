@@ -155,7 +155,9 @@ jobs:
     if: inputs.operation == 'build-signed-apk'
     runs-on: ubuntu-latest
     timeout-minutes: 40
-    environment: v0.2.5-release
+    environment:
+      name: v0.2.5-release
+      deployment: false
     steps:
       - name: Fetch only the exact dispatched reviewed commit
         env:

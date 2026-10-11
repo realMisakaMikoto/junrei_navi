@@ -32,6 +32,7 @@ object ControlledDiscoveryMeasurementServer {
     private const val PORT = 18443
     private const val POINTS_PER_SUBJECT = 128
     private const val SUBJECTS_PER_PAGE = 16
+    private var coordinateLayoutVersion = 1
     private val sizes = listOf(1_000, 10_000, 100_000, 51_828, 51_999)
     private val resources = listOf(
         "/points/synthetic-measurement/photo-0.png", "/user/synthetic-measurement/photo-1.png",
@@ -57,8 +58,10 @@ object ControlledDiscoveryMeasurementServer {
 
     @JvmStatic fun main(args: Array<String>) {
         try {
-            require(args.size == 1)
-            serve(File(args.single()).canonicalFile)
+            require(args.size in 1..2)
+            coordinateLayoutVersion = args.getOrNull(1)?.toInt() ?: 1
+            require(coordinateLayoutVersion in 1..2)
+            serve(File(args.first()).canonicalFile)
         } catch (failure: Throwable) {
             // Exception messages can contain request data; only a coarse class is allowed here.
             System.err.println("Controlled discovery fixture failed: ${failure.javaClass.simpleName}")
@@ -141,6 +144,7 @@ object ControlledDiscoveryMeasurementServer {
             File(directory, "ready.json").writeText(buildJsonObject {
                 put("schema", 1); put("port", PORT); put("controlledHttps", true)
                 put("fixtureVersion", 1)
+                put("coordinateLayoutVersion", coordinateLayoutVersion)
                 put("certificatePublicKeyAlgorithm", certificate.certificate.publicKey.algorithm)
                 put("certificateSignatureAlgorithm", certificate.certificate.sigAlgName)
                 put("certificateFile", "certificate.pem"); put("privateKeyPersisted", false)
@@ -239,9 +243,20 @@ object ControlledDiscoveryMeasurementServer {
     }
 
     private fun coordinate(provider: Provider, point: Int): Pair<Double, Double> {
-        val offsets = if (point < 6) arrayOf(
-            0.0 to .012, 0.0 to -.012, .009 to .006, .009 to -.006, -.009 to .006, -.009 to -.006,
-        )[point] else (((point - 6) % 9 / 3 - 1) * .0008) to (((point - 6) % 3 - 1) * .0008)
+        val offsets = if (point < 6) {
+            // Version 1 remains byte-identical. Version 2 is pending actual SDK projection/pixel qualification.
+            val photos = if (coordinateLayoutVersion == 1) arrayOf(
+                0.0 to .012, 0.0 to -.012, .009 to .006, .009 to -.006, -.009 to .006, -.009 to -.006,
+            ) else arrayOf(
+                .0035 to -.006, 0.0 to -.006, -.0035 to -.006,
+                -.005 to -.0018, -.005 to .0026, -.005 to .0067,
+            )
+            photos[point]
+        } else {
+            val spacing = if (coordinateLayoutVersion == 1) .0008 else .0025
+            val latitudeOffset = if (coordinateLayoutVersion == 1) 0.0 else .0025
+            (latitudeOffset + ((point - 6) % 9 / 3 - 1) * spacing) to (((point - 6) % 3 - 1) * spacing)
+        }
         return provider.latitude + offsets.first to provider.longitude + offsets.second
     }
 
