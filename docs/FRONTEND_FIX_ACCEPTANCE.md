@@ -1,5 +1,19 @@
 # PR #37 整合修复验收（进行中）
 
+## October 11 signed runtime and pixel qualification
+
+Application source `fa0b2b84aa608fda22d39f40bb60f525ec62386e` has four-green CI38098451983 and successful protected signing38099987679. Five independent package/hash/fixed single RSA-4096/v2 checks and three actual application Manifest/DEX role audits pass; receipt9a81e7f7eff99caa207fd326521768ad6c35c6773ed56c66863fc821050c5087. Ordinary Release4fc1bd65, Debug8ecdf1af, Test4dcf83a8, measurement Releaseb52423a1 and recoveryd259715d retain distinct roles. The documented build-only environment mode actually executes with unchanged protection; the old waiting cause remains unconfirmed.
+
+New signed API26 Google F3 passes once: initial2-member acceptance, real pan/frozen-clock0/stale enabled button/latest-VM rejection/zero selection, valid empty-B, one SDK View and source0. Eight fixed APP files, observed display, new package hashes/PIDabsence and owned-backup removal are verified. Unavailable permission fields remain null; no full permission/Room claim. Prior351 empty-B timeout remains and is not assigned a cause. Host-only preflight failures were resolved using actual full Activity configuration/colon syntax and physical `pwd -P` directory resolution; both occurred before install/instrumentation.
+
+API37 Google measurement qualification passes all four controls: successful image scene, list invalidation, missing-image negative and recovered successful scene. Both successful scenes match all15 actual SDK markers/10000 members/six images; offline retains all10000 members with zero image pixels. Exact fa0 APK, ARM64/ARTverify, layout2 dataset, environment and harness are bound. This is one excluded qualification, with Release performance samples0 and geographic basemap NOT_OBSERVED.
+
+The first run passes three controls but fails the next ordinary background stop. A fresh failure status identifies the same PID as background/unfocused; later ordinary cleanup succeeds. The collector now retries ordinary `am kill` on only that original PID inside the unchanged20s wait/120s watchdog, rejects PID changes before another kill and uses no force-stop. Three focused tests reproduce two failures, then pass; an additional HOME-transition PID control reproduces and closes another failure. All27 collector and16 analyzer controls pass. Application inputs remain unchanged; collector671fe5ff has separate host-source provenance from the fa0 APK. A failure screenshot is now captured only while the synthetic Activity is resumed/focused; the earlier failure screenshot actually shows the dedicated launcher and is not map-pixel evidence.
+
+The successful second qualification's outer restoration later fails at final backup cleanup, after Debug/eight-file restoration. A separately recorded cleanup-only check proves original eight files, permissions/display/AMap0, Debug/Test hashes, PIDabsence and transport absence; resolves the exact owned directory and removes it. Original failure7762821b is preserved and its transient cause remains unconfirmed. Qualification receiptcc384c00c17909b3a5e0c8af41b0e063788728b0469947e44800d19bc6fd0ee3 and linked cleanup-only receipt establish final restoration without another qualification. Owned host exits0/errors0/listener0 after normal stop.
+
+Remaining: same-condition Release B1/B2 matrix/20-round distributions, API26 permission observation support, remaining provider qualification and geographic/physical-sensor/original-phone limits. No phone, route, merge, Ready, public release or deployment.
+
 ## October 11 current validation checkpoint
 
 ### Build environment wait correction

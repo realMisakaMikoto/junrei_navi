@@ -1,5 +1,13 @@
 # Discovery loading performance: measurement contract
 
+## October 11 qualified Google scene; timed samples pending
+
+Protected fa0 signing38099987679 succeeds and passes independent five-APK/three-role audits. API37 Google/ARM64/ARTverify/layout2 qualification passes successful images, list invalidation, missing-image negative and recovered images. Successful scenes match all15 SDK markers/10000 members/six images; offline retains all10000 members and zero image pixels. Environment stays equal. This qualifies one controlled scene; native copy offsets include sampling/matching cost and do not provide a20-round distribution or geographic basemap result.
+
+The host collector671fe5ff now retries ordinary same-PID background stopping within the original20s wait/120s watchdog and rejects replacement PIDs. Four focused controls plus the full27 collector/16 analyzer checks pass; fa0 APK/application inputs are unchanged. Both original process-stop and outer cleanup failures remain. A cleanup-only receipt65c77a18...a769 verifies final declared restoration; the owned HTTPS host exits0/errors0/listener0. Failure screenshots now require the synthetic Activity to be resumed/focused.
+
+Release samples remain0. Preserve all57+3 groups/budgets/historical data; freeze the same qualified geometry, collector and environment for B1/B2 before sampling. API26 permission support and remaining provider qualification remain open. Exact receipts and API26 F3 success: [current repair checkpoint](FRONTEND_FIX_ACCEPTANCE.md#october-11-signed-runtime-and-pixel-qualification).
+
 ## October 11 current validation checkpoint
 
 ### Build environment wait correction

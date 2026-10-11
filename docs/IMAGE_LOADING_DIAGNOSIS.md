@@ -1,5 +1,11 @@
 # 图片加载诊断与修复验收
 
+## October 11 signed native image qualification
+
+Protected fa0 signing38099987679 succeeds; five APK signature/hash checks and three actual role audits pass (receipt9a81e7f7...5087). API37 Google layout2 qualification now matches six actual SDK image cards and all10000 members, rejects image success in the injected-offline scene, invalidates pixels in list mode and recovers six images afterward. All four controls pass once; this is an excluded controlled-scene check, not a public/phone or timing result. Native pixel assertions/tolerance remain fixed.
+
+The first run stops after three passing controls because the background PID survives one normal kill; bounded same-PID retries enable the complete run. A separately recorded cleanup-only check finishes original-file/permission/display/package/PID and transport restoration after an outer cleanup failure. Original failures remain. Geographic tiles and arbitrary wrong-bitmap precision remain outside the device proof. Exact identities/host corrections: [current repair checkpoint](FRONTEND_FIX_ACCEPTANCE.md#october-11-signed-runtime-and-pixel-qualification).
+
 ## October 11 current validation checkpoint
 
 ### Build environment wait correction

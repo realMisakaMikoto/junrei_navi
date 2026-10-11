@@ -472,8 +472,23 @@ class Driver:
             remaining = self.attempt_deadline - time.monotonic() if getattr(self, "attempt_deadline", None) is not None else 1
             require(remaining > 0, "attempt_watchdog_expired", "timeout")
             time.sleep(min(1, remaining))
+            current = self.pid()
+            if current is None:
+                return old
+            require(current == old, "background_process_changed", fatal=True)
             self.adb("shell", "am", "kill", "--user", "0", PACKAGE)
-            self.wait(lambda: self.pid() is None, "background_process_still_alive", 20)
+            next_kill = time.monotonic() + 1
+            def stopped():
+                nonlocal next_kill
+                current = self.pid()
+                if current is None:
+                    return True
+                require(current == old, "background_process_changed", fatal=True)
+                if time.monotonic() >= next_kill:
+                    self.adb("shell", "am", "kill", "--user", "0", PACKAGE)
+                    next_kill = time.monotonic() + 1
+                return False
+            self.wait(stopped, "background_process_still_alive", 20)
         return old
 
     def control(self, method, extras=None, allow_bootstrap_start=False):

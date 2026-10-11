@@ -1,5 +1,11 @@
 # Frontend discovery redesign acceptance
 
+## October 11 current signed follow-up
+
+The fa0 APK source has four-green CI38098451983 and successful protected signing38099987679 with five independent fixed-signature/hash/package checks and three actual role audits. API26 Google F3 now passes once with the unchanged assertions/deadlines and declared eight-file/display/package/PID restoration; earlier failed evidence remains.
+
+API37 Google controlled native qualification passes successful/offline/recovered image and list-invalidation controls; final cleanup-only verification restores the declared original state and removes owned transports/backup. This is not a Release performance distribution, geographic/physical-sensor or phone proof. Remaining full F1-F7 acceptance stays open; PR37 remains Draft. [Exact checkpoint](FRONTEND_FIX_ACCEPTANCE.md#october-11-signed-runtime-and-pixel-qualification).
+
 ## October 11 current validation checkpoint
 
 ### Build environment wait correction

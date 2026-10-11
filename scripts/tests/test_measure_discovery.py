@@ -302,5 +302,61 @@ class MeasurementDriverTest(unittest.TestCase):
         self.assertFalse(checked["completed"])
 
 
+class BackgroundStopTests(unittest.TestCase):
+    def driver(self, behavior):
+        driver = object.__new__(DRIVER.Driver)
+        driver.identity = lambda *_args, **_kwargs: None
+        state = {"time": 0.0, "pid": 1777, "kills": 0, "calls": []}
+        driver.pid = lambda: state["pid"]
+        def adb(*arguments, **_kwargs):
+            state["calls"].append(arguments)
+            if arguments == ("shell", "am", "kill", "--user", "0", DRIVER.PACKAGE):
+                state["kills"] += 1
+                behavior(state)
+            return ""
+        driver.adb = adb
+        clock = mock.patch.object(DRIVER.time, "monotonic", side_effect=lambda: state["time"])
+        sleep = mock.patch.object(DRIVER.time, "sleep", side_effect=lambda seconds: state.update(time=state["time"] + seconds))
+        return driver, state, clock, sleep
+
+    def test_cached_process_can_exit_on_a_later_normal_kill_within_same_deadline(self):
+        def cached(state):
+            if state["kills"] == 2:
+                state["pid"] = None
+        driver, state, clock, sleep = self.driver(cached)
+        with clock, sleep:
+            try:
+                stopped = driver.kill_background()
+            except DRIVER.Failure as failure:
+                self.fail("Later ordinary stop was never attempted: " + failure.code)
+            self.assertEqual(1777, stopped)
+        self.assertEqual(2, state["kills"])
+        self.assertLessEqual(state["time"], 21)
+        self.assertFalse(any("force-stop" in call for call in state["calls"]))
+
+    def test_changed_process_fails_before_another_kill(self):
+        driver, state, clock, sleep = self.driver(lambda value: value.update(pid=1888))
+        with clock, sleep, self.assertRaises(DRIVER.Failure) as failure:
+            driver.kill_background()
+        self.assertEqual("background_process_changed", failure.exception.code)
+        self.assertEqual(1, state["kills"])
+
+    def test_process_changed_during_home_transition_is_never_killed(self):
+        driver, state, clock, sleep = self.driver(lambda _value: None)
+        driver.pid = lambda: 1888 if state["time"] >= 1 else 1777
+        with clock, sleep, self.assertRaises(DRIVER.Failure) as failure:
+            driver.kill_background()
+        self.assertEqual("background_process_changed", failure.exception.code)
+        self.assertEqual(0, state["kills"])
+
+    def test_non_killable_process_keeps_the_twenty_second_wait_boundary(self):
+        driver, state, clock, sleep = self.driver(lambda _value: None)
+        with clock, sleep, self.assertRaises(DRIVER.Failure) as failure:
+            driver.kill_background()
+        self.assertEqual("background_process_still_alive", failure.exception.code)
+        self.assertAlmostEqual(21, state["time"])
+        self.assertFalse(any("force-stop" in call for call in state["calls"]))
+
+
 if __name__ == "__main__":
     unittest.main()

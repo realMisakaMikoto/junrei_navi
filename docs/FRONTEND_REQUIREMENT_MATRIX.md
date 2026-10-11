@@ -1,5 +1,11 @@
 # Frontend redesign requirement and evidence matrix
 
+## October 11 current signed evidence
+
+Application fa0/CI38098451983 four-green/sign38099987679 successful and independently audited. New API26 Google F3 passes once, including frozen-clock0, stale-button rejection and valid empty-B. Original eight files/observed display/package/PID are restored; unknown permission fields stay null and the earlier timeout cause stays unconfirmed.
+
+API37 Google controlled image/pixel qualification passes four controls with10000 members/six successful image cards, offline0images and list invalidation. This does not close F6: Release distributions remain0, other-provider qualification and API26 permission support remain pending. [Exact checkpoint and failure/restoration receipts](FRONTEND_FIX_ACCEPTANCE.md#october-11-signed-runtime-and-pixel-qualification).
+
 ## October 11 current validation checkpoint
 
 ### Build environment wait correction
