@@ -1,5 +1,11 @@
 # Frontend discovery redesign acceptance
 
+## October 11 current signed acceptance checkpoint
+
+Current source `73daf2ce05db15af3dc775ddcc42bf6a662335d1` passes all four CI `38118490350` jobs and signing `38120126815`; five signed APKs and three actual roles are independently audited. Current-source API37 native25 and image15 checks pass, with six public image decodes and actual thumbnail/fullscreen pixels. Eleven controlled image services terminate normally with verified listener/owned-host cleanup; eight original APP files, permission flags, display, consent0, packages and PID state are restored. [Exact source/APK receipts and retained first-start ANR](FRONTEND_FIX_ACCEPTANCE.md#october-11-latest-signed-runtime-checkpoint).
+
+The full objective remains active. Current-source API37 five-case process recovery and separate cleanup-only restoration are verified; the original outer CIM timeout is retained. API26 final runtime checks and fresh Release qualification/B2 are pending, and final F1-F7 closure is not established. Phone sensors, geographic tiles and stable cold startup remain outside the current proof. PR #37 stays Draft, with no merge or release. Earlier snapshot statements do not supersede this current scope.
+
 ## October 11 restored metadata revision follow-up
 
 The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.

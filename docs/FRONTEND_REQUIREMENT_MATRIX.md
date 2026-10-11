@@ -1,5 +1,11 @@
 # Frontend redesign requirement and evidence matrix
 
+## October 11 current signed acceptance status
+
+Source `73daf2ce05db15af3dc775ddcc42bf6a662335d1` passes CI `38118490350`; signing `38120126815` and five-APK/three-role independent audits pass. Current API37 native25 and image15 executions are source/APK-bound, including six public images through real Parser/loader/decoding and thumbnail/fullscreen pixels. Eight declared APP files, permissions/flags/display, consent0, packages and PID state are restored; 11 controlled image hosts have normal exit/port/owned-identity cleanup proof. [Exact evidence and initial startup ANR limitation](FRONTEND_FIX_ACCEPTANCE.md#october-11-latest-signed-runtime-checkpoint).
+
+F4 current-source API37 five-case Recents process recovery is verified, including actual PID change, same task, saved Bundle, expected inputs/errors and passive routing0. The original outer CIM timeout remains, with independently verified cleanup-only restoration/removal and no functional rerun. API26 current-source runtime coverage remains pending. F6 remains incomplete without fresh qualification and the frozen Release B2/full before-after performance evidence. Existing API26 native-AMap substitution does not establish native AMap support, and synthetic heading does not establish phone-sensor behavior. These gates prevent a project-complete claim. Historical snapshots below retain their original evidence scope.
+
 ## October 11 F4/F7 metadata revision consistency
 
 The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.

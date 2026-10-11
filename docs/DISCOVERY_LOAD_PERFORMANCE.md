@@ -1,5 +1,11 @@
 # Discovery loading performance: measurement contract
 
+## October 11 current signed correctness boundary
+
+Current source `73daf2ce05db15af3dc775ddcc42bf6a662335d1` has four-green CI `38118490350` and independently verified five-APK signing `38120126815`. Current-source API37 native25 and image15 checks pass, including six public image decodes and thumbnail/fullscreen pixels. The 11 controlled image services and original eight-file/permission/display/package/PID state are verified restored. [Signed provenance and exact scopes](FRONTEND_FIX_ACCEPTANCE.md#october-11-latest-signed-runtime-checkpoint).
+
+The current-source five-case API37 Recents recovery also passes, with separate cleanup-only verification after a retained outer CIM timeout and no functional rerun. These functional checks add no Release performance samples. New-source measurement qualification and B2 remain unexecuted; all 71 original fa0 B1 attempts, the cached-group failure, frozen harness/environment/data, budgets and original matrix remain unchanged. The first new-package startup ANR is retained separately from successful functional repeats, with no established unique cause. Geographic basemap observation and phone behavior remain unverified. No speedup or full F6 acceptance is claimed. Older pending-CI/signature wording below remains a historical snapshot and does not override this checkpoint.
+
 ## October 11 atomic restoration correctness checkpoint
 
 The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.

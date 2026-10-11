@@ -1,5 +1,11 @@
 # 图片加载诊断与修复验收
 
+## October 11 current signed API37 image acceptance
+
+Source `73daf2ce05db15af3dc775ddcc42bf6a662335d1`, signing `38120126815`, current Debug `bb7752ef...f365` and Test `4dcf83a8...67f6` pass all 15 image cases on the dedicated API37 ARM64 installation. Ten controlled HTTPS semantic reports, controlled Search JUnit-only, three injected trace JUnit-only and public semantic evidence are kept separate. The public production Parser/ImageLoader sample covers four subjects and six distinct images: two source HTTP requests and seven image HTTP requests, real decoding, thumbnail pixels and h360 fullscreen pixels. Original images are not requested; the ending index is not rechecked. This sample does not prove every public resource or the user's phone.
+
+All 11 controlled services have normal exit0, no forced termination, no listener on their recorded port and no remaining captured owned host identity. Final receipt `37cb8053c0dafdd526a78a79cafc4d4ff49e29cfc51e89f37f46e198a2c9730c` verifies eight original APP files, permission grants/flags, display, consent0, package hashes, PID absence and backup removal. No SDK private preferences, raw response bodies or browsing coordinates are retained. [Exact signed provenance, native checks and remaining gates](FRONTEND_FIX_ACCEPTANCE.md#october-11-latest-signed-runtime-checkpoint). Current-source API37 five-case planner recovery and independent cleanup-only state verification also pass; the outer CIM timeout is retained without rerunning functional cases. Current-source API26 and Release image-performance acceptance remain pending; older pending-signature wording below belongs to its historical snapshot.
+
 ## October 11 restored image snapshot and revision pairing
 
 The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.
