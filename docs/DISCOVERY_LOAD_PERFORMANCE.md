@@ -1,5 +1,22 @@
 # Discovery loading performance: measurement contract
 
+## October 11 first Release B1 records
+
+API37/ARM64/ARTverify, fa0 measurement APKb52423a1, collector26c39aa and complete harnessbee9ddbd use one frozen layout2/10000-point/six-image dataset. Other two dedicated emulators are normally stopped without data wipe; reappeared app PIDs are hash-bound and normally stopped first. No local build or extra device polling runs during timed attempts. Source/harness/environment/cold-cache or warm-same-PID/native full-membership and six-image assertions are independently audited from raw records. Original57plus3groups/budgets stay fixed.
+
+| Start state | Attempts / completed / failed | Selection-ready p95 | Native points-copy upper-bound p95 | Accepted-selection span p95 |
+| --- | --- | --- | --- | --- |
+| Cold, no cache |20 /20 /0|9462.740ms|10563.612ms|344.437ms|
+| Cold, valid cache |11 /10 /1|3807.199ms (10 observed)|4711.854ms (10 observed)|incomplete group|
+| Same-process return |20 /20 /0|4351.142ms|6329.765ms|469.521ms|
+| Prepared data/images interval |20 /20 /0|separate from local budget|copy includes sampling cost|500.701ms|
+
+Nearest-rank p50/p95/max and per-record hashes remain in each root summary. The10-observation cached group is not a complete20-attempt group: its11th attempt fails `cold_launch_precondition_failed` before launch, retains the failed record and ends under the fatal guard. That combined check does not establish whether PID or bootstrap presence caused it. All four outer restorations/owned-backup and transport removal pass; host actual child0/errors0/listener0 after normal stop. Total71 attempts/70 complete/1 failed, not a merged homogeneous group.
+
+Cold/no-cache has seven retained cancelled CLASSIFY events in every one of20 traces; cancelled duration sum p50=5994.010ms/p95=6035.240ms/max6061.177ms. Successful classification p95=1195.531ms; full details p95=7295.578ms precedes SDK creation p95=8514.372ms. Source uses collectLatest for every Repository state emission; withContext cancellation occurs before preparedData is committed, so initial cancelled work has no completed provider classification to reuse. This is an evidenced repeated-preparation path, not yet an implemented optimization or a unique phone/SDK root cause.
+
+The prepared-data20-round accepted-selection span p95=500.701ms satisfies the existing1000ms local budget with samePID/current native pixels/no data-cache-network changes. Cold/warm milestone offsets and native-copy upper bounds retain their definitions: warm-return offsets include host UI-selection overhead, and native-copy offsets include sampling/matching cost. Geographic basemap is NOT_OBSERVED, current collector gap flags remain with an external qualified-matcher link, and no B2/30% improvement or whole-F6 acceptance is claimed. Remaining matrix conditions/providers/scales and API26 permission support are open.
+
 ## October 11 qualified Google scene; timed samples pending
 
 Protected fa0 signing38099987679 succeeds and passes independent five-APK/three-role audits. API37 Google/ARM64/ARTverify/layout2 qualification passes successful images, list invalidation, missing-image negative and recovered images. Successful scenes match all15 SDK markers/10000 members/six images; offline retains all10000 members and zero image pixels. Environment stays equal. This qualifies one controlled scene; native copy offsets include sampling/matching cost and do not provide a20-round distribution or geographic basemap result.

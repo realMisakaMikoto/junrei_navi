@@ -1,5 +1,9 @@
 # PR #37 整合修复验收（进行中）
 
+## October 11 first Release B1 checkpoint
+
+API37 Google/10k has71 retained B1 attempts across four separate groups:70 complete/1 fatal pre-launch failure. Three groups have20 successful attempts each; cached cold group has11/10/1 and stays incomplete. The prepared-data accepted-selection p95=500.701ms satisfies the existing1000ms local budget. Source fa0/APKb52423a1/harnessbee9ddbd and all outer restorations are independently bound; cold traces repeat seven cancelled initial classifications. No application optimization/B2 or full F6 acceptance yet. [Definitions, distributions and limitations](DISCOVERY_LOAD_PERFORMANCE.md#october-11-first-release-b1-records).
+
 ## October 11 signed runtime and pixel qualification
 
 Application source `fa0b2b84aa608fda22d39f40bb60f525ec62386e` has four-green CI38098451983 and successful protected signing38099987679. Five independent package/hash/fixed single RSA-4096/v2 checks and three actual application Manifest/DEX role audits pass; receipt9a81e7f7eff99caa207fd326521768ad6c35c6773ed56c66863fc821050c5087. Ordinary Release4fc1bd65, Debug8ecdf1af, Test4dcf83a8, measurement Releaseb52423a1 and recoveryd259715d retain distinct roles. The documented build-only environment mode actually executes with unchanged protection; the old waiting cause remains unconfirmed.

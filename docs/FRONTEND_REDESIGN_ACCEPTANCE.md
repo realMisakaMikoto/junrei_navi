@@ -1,5 +1,9 @@
 # Frontend discovery redesign acceptance
 
+## October 11 first Release B1 checkpoint
+
+API37 Google/10k has71 retained B1 attempts across four separate groups:70 complete/1 fatal pre-launch failure. Three groups have20 successful attempts each; cached cold group has11/10/1 and stays incomplete. The prepared-data accepted-selection p95=500.701ms satisfies the existing1000ms local budget. Source fa0/APKb52423a1/harnessbee9ddbd and all outer restorations are independently bound; cold traces repeat seven cancelled initial classifications. No application optimization/B2 or full F6 acceptance yet. [Definitions, distributions and limitations](DISCOVERY_LOAD_PERFORMANCE.md#october-11-first-release-b1-records).
+
 ## October 11 current signed follow-up
 
 The fa0 APK source has four-green CI38098451983 and successful protected signing38099987679 with five independent fixed-signature/hash/package checks and three actual role audits. API26 Google F3 now passes once with the unchanged assertions/deadlines and declared eight-file/display/package/PID restoration; earlier failed evidence remains.
