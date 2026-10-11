@@ -1,5 +1,9 @@
 # Frontend redesign requirement and evidence matrix
 
+## October 11 initial preparation progress fix (current)
+
+F6 has a source-level repeated-initial-classification fix: VM-owned pending work survives same-coordinate metadata/loading emissions while geometry/generation and owner cancellation retain stale-result protection. Actual RED3/2fail/0error, GREEN5/5 and full634 JVM/dualLint/ordinary APK builds pass. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending. This does not close F6 or transfer fa0 device evidence to the new application. All71 original B1 attempts remain retained. [Details and limits](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).
+
 ## October 11 first Release B1 checkpoint
 
 API37 Google/10k has71 retained B1 attempts across four separate groups:70 complete/1 fatal pre-launch failure. Three groups have20 successful attempts each; cached cold group has11/10/1 and stays incomplete. The prepared-data accepted-selection p95=500.701ms satisfies the existing1000ms local budget. Source fa0/APKb52423a1/harnessbee9ddbd and all outer restorations are independently bound; cold traces repeat seven cancelled initial classifications. No application optimization/B2 or full F6 acceptance yet. [Definitions, distributions and limitations](DISCOVERY_LOAD_PERFORMANCE.md#october-11-first-release-b1-records).

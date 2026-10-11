@@ -1,5 +1,9 @@
 # 图片加载诊断与修复验收
 
+## October 11 initial preparation progress fix (current)
+
+The current VM fix prevents loading/metadata updates from cancelling useful initial coordinate classification before it commits. Actual production parser/repository/VM RED3/2fail/0error becomes GREEN5/5; full634 JVM/dualLint/ordinary APKs pass with unchanged inputs. Image resolver/transport/cache and SDK methods are unchanged. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending; neither the original phone's unique cause nor a new image-performance improvement is established. [Source cause, contracts and evidence limits](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).
+
 ## October 11 signed native image qualification
 
 Protected fa0 signing38099987679 succeeds; five APK signature/hash checks and three actual role audits pass (receipt9a81e7f7...5087). API37 Google layout2 qualification now matches six actual SDK image cards and all10000 members, rejects image success in the injected-offline scene, invalidates pixels in list mode and recovers six images afterward. All four controls pass once; this is an excluded controlled-scene check, not a public/phone or timing result. Native pixel assertions/tolerance remain fixed.

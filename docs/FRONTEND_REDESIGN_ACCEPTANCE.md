@@ -1,5 +1,9 @@
 # Frontend discovery redesign acceptance
 
+## October 11 initial preparation progress fix (current)
+
+Metadata/loading updates now preserve the VM's one pending coordinate preparation; changed geometry/generation and VM cleanup still cancel it, with stale-result rejection before commit. Production parser/repository/VM RED3/2fail/0error becomes GREEN5/5 (two extra controls are GREEN-only). Full634 JVM/dualLint/ordinary APKs pass, input hashes unchanged; independent source/evidence reviews find no concrete issue. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending. No new device result or speedup is inferred from JVM evidence. The71 fa0 B1 records and their failures remain. [Current evidence and contract](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).
+
 ## October 11 first Release B1 checkpoint
 
 API37 Google/10k has71 retained B1 attempts across four separate groups:70 complete/1 fatal pre-launch failure. Three groups have20 successful attempts each; cached cold group has11/10/1 and stays incomplete. The prepared-data accepted-selection p95=500.701ms satisfies the existing1000ms local budget. Source fa0/APKb52423a1/harnessbee9ddbd and all outer restorations are independently bound; cold traces repeat seven cancelled initial classifications. No application optimization/B2 or full F6 acceptance yet. [Definitions, distributions and limitations](DISCOVERY_LOAD_PERFORMANCE.md#october-11-first-release-b1-records).

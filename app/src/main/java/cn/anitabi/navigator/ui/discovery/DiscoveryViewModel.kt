@@ -26,12 +26,14 @@ import cn.anitabi.navigator.ui.discovery.map.DiscoveryCameraPosition
 import cn.anitabi.navigator.ui.discovery.map.DiscoveryMapPoint
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
+import kotlinx.coroutines.Deferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.FlowPreview
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -102,6 +104,8 @@ class DiscoveryViewModel(
     private val mutableSearch = MutableStateFlow(DiscoverySearchResults())
     val searchResults = mutableSearch.asStateFlow()
     private var preparedData: PreparedDiscoveryData? = null
+    private var preparingSnapshot: DiscoverySnapshot? = null
+    private var preparation: Deferred<PreparedDiscoveryData>? = null
     private var sequence = 0L
     private var userMovedCamera = false
     private var initialLocationAttempted = false
@@ -130,10 +134,12 @@ class DiscoveryViewModel(
                 if (affectsViewport) mutableState.update {
                     it.copy(dataPreparing = true).invalidatedViewport(DiscoveryViewportInvalidation.DATA)
                 }
-                val prepared = if (snapshot == null) null else if (previous?.snapshot === snapshot) previous else
-                    withContext(preparationDispatcher) {
-                        prepareDiscoveryData(snapshot, previous, classifyTerritory, trace) { coroutineContext.ensureActive() }
-                    }
+                val prepared = if (snapshot == null) {
+                    preparation?.cancel()
+                    preparation = null
+                    preparingSnapshot = null
+                    null
+                } else if (previous?.snapshot === snapshot) previous else prepareCurrentData(snapshot, previous)
                 // Commit only after withContext's cancellation check; workers never mutate shared caches.
                 preparedData = prepared
                 mutableState.update { current -> val next = current.copy(
@@ -171,6 +177,38 @@ class DiscoveryViewModel(
                     }
                 }
         }
+    }
+
+    private suspend fun prepareCurrentData(snapshot: DiscoverySnapshot, previous: PreparedDiscoveryData?): PreparedDiscoveryData {
+        val pending = preparingSnapshot
+        val sameCoordinates = pending != null && pending.version == snapshot.version &&
+            (pending.points === snapshot.points || withContext(preparationDispatcher) {
+                pending.points.size == snapshot.points.size && pending.points.indices.all { index ->
+                    currentCoroutineContext().ensureActive()
+                    val before = pending.points[index]
+                    val after = snapshot.points[index]
+                    before.id == after.id && before.coordinate == after.coordinate
+                }
+            })
+        if (!sameCoordinates || preparation == null) {
+            preparation?.cancel()
+            preparingSnapshot = snapshot
+            // Metadata collectors may cancel their await; coordinate work belongs to the VM lifecycle.
+            preparation = viewModelScope.async(preparationDispatcher) {
+                prepareDiscoveryData(snapshot, previous, classifyTerritory, trace) { coroutineContext.ensureActive() }
+            }
+        }
+        val work = requireNotNull(preparation)
+        val classified = work.await()
+        val current = if (classified.snapshot === snapshot) classified else withContext(preparationDispatcher) {
+            prepareDiscoveryData(snapshot, classified, classifyTerritory, trace) { coroutineContext.ensureActive() }
+        }
+        currentCoroutineContext().ensureActive()
+        if (preparation === work) {
+            preparation = null
+            preparingSnapshot = null
+        }
+        return current
     }
 
     fun setForeground(foreground: Boolean) {
