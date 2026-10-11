@@ -53,6 +53,7 @@ HARNESS_FILES = [
     "app/src/discoveryMeasurement/java/cn/anitabi/navigator/measurement/DiscoveryMeasurementApplication.kt",
     "app/src/discoveryMeasurement/java/cn/anitabi/navigator/measurement/DiscoveryMeasurementProvider.kt",
     "app/src/discoveryMeasurement/java/cn/anitabi/navigator/measurement/MeasurementVisualProbe.kt",
+    "app/src/main/java/cn/anitabi/navigator/diagnostics/NativePixelTemplateMatcher.kt",
     "app/src/discoveryMeasurement/AndroidManifest.xml",
     "app/src/main/java/cn/anitabi/navigator/diagnostics/DiscoveryDiagnostics.kt",
     "app/src/main/java/cn/anitabi/navigator/diagnostics/DiscoveryDiagnosticsProvider.kt",
