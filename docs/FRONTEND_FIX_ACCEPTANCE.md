@@ -1,5 +1,12 @@
 # PR #37 整合修复验收（进行中）
 
+
+## October 11 CI recovery preparation diagnostics
+
+Application source `defa93edca0f95effa3fc1b541915400ea3e2434` passes the local637-test, Lint and R8 gates recorded below. Its CI38114718937 has two distinct failed API26 attempts: attempt1 stops during Gradle plugin resolution for locked KSP2.3.10; attempt2 builds and installs both APKs, then exits255 in offline recovery preparation before seed instrumentation. The other three required jobs succeed. No recovery seed/state artifact or app crash evidence identifies the exact preparation command; the79.54ms interval after the final install is insufficient to establish a cause.
+
+The new workflow change adds only static preparation-stage names and an ERR trap recording that stage and the original numeric exit. It removes the trap before the existing seed instrumentation; original commands, assertions, dependencies, timeouts and required checks remain unchanged. Eleven host-only synthetic Bash controls verify API26/37 successful sequences, seven exit255 short circuits and two diagnostic-write failures without device execution. These controls do not prove the device issue is fixed. The next exact-source CI must locate or pass the preparation boundary; new signing, source-bound native/heading acceptance and frozen Release B2 remain pending. Both failed attempts and artifact11693138314/11694216117 are retained; the latter ZIP digest is36f84f207058cda3b6602d3a9dba2f6c506f6f5d47534fe1e685163fe7b9aea9. Raw job logs and ZIP contents were inspected in memory and not saved.
+
 ## October 11 atomic restored metadata and revision (current working tree)
 
 The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.

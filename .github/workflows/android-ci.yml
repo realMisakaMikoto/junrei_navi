@@ -230,15 +230,26 @@ jobs:
           adb uninstall cn.anitabi.navigator || true
           adb install app/build/outputs/apk/debug/app-debug.apk
           adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+          recovery_stage=appops_app
+          trap 'recovery_status=$?; trap - ERR; printf "RECOVERY_PREP stage=%s exit=%s\n" "$recovery_stage" "$recovery_status" | tee smoke-output/recovery-preparation.txt || :; exit "$recovery_status"' ERR
           adb shell appops set cn.anitabi.navigator android:mock_location allow
+          recovery_stage=appops_test
           adb shell appops set cn.anitabi.navigator.test android:mock_location allow
+          recovery_stage=location_mode
           adb shell settings put secure location_mode 3
+          recovery_stage=grant_coarse
           adb shell pm grant cn.anitabi.navigator android.permission.ACCESS_COARSE_LOCATION
+          recovery_stage=grant_fine
           adb shell pm grant cn.anitabi.navigator android.permission.ACCESS_FINE_LOCATION
+          recovery_stage=sdk_condition
           if [ "$(adb shell getprop ro.build.version.sdk | tr -d '\r')" -ge 33 ]; then
+            recovery_stage=grant_notification
             adb shell pm grant cn.anitabi.navigator android.permission.POST_NOTIFICATIONS
           fi
+          recovery_stage=geo_fix
           adb emu geo fix 139.767125 35.681236
+          trap - ERR
+          printf "RECOVERY_PREP stage=complete exit=0\n" | tee smoke-output/recovery-preparation.txt || :
           adb shell am instrument -w \
             -e class 'cn.anitabi.navigator.navigation.NavigationRuntimeInstrumentedTest#seedProcessRecoveryFixture' \
             cn.anitabi.navigator.test/cn.anitabi.navigator.TestAnitabiRunner \
