@@ -90,8 +90,8 @@ android {
         applicationId = "cn.anitabi.navigator"
         minSdk = 26
         targetSdk = 37
-        versionCode = 11
-        versionName = "0.2.5"
+        versionCode = 12
+        versionName = "0.2.6"
 
         testInstrumentationRunner = "cn.anitabi.navigator.TestAnitabiRunner"
         manifestPlaceholders["NAVIGATION_API_KEY"] = navigationApiKey
