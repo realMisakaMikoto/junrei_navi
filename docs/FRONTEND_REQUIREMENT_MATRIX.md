@@ -1,5 +1,9 @@
 # Frontend redesign requirement and evidence matrix
 
+## 2026-10-16 accepted scope and closure
+
+The maintainer accepts the current candidate and ends this acceptance round. Remaining tests and the missing visible-image settlement instrumentation are waived as delivery prerequisites. Historical incomplete/failed/unobserved cells retain their technical meaning; they do not automatically reopen work. This is acceptance with recorded limitations, not a claim that every planned check passed. Application source remains `73daf2ce05db15af3dc775ddcc42bf6a662335d1`, signed run `38120126815`. [Acceptance decision, current evidence and retained limitations](FRONTEND_FIX_ACCEPTANCE.md#2026-10-16-维护者接受与收尾).
+
 ## October 11 current signed acceptance status
 
 Source `73daf2ce05db15af3dc775ddcc42bf6a662335d1` passes CI `38118490350`; signing `38120126815` and five-APK/three-role independent audits pass. Current API37 native25 and image15 executions are source/APK-bound, including six public images through real Parser/loader/decoding and thumbnail/fullscreen pixels. Eight declared APP files, permissions/flags/display, consent0, packages and PID state are restored; 11 controlled image hosts have normal exit/port/owned-identity cleanup proof. [Exact evidence and initial startup ANR limitation](FRONTEND_FIX_ACCEPTANCE.md#october-11-latest-signed-runtime-checkpoint).
