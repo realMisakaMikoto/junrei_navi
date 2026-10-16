@@ -6,13 +6,13 @@
 
 ## 下载
 
-- [v0.2.5](https://github.com/realMisakaMikoto/junrei_navi/releases/tag/v0.2.5)（当前版本）：双地图、双路线提供方，修掉了高德首次打开时的 JNI 崩溃。
+- [v0.2.6](https://github.com/realMisakaMikoto/junrei_navi/releases/tag/v0.2.6)（当前版本）：更新发现页，修复图片、视野选点和规划草稿恢复，增加定位圆点与方向显示。
 - [历史版本](https://github.com/realMisakaMikoto/junrei_navi/releases)
 - 支持 Android 8.0（API 26）及以上。
 
-下载 `anitabi-v0.2.5.apk` 后直接覆盖安装，不要先卸载或清数据。版本号 `0.2.5 (11)`，签名不变，Room schema 仍是 2，已保存的作品、点位、行程设置和导航进度都会保留。更新后继续旧行程时会重新判定地图地区并刷新路线。
+下载 `anitabi-v0.2.6.apk` 后直接覆盖安装，不要先卸载或清数据。版本号 `0.2.6 (12)`，签名不变，Room schema 仍是 2，已保存的作品、点位、行程设置和导航进度都会保留。更新后继续旧行程时会重新判定地图地区并刷新路线。
 
-这一版沿用已经过 CI、签名检查并人工验收的安装包，没有重新构建。变化与验证记录见 [v0.2.5 发布说明](docs/RELEASE_NOTES_v0.2.5.md) 和 [发布记录](docs/releases/v0.2.5.md)。
+变化与已知限制见 [v0.2.6 发布说明](docs/RELEASE_NOTES_v0.2.6.md) 和 [修复验收记录](docs/FRONTEND_FIX_ACCEPTANCE.md)。
 
 ## 地图和导航
 

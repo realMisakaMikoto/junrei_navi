@@ -34,6 +34,13 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.AnitabiNavigator"
         android:usesCleartextTraffic="false">
+        <profileable android:enabled="${DISCOVERY_PROFILING}" android:shell="${DISCOVERY_PROFILING}" />
+        <provider
+            android:name=".diagnostics.DiscoveryDiagnosticsProvider"
+            android:authorities="${applicationId}.discovery-diagnostics"
+            android:enabled="${DISCOVERY_PROFILING}"
+            android:exported="true"
+            android:permission="android.permission.DUMP" />
         <meta-data
             android:name="com.google.android.geo.API_KEY"
             android:value="${NAVIGATION_API_KEY}" />

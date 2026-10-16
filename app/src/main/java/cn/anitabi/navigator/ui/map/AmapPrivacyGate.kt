@@ -4,6 +4,7 @@ import android.content.Context
 import cn.anitabi.navigator.AnitabiApplication
 import cn.anitabi.navigator.core.model.MapProvider
 import com.amap.api.maps.MapsInitializer
+import dalvik.system.BaseDexClassLoader
 
 interface AmapPrivacyBridge {
     fun prepare(context: Context)
@@ -15,6 +16,20 @@ internal fun isAmapMapCreationReady(context: Context): Boolean =
         ?.container
         ?.amapPrivacyGate
         ?.isReady == true
+
+internal fun isAmapNativeMapLibraryAvailable(context: Context): Boolean =
+    (context.applicationContext.classLoader as? BaseDexClassLoader)
+        ?.findLibrary("AMapSDK_MAP_v11_2_000") != null
+
+internal fun <T> createAmapMapIfReady(
+    privacyReady: Boolean,
+    nativeLibraryAvailable: () -> Boolean,
+    create: () -> T,
+): T {
+    check(privacyReady) { "AMap privacy gate is not ready" }
+    check(nativeLibraryAvailable()) { "AMap native map library is unavailable" }
+    return create()
+}
 
 class AmapPrivacyGate(
     context: Context,

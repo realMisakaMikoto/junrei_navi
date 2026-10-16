@@ -1,0 +1,208 @@
+# 图片加载诊断与修复验收
+
+## October 11 current signed API37 image acceptance
+
+Source `73daf2ce05db15af3dc775ddcc42bf6a662335d1`, signing `38120126815`, current Debug `bb7752ef...f365` and Test `4dcf83a8...67f6` pass all 15 image cases on the dedicated API37 ARM64 installation. Ten controlled HTTPS semantic reports, controlled Search JUnit-only, three injected trace JUnit-only and public semantic evidence are kept separate. The public production Parser/ImageLoader sample covers four subjects and six distinct images: two source HTTP requests and seven image HTTP requests, real decoding, thumbnail pixels and h360 fullscreen pixels. Original images are not requested; the ending index is not rechecked. This sample does not prove every public resource or the user's phone.
+
+All 11 controlled services have normal exit0, no forced termination, no listener on their recorded port and no remaining captured owned host identity. Final receipt `37cb8053c0dafdd526a78a79cafc4d4ff49e29cfc51e89f37f46e198a2c9730c` verifies eight original APP files, permission grants/flags, display, consent0, package hashes, PID absence and backup removal. No SDK private preferences, raw response bodies or browsing coordinates are retained. [Exact signed provenance, native checks and remaining gates](FRONTEND_FIX_ACCEPTANCE.md#october-11-latest-signed-runtime-checkpoint). Current-source API37 five-case planner recovery and independent cleanup-only state verification also pass; the outer CIM timeout is retained without rerunning functional cases. Current-source API26 and Release image-performance acceptance remain pending; older pending-signature wording below belongs to its historical snapshot.
+
+## October 11 restored image snapshot and revision pairing
+
+The current atomic-pair source also passes gated22665: Lint0Fatal/0Error/23Warning, compile/R8 and three actual compiled-class/DEX component definitions, with all116 gated input hashes unchanged. Ordinary24348 completes all five R8/reflection/JNI/content gates, including seven JNI mutations. Actual ordinary DEX/mapping contain no measurement or pixel-matcher code and retain the ordinary Application; all normal/gated compiled-input hashes still match. Final-source CI/signature/runtime/B2 remain pending.
+
+A controlled actual-VM RED23/1expected failure/0errors-skips reproduces same-ID retry skipping a newer image update when displayed draft and applied revision are read separately. The repository now returns their atomic ownership-guarded snapshot;66 recovery/image/storage/saved-tour cases pass with prior cases/formal progress/passive0 protections retained. Publication is controlled reentrant test injection, not actual IO/device evidence. Full637/dualLint/ordinary APKs pass with267 unchanged inputs; final-source CI/signature/runtime gates are pending. [Current evidence](FRONTEND_FIX_ACCEPTANCE.md#october-11-atomic-restored-metadata-and-revision-current-working-tree).
+
+## October 11 image supplement during saved-draft restoration
+
+Current working-tree F4/F7 regression holds the real saved-tour DAO read, supplements missing images, then resumes restoration. Original35f production rejects the valid draft as MISSING:22 cases/1 expected failure/0errors-skips. The fix reads latest metadata only while the captured input-ownership revision remains valid.52 recovery/image/storage cases pass and retain formal inputs/progress with passive requests0; actual edits/clears still reject old restoration. Full636/dualLint/ordinary APKs now pass with unchanged inputs, including SavedTour13; final Release/source/signature/runtime gates remain pending. [Current evidence](FRONTEND_FIX_ACCEPTANCE.md#october-11-saved-draft-image-restoration-race-current-working-tree).
+
+## October 11 initial preparation progress fix (current)
+
+The current VM fix prevents loading/metadata updates from cancelling useful initial coordinate classification before it commits. Actual production parser/repository/VM RED3/2fail/0error becomes GREEN5/5; full634 JVM/dualLint/ordinary APKs pass with unchanged inputs. Image resolver/transport/cache and SDK methods are unchanged. Gated Release Lint0Fatal/0Error/23Warning, compile/R8 and three actual component class/DEX definitions pass. Five ordinary Release R8/reflection/JNI/content gates including seven JNI mutations pass; ordinary DEX/mapping exclude measurement and pixel-matcher code and retain the ordinary Application. New-source CI/signing and B2 remain pending; neither the original phone's unique cause nor a new image-performance improvement is established. [Source cause, contracts and evidence limits](DISCOVERY_LOAD_PERFORMANCE.md#october-11-initial-preparation-progress-fix-current).
+
+## October 11 signed native image qualification
+
+Protected fa0 signing38099987679 succeeds; five APK signature/hash checks and three actual role audits pass (receipt9a81e7f7...5087). API37 Google layout2 qualification now matches six actual SDK image cards and all10000 members, rejects image success in the injected-offline scene, invalidates pixels in list mode and recovers six images afterward. All four controls pass once; this is an excluded controlled-scene check, not a public/phone or timing result. Native pixel assertions/tolerance remain fixed.
+
+The first run stops after three passing controls because the background PID survives one normal kill; bounded same-PID retries enable the complete run. A separately recorded cleanup-only check finishes original-file/permission/display/package/PID and transport restoration after an outer cleanup failure. Original failures remain. Geographic tiles and arbitrary wrong-bitmap precision remain outside the device proof. Exact identities/host corrections: [current repair checkpoint](FRONTEND_FIX_ACCEPTANCE.md#october-11-signed-runtime-and-pixel-qualification).
+
+## October 11 current validation checkpoint
+
+### Build environment wait correction
+
+The user-visible run page confirms a deployment-approval wait without an approval button. Fresh API state has only a branch-policy rule, no reviewers or timer, administrative account rights, and a protected same-repository candidate branch. The earlier request for manual approval was incorrect and is withdrawn. No protection or key setting was changed. The build-only job now uses `environment: {name: v0.2.5-release, deployment: false}`. [GitHub's official specification](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/control-deployments) documents environment access/branch restrictions, wait timers and required reviewers remaining effective without creating a deployment record. Both SSH job environments, exact-ref/SHA guard and concurrency cancellation policy stay unchanged. YAML parsing passes; actual protected execution still awaits the new-source CI/run. The existing e6 run remains waiting and is not restarted merely because observation timed out.
+
+The pixel-calibration working tree now passes an actual629-test JVM execution (zero failures/errors/skips), ordinary Debug/Release Lint0errors20warnings and both local APK builds with all266 input hashes unchanged. Gated Release Lint0errors23warnings, compile/R8 and the three actual component class/DEX definitions also pass. Native matching remains pending; these build results provide no performance sample.
+
+At `e6dd49f2333e72bb32559ddd643077fafda91879`, CI `38091709942` passes all four jobs. Root independently reads both API26/37 artifact ZIPs in memory, verifies GitHub digests and source identity, the exact optional-notification selector, 61 main UI cases across 11 classes and both durable-completion reports; receipt `25b361339d284aa2b945bb78081a2bbdb7ef8bc880816c739cb221a24414aa07`. Individual main-UI methods/terminal code, namespace deletion, keyed SDKs and Release performance are outside this artifact audit. The protected candidate advances to e6 after fresh protection/environment/main checks. Signing `38093721676` is waiting at the environment gate; branch policy is the only configured protection rule observed, and the cause of the wait remains unconfirmed. No new signed APK exists. Main remains `2b6d971f489fdb93b1db0b46ed7f3950dec03209`, PR37 remains Draft. No environment protection was changed.
+
+Root's actual351/sign380857 API37 Release diagnostic completes with source/signer/Manifest-DEX/installed-hash/ARM64/ART `verify` and environment binding. The initial successful-image qualification times out with zero checks; its first teardown cannot end the process, and a separately recorded cleanup retry restores the declared original state (`b5f0e01d1103aeeaa9f975addaab3aef14469935b01cf00c32c8b436e97a8919`). The later observer retains the unchanged assertions/deadline and reads fresh public status/trace under one PID: all10000 points and5pages complete, SDK ready and viewport valid/eligible, but the original view contains9994 members and zero of the six authored photo sites. Two actual network PNG decodes succeed. This is an excluded fixture diagnosis, not a phone cause or a performance distribution.
+
+A versioned host-only layout preserves version1 by default. Actual248-request validation confirms its original eight dataset hashes, all10 datasets/214 pages,12 PNG variants and delay profiles. Initial version2 brings all10000 members and all6 photo sites into the view, but only2 image decorations are submitted and the strict pixel matcher still rejects the scene. An authorized synthetic screenshot shows readable1110/1111 counts and two decoded image cards; floating controls cover part of a card. Geographic tiles remain unobserved. SDK-tagged retained log lines are absent, which proves no absence of SDK errors. All original failures remain.
+
+The existing integer-only matching predicate has an independent regression: Java2D's actual bilinear rasterizer produces two failures in five controls (fractional image and zero glyph), with zero framework errors/skips. Fractional reference interpolation then passes all five controls, including rejection of a different image and digit. RGB tolerance28 and pixel/glyph ratios0.96/0.98 stay fixed. The gated probe now captures opaque3x3 reference neighborhoods and uses this matcher; an additional control rejects an occluding overlay. The current working tree passes all629 JVM tests, both ordinary Lints, gated Release Lint/compile/R8 and five ordinary R8/content gates including seven JNI mutations. Actual ordinary DEX and mapping contain no measurement namespace or pixel matcher; the ordinary Application is defined. A new protected-source device run remains pending. Native fractional matching and the revised version2 layout are not yet qualified.
+
+**Release performance samples remain0.** The original57 groups plus three51999 groups and all historical records are retained. Any final B1/B2 must freeze the same qualified layout/data/harness/environment and existing budgets before sampling. Current outstanding work includes the API26 final-empty-B diagnostic replay, its unavailable shell permission observations, full working-image qualification, the performance matrix and geographic/physical-sensor limitations. No route, phone, merge, Ready, public release or deployment action was taken.
+
+
+## 2026-10-11 功能续验（当前状态）
+
+最新APK编译来源/保护候选为 `351bafbabd515338c430c1526ccb7e17db55eb36`，CI `38083781456` 四绿及两 API RAM 资产核验通过；签名 `38085746502` 成功、清理成功且SSH跳过，根代理五包哈希/包名/固定单签名者v2及三个应用角色实际审核通过，receipt=`187ec916922abf41c43398b9d6d1458b810a79d28d9c183ab979a097d4dc63c3`。应用及图片测试 c676→351 差异为0，新Debug/恢复包与c676字节相同、Test6497已变。以下图片运行结果仍绑定 c676 / 签名 `38079814906` / Test `4517…e163`，不转写为一次新Test执行；新351 API37引导/Google配对/F3阶段已通过，API26/高德后续范围见整合验收。本检查点包含七个文档/主机驱动/测试文件，应用及AndroidTest代码未改。
+
+API37 的 15 单例已全部通过：11 项受控 HTTPS（10 份语义报告，Search 为源码/JUnit/真实像素断言）、3 项注入 HTTP 的 trace 控制、1 项公网小样本。覆盖六规范/旧前缀真实解码、404 重试/新资源、h360 与显式原图、离线磁盘缓存/变体隔离、取消后重试、合法与非法跳转、Bangumi 和迟到失败。公网一索引/一页/四作品六图使用生产 Parser/Coil/Android 解码，六 NETWORK 图片、一次缩略图 MEMORY_CACHE、一次 h360 NETWORK 全屏及两处 UI 像素匹配；请求间隔1050ms，没有原图、结束索引复核或保存真实 URL/内容。报告 `sourcePointTuples=51999` 实为 Parser 的 `index.points.size`，1541 为解析作品数；历史51828保留旧目录与合成规模，不当作当前计数或真实分布。
+
+最终 API37 receipt `517ac9affecf24a01e67b57b752e6d508c91102643a12e1ec3c033b58330f8f0` 确认原三权限/flags、六 APP 偏好 presence/hash、默认引导/高德0、APK 哈希、PID 缺失及十一服务/reverse/公开测试证书清理通过。API26同签名来源也已全部15/15单次通过；最终receipt `2aa28b3094eeae03434099f04c448b89704e49fb58f5d105237254443b77d24e` 确认原八APP文件全absent、harness缺失、user0/x86_64/安装包/PID及十一服务/端口/reverse/cert清理。API26权限字段不可用/null，仅观察字段匹配，无完整权限还原声明；没有改权限。API26公网样本亦为1541作品/51999解析地点、四作品六图及两处UI像素匹配，无结束索引复核。Google定位及14项独立原生控制另通过，范围为合成输入和固定源码/JUnit；原生图片控制仍有MEMORY注入，不能替代两家地图真实HTTP图片或Release像素资格。F6 Release样本仍0，手机未复测。完整摘要、精确哈希及保留失败见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+新351签名API37引导/Google配对/F3完整单项现已通过，clockdelta0/旧按钮enabled/latestVM拒绝零选择/空B/source0；最终2e169b4e…ddaaa声明的原八文件、权限flags、设置/显示/安装包/PID恢复读回一致。该单项是合成SDK/VM正确性，不能替代真实图片或Release速度；精确新标量与旧失败保留在[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+新351高德正常GUI的首次尝试停在引导AssertionError，开启0次/原生用例0项；最终d9275fa6…b46f1已核对原八文件、权限flags、默认高德0、安装包/显示/PID。独立备份因严格撤回/树证明未发生而保留。仅准备失败诊断副本，不把准备失败当SDK/图片失败或通过。
+
+随后观察明确助手误计三个进度标签与一个SDK Checkbox；精准控件筛选后，351高德五个原生单项单次全部通过，正常界面0→1→0及原八文件/权限/显示/安装包/PID恢复核验，两个旧备份按新鲜路径/哈希门禁清理（final64020e42…26738/cleanup5b76ad95…b56f7）。图片原生控制仍有MEMORY注入，不能代替地图实际网络图片/Release资格。旧准备失败、API26空B失败及真实手机边界保留。仅补失败标量和51999测量规模的本地构建进行中，Release样本0。
+
+## 较早 10 月 11 日检查点（以下记录保留当时范围）
+
+核对日期：2026-10-11。PR #37仍Draft，完整目标继续。当前源码/受保护候选 `c676f95baea499696a89bfe2bb8ef989e0663e91` 的初始化策略与布尔诊断已提交，623 JVM、双Lint各0Fatal/Error20Warning、两普通包、R8/Google反射/高德JNI与7变异/Debug内容/实际DEX审计通过，257个编译输入与提交0差异。CI `38077823181` 四绿，API26资产11678664879/API37资产11680180820独立RAM绑定来源/字节数/digest；各引导1项、主UI11类61项与完成7+4标量/请求0/隔离语义通过，主UI个别方法/终止码和namespace移除仍未证明。仅保存标量SHA-256 `b37be900155b955446247a5fc121b300bd51e42db377ec6436cc12791ae2b00e`，含错误字段解析准备拒绝及源码键修正。保护守卫快进c676、main与保护未改；新签名 `38079814906` 带测量/恢复选项成功、清理成功且SSH跳过，五包哈希/包名/固定RSA-4096单签名者v2与三个应用角色Manifest/DEX/内容/JNI审核通过。角色审核仅限普通Release、测量Release、恢复Debug，普通Debug/Test仅有哈希/包名/签名检查；receipt SHA-256 `1cac2328b5e19aad89ac83e5820c0115e2ead87226d738b8466f9e6beac9dd4d`。首轮签名原生控制已有下述结果，真实图片最终验收仍待；edb/`38072602734`原生结果保持历史范围，旧原生控制不证明c676真实网络图片已通过，完整digest见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+## 2026-10-11：c676控制与时钟夹具验证
+
+c676原API37首轮引导、Google实际说明→Navigator主题两方法/顺序/终止−1及四origin14813、严格h160注入位图控制通过；宿主最后PID=null保留。F3已过初始ready/A2选择/SDK拖动检查，随后第191行旧enabled断言FAIL，handler和旧clock delta未验证。原三权限/flags、APP XML+.bak、默认引导/高德0、新包哈希及PID缺失恢复一致；不是全Room/缓存保留。锁定ui-test1.11.4触摸显式推进时钟机制已确认，旧SDK初始失败的唯一原因仍未证明。测试专用native pointer/clock0/CANCEL修正仅本地API26 Google单例GREEN，保留全部原断言/时序/期限；构建与双Lint/source0通过、无新JVM执行。b7ff945a绑定/7c85c7d2新鲜标量证明旧启用按钮真实点击后latest VM拒绝、零选择/空B/source0；79989准备失败执行0测试、四个错误缺失文件哈希撤回。新8文件存在性/哈希恢复通过，权限null只能观察字段匹配，不证明完整还原。尚无新CI/固定签名API37/高德、真实网络图片、双API恢复或Release验收；精确记录见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+c676 h160控制receipt SHA-256为 `2524359059d83c8cb43582b19508f6dba343aee87cf6e0d20f5bc8f03cfa9d72`，MEMORY范围来自既有注入夹具，receipt没有DataSource字段；不证明真实HTTP/Coil解码。新本地F3标量SHA-256 `7c85c7d28ab2866001db4e114300d4f1cbc72a7def94c42181ba5582ccae57a9` 只证明合成SDK/VM正确性，不是图片速度。
+
+## 2026-10-11历史：edb原生图片控制与尚未闭合的链路
+
+本节设备控制绑定来源 `edb8ae00c4c42df3e7d193acfb7b183ec0e62387`；c676固定五包已核验，其首轮原生与本地夹具范围见上文；真实图片最终证明仍待。
+
+原API37保留数据ARM64安装edb Debug `ba4f9127d3b299a20d74cb7d5a34992f7ee4f50e69e87e5fefcf892bf7ecf603`、Test `bad2cd7673fe1778e5b92870631aeb8fcf44e2ca0464f43c1ff344c90a562906`。另一视野图片复用夹具的严格h160期望现单例GREEN，`runtime-38072602734-api37-google-viewport-images-base-1011/runtime.json` SHA-256为 `d4ad01a7e13ad3ece7ba277606b28eeca7d415c3117dc384e991d4f9fb8f8be0`。按夹具源码它返回MEMORY注入位图；receipt没有DataSource字段，更没有真实HTTP/解码证明，不关闭F7或Release图片资格。
+
+同包F3仍在初始30秒准备失败：2个数据/地图成员、source0，当前有效发布却为空；失败时SDK target/zoom不匹配预期Restore，fresh bounds/query/native viewport/padded-content均0、projected2。这是失败时一致的镜头/几何，不是原计算快照，也没有实际默认概览分支执行证据。现有初始化谓词经真实VM五项JVM基线1失败、增加`consumedCommand == null`后五项全过；只证明策略缺口。12行新诊断只增加回执/失败镜头匹配布尔值，缺失null，原SDK调用、等待、断言与夹具输入未改，新来源最终门禁仍待。
+
+引导新签名单例已GREEN，通知拒绝且定位已有授权时进入服务页而不再请求权限；未提交引导/高德同意，原三权限/flags及APP设置XML+.bak存在性/哈希精确恢复。Google主题原严格PID包装器FAIL保留，四个真实事件来源12516另补同进程证明，无重跑或持久化原因推断。结束PID缺失、原设置及版本0读回一致；当前高德正常UI临时同意仍未执行，既有授权保留。
+
+当前包真实受控HTTPS、取消/重试/离线缓存/重定向、Search/Bangumi、h360与显式原图、公网小样本及双地图最终图片验收仍待；57组Release B1/B2样本0。NoImage附近Debug比较只属于83d/d861，10k/100k p95改善与1k全部20轮上升10.525%均保留。1k第4—7轮仍10.238—22.265ms，只有8—20轮为4.511—8.846ms；没有JIT/GC/调度证据，withContext进入位于排序计时段外，原因未知且未剔除或重跑，不能证明图片速度。保留分析见[性能文档](DISCOVERY_LOAD_PERFORMANCE.md)。51,828仅为旧目录聚合计数及同数量合成数据，未证明当前目录或真实分布。手机、API26原生高德、地理底图及已披露具体Key限制未核验/未轮换的边界不变；签名与运行receipt详见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+## 2026-10-10历史：d861图片夹具边界
+
+原83d两家投影图片夹具只接受裸合成URL，生产缩略图实际带 `plan=h160`，因此计数保持0；`b3d062f` 仅把期望改为共享resolver生成的严格h160地址，保留原断言/超时。当前d861签名Debug `4b6d67628c1fab00147e1e2f29691172ee966a28507db5897267ae41aaa0f8bd`、AndroidTest `4ea7d44cbea2d7b553536585085a49f43c5433fc9ec96fe3d55bdcab5fe32668` 在原API37/ARM64保留数据安装后，Google投影/位图锚点、迟到图片、失败图片保留标记选择器各自通过；它们仍返回生成位图，只证明请求身份及SDK呈现，不替代真实网络与解码。
+
+另一 `DiscoveryNativeMapPerformanceTest` 视野图片复用选择器仍有独立的裸URL期望，第303行等待图片失败，包含在当前19个单项的16通过/3失败之中。严格共享resolver测试修正已准备、尚待编译和原生复测，未改生产图片路径、超时或计数。Google F3也保留初始“当前有效但0成员”快照失败；该直接Map/Button夹具没有发现工具栏，不能套用工具栏已确认原因。
+
+高德正常UI临时同意授权已有，但d861首次引导当时把通知写为可选却作为“继续”的必要条件。定位已授权、通知拒绝的真实UI RED确认再次请求通知且未进入服务页，高德同意版本0、原生用例执行0；三项权限/flags与应用设置哈希均恢复。该检查点只有继续条件修正和真实MainActivity回归准备，后续edb GREEN范围见上文；旧RED不改写。对应报告及官方SDK前提见[整合验收](FRONTEND_FIX_ACCEPTANCE.md)。
+
+真实图片入口已关闭“JUnit通过但应写的标量报告缺失仍判成功”的缺口：Network/Resilience/Live/UI使用精确新文件并核对非空计数、实际语义及必要false字段，缺失/错名/失败内容拒绝；Trace/Search源码没有写标量，明确仅采用严格单项JUnit结果。四项提取入口的拒绝/正例检查与只读语义复核通过，只证明助手门禁。入口绑定实际签名APK/来源/API/AVD/ABI，每方法新HTTPS服务，raw输出不落盘且仅清理自己的reverse/证书/进程；尚无当前包真实图片执行结果。
+
+当前包仍需受控HTTPS、旧引用/重试/取消/离线缓存/重定向、Search/Bangumi、查看器h360与显式原图，以及小规模公网smoke；Release像素资格另取两家真实受控图片标记证据，57组Release B1/B2执行0。F5三规模各20次Debug B2虽然确认每点一次距离、后台排序与完整成员，但全部为NoImage，不能证明图片加载速度；10k/100k排序p95下降58.441%/68.623%，1k上升10.525%且原因未证实，全部尝试保留。
+
+当前应用CI两API各61项UI通过，工具栏类在各API包含普通/双倍字体共2项，不能算作图片网络验收。公网旧六图保持下方固定包范围；新smoke已有聚合目录计数字段，取数后仍须注明来自该次索引，未做结束索引复查。手机未操作，实际失败请求和慢加载trace仍未取得；历史超时、地理底图和具体Key限制未核验的边界不变。
+
+## 问题设备与证据边界
+
+用户反馈来自实体手机，安装的是上一轮内测 Release。无线 ADB 只读核对得到 API37/ARM64、0.2.5(11)、非 debuggable，APK SHA-256 为 `573db32f9743dff1471e9dbe1d33f3ea760cec2d86b705c48a01123906efb450`，与签名运行 `35557984317` 的内测包一致。没有在手机安装、启动、停止应用、清数据或改权限。
+
+尚未取得该手机的实际失败请求或加载 trace。下面的路径复现证明具体代码缺陷，不能证明它是该手机全部失败或地图慢的唯一原因。
+
+## 2026-10-02：可见集退避与旧null元数据
+
+最新普通Debug固定应用SHA-256为 `e3b745302b417610413f500983a0944f9dd98b23d251ce8ce791d26842667a54`，测试为 `969ed65c9960d037e2a171fa07c9023f42d613391949fe869e68fd367c9c9a40`。`build/frontend-fix-v2/current-apks-1002/identity.json` 记录构建前后源文件哈希差异0、**602项JVM全部通过**；这不是签名Release或性能结果。后续视野就绪配对测量源码不在此固定包内。
+
+本次保留三个独立的修复前回归结果：
+
+| 回归 | 修复前结果 | 证据目录 |
+|---|---:|---|
+| Search选点/恢复的旧null图片 | 5项、3断言失败、0编译错误 | `search-null-red-1002/` |
+| 超过256项可见图片失败退避；草稿补图与生成关联 | 图片9项/3失败、草稿19项/2失败、0编译错误 | `image-overflow-draft-metadata-red-1002/` |
+| 多作品补图遇到后台暂停 | 6项、1断言失败、0编译错误 | `multi-subject-image-pause-red-1002/` |
+
+退避失败来自固定256项LRU驱逐了仍然可见的失败记录；下一轮把它们当成未失败的资源，提前重新请求。生产地图重试循环现在保留当前完整可见/聚焦装饰集合的记录，移出集合才删除；当前集合外的迟到记录拒绝写入。仍保留三并发槽、按类别的等待期限、显式重试和取消检查；成功资源即使位图LRU驱逐，也不在同一轮重复请求。257项暂时/永久/混合失败、取消和成功后驱逐均有回归，不截断点位或图片成员。
+
+旧null图片缺失来自整体保留已选或恢复点位的合并策略。Search三处合并与持久草稿补充现只填写严格规范化的缺失图片，保持已有非空引用、坐标、名称、顺序和规划参数。应用级观察器按草稿与目录版本限定范围，仅对已知来源的过期图片元数据请求详情；当前来源明确无图不强制请求，未知ID不猜文件名。存储版本随补图推进，但生成关联和完成清理所用的输入所有权不变；真实用户编辑或重新关联仍拒绝旧操作。
+
+多作品暂停失败来自首个请求取消后继续迭代，并提前记录下一作品已尝试。修正逐次核对最新暂停状态，取消时撤销该作品的尝试记录并停止循环，前台恢复后可继续。Search7项、草稿23项、持久完成7项、恢复20项、退避9项、协调器5项共 **71项同次通过**（`f7-boundaries-jvm-fixed-1002/`）；随后加入多作品暂停回归，6项协调器测试包含在602项全量通过中。
+
+点位列表已使用共享缩略图组件，保留72dp布局与选点交互，加载/失败/重试状态绑定实际请求。同一固定包在API26另行执行的 `current-apks-1002/search-image.json` 记录 **1项通过**：无图不请求，受控HTTPS首次404后显式重试200，生产Coil与Android解码后实际缩略图像素通过，重试未改变选点，行点击仍可取消选择。服务正常以0退出，自有reverse已移除。这是合成图像受控网络验收，双地图原生图片与原手机仍待验证。
+
+后续源码的602项构建中，暂停回归出现一次第二作品请求尚未开始的断言失败，原XML位于 `pause-barrier-red-1002/`。夹具仅等待虚拟调度器空闲，真实IO缓存发布仍未完成；增加第二请求开始的显式屏障后，生产补图逻辑未改，`checkpoint-apks-fixed-1002/` 全量602项、双Lint和应用/测试构建全部通过。新app=`5cfb33529c5e1f19a1716d2044af4d4fc917c6dc3aaeee81cf578473f0b64378`、test=`0b466f03242354c13b951953c46ee96da429d2f3fd2ed90751194df94766fcdc`，源码0差异；该包的2项原生视野跨度正确性用例通过，不移用旧图片专项验收。旧14项受控图片测试和公网6图仍仅属于下方各自固定包。当前受门控Release像素探针仅编译/Lint通过，尚无B1/B2性能样本；原手机仍未复测。
+
+## B0：修复前的受控 HTTPS 与真实 Android 解码
+
+基础提交：`6759c8d3e2e7dddb17db51f509e2a30f1d845b75`。只加入等价生产 ImageLoader 工厂注入缝及测试支架，Parser 路径逻辑未修复。专用 AVD `anitabi-pr37-images-api26`，API26/x86_64，本地 Debug 签名，无高德 Key；不是性能测量包。
+
+| 产物 | SHA-256 |
+|---|---|
+| 目标 APK | `65015dbd955725d0e753a633902dc6c875b651c5b83d02b7584c11a67f719098` |
+| 测试 APK | `00d7db68641e0211cc9e7574db7660315de8a8c6de77c25a2aa9aed852fa4be2` |
+
+实际执行前再次核对 AVD 名称与两份已安装 APK 的哈希。测试经过真实 `DiscoveryParser.page`、共享生产 Coil 3.5.0/OkHttp 5.4.0、受控 HTTPS 网络与 Android PNG 解码器。仅传输目标和合成证书在测试中注入；主机名校验保留，私钥只在主机 JVM 内存中生成。
+
+| 输入 | 请求数 | 响应 | PNG 像素/尺寸验证 |
+|---|---:|---|---:|
+| 三种规范路径家族 | 3 | 200、image/png、每张75字节 | 3/3 |
+| 对应多余 `/images/` 前缀 | 3 | **测试服务注入的**404、text/plain | 0/3 |
+
+三种家族为 points、user、bangumi，全部使用合成对象。六个请求均保留 `plan=h160` 和生产技术 UA，未携带 Authorization/Cookie/X-Goog-Api-Key。失败断言恰为“静态路径输入应解码成功”：期望3，实际0；规范路径正对照已全部成功。
+
+证据位置：`build/frontend-fix-v2/b0-image-host-apks/identity.json`（源文件哈希）、`execution-0923.json`（运行状态）、`image-network-0923.json`（标量结果），以及 `build/frontend-fix-v2/b0-host-https-0923/requests.json`。只保留计数/类别，无真实 URL、对象标识或设备响应正文。测试结束后移除本次 ADB reverse 映射，服务收到停止文件并以0退出。
+
+### 已解决的测试支架错误
+
+第一次将 MockWebServer 5.4 服务端放在 Android26，服务端读取 `ExtendedSSLSession.requestedServerNames` 得 null，发生 NPE，未生成解码报告。这次失败不计图片路径复现。核对 pinned OkHttp 源码后，将 HTTPS 服务移到电脑 JVM，仍使用原 Android 生产客户端/解码器；上述正对照成功验证支架修正。未修改生产 TLS、升级依赖或更换公网节点。
+
+## 2026-09-23：路径修复与分组验收
+
+共享 `AnitabiImageReference` 只剥离开头一次 `/images/<已知家族>`，保留对象后缀和版本查询；拒绝不安全语法。列表/地图请求 h160，详情/查看器默认 h360，原图由用户主动请求。未知查询参数保留原语义，避免盲改签名。请求边界兼容旧缓存/已选/已保存引用；图片元数据版本与上游详情版本独立。
+
+当时正在补齐请求绑定的UI状态、限定范围重试、地图失败退避、旧null元数据刷新、重定向检查和真实UI解码。以下后续记录分别补充其证据；双地图原生图片标记及原手机复测仍未完成。
+
+2026-09-23 集成包第一次设备复测：应用 `bd01ae3086fb4a0f6aa8599d96fd18a4f21c41c8f96e2d5836c55321ff5a9118`，测试包 `61dc5bad5e0c8fc7ff45894b1853786a48287de6902bf7be49e04451a7d4a971`。同一专用 API26 AVD、保留数据更新并核对已安装哈希。规范输入3/3与旧前缀输入3/3均成功通过真实 HTTPS/PNG 像素检查，六次请求全部使用规范路径、h160、正确 UA 且无敏感请求头。结果在 `build/frontend-fix-v2/integrated-0923-apks/image-network.json`。这一结果证明受控路径修复，未冒充公网或性能证据。
+
+同次两项新增 UI 测试未通过：查看器首次屏幕采样未达到目标图片像素；重试测试使用100dp非紧凑布局，点击后未观察到第二次请求。正在调整为等待实际像素稳定、测试生产56dp紧凑缩略图，并再次执行。未把响应200当作这两项UI通过。原始计数、异常类别及运行状态保留在同目录 `android-execution.json` 与 `image-ui-1-*.json`。
+
+后续包：应用 `079ff21fede9d19b6ee31a8319c394cab25a585239e2762673025d8c5408140a`，测试 `d23c796c94b4db3e8775f0930a5da50a7ce106abd9c3b6b8a27c5bf3ebd8dad7`。同一API26设备重新核对哈希并保留数据更新后，上述三个图片测试全部通过：6个解析输入均真实解码；生产56dp缩略图经历404→点击重试→200并达到目标像素，切换新资源后继续成功；全屏初始请求h360，实际稳定像素通过，点击原图按钮后才发不带plan的请求。未通过随机URL或假ImageLoader绕过缓存。证据为 `build/frontend-fix-v2/integrated-0923b-apks/image-network.json`、两份 `image-ui-*.json`、`android-execution.json` 与 `fullscreen-loaded.png`；已查看真实屏幕，关闭/原图操作可见。图片仍为自造PNG，不能称为公网作品截图成功。
+
+主机夹具在测试Android框架stub位于classpath时打印一次平台探测警告（`android.util.Log.isLoggable not mocked`），随后实际回退JVM TLS，以上HTTPS测试成功且服务以0退出。当时启动脚本仅排除android.jar；9月24日继续验证暴露Android变体依赖问题，最终修正及实际无警告启动结果见下方高级夹具记录。
+
+## 公网桌面小样本（独立证据）
+
+2026-09-23 以生产技术UA、默认TLS校验、关闭重定向、至少1050ms请求起始间隔，读取一份批准的索引及一个对应分页。索引包含1536个作品条目、51828个点元组，分页250个作品ID在内存中匹配索引分片。选取4部作品的6张不同图片，未继续抓取其它分页。
+
+| 路径家族 | 图片数 | 原多余前缀路径 | 规范h160路径及桌面解码 |
+|---|---:|---|---|
+| user | 3 | 3个实测404 | 3个200/WebP成功 |
+| points | 1 | 1个实测404 | 1个200/JPEG成功 |
+| bangumi | 2 | 2个实测404 | 2个200/JPEG成功 |
+
+六张解码输入合计74305字节，全部高度160。这里记录的是读取的响应体字节，不是网络线上总流量。请求/响应正文、真实地址、ID、名称与坐标均未落盘或打印。脱敏结果位于 `build/frontend-fix-v2/live-image-desktop.json`，已执行脚本 `live-image-desktop-observed.py` 的SHA-256为 `5ba48c697c4820d35b8247b10bfb7b26a5962cdb0f5a3314eefc986b2c249655`。
+
+这一次使用Python结构化规范化镜像和Pillow，未运行生产Kotlin Parser/Coil，也未复核结束索引。未观测实际发出的敏感头明细，因此不以“没有显式配置凭据”冒充无鉴权头实测；Android生产加载器的头检查属于前述独立受控测试。后续Android/UI绑定单独记录于下一节，不能把桌面成功当成用户手机复测。
+
+## 2026-09-24 公网 Android 绑定
+
+专用API26/x86_64上普通Debug应用 `37e64f76e4614638dd7db118a7be6be330e0854c461d9ecf9d5ad6fe9f602972`、测试 `9b7ee410a470d0b0816b36607741550e0c898ed6ee66d135ba56d8f63c370522`，执行显式 `liveImageSmokeApproved=true` 的 `DiscoveryLiveImageSmokeTest`。使用生产HttpDiscoverySource、Parser、图片客户端、Coil与Android解码器；未替换传输/TLS/公网节点。仅一份索引、一个匹配分页，4部作品6张图，至少1050ms请求间隔，关闭图片磁盘缓存。原值、解析/缓存往返值、请求URL与真实图像像素只在内存核对。
+
+第一次执行前三图解码通过，第4图在10003ms发生网络超时，没有HTTP响应；报告顶层`android_decode`是断言阶段，具体网络/解码记录均为`timeout`。旧报告的status=0表示未收到状态，**不是HTTP 0**。保留 `live-image-android-attempt1.json`，未加超时、换头或改网络配置来掩盖失败。
+
+同包一次有界复测成功：6个h160请求全为实际200，3 WebP/3 JPEG，共74305字节，Android解码高度均160。缩略图读取这次实际下载解码的内存缓存，实际显示像素通过；全屏实际请求h360，200/WebP、44240字节、640×360，实际显示像素通过。没有请求原图。屏幕验证是9个内部采样区域至少7个满足平均RGB差不超过18，并非把Coil成功状态当成显示证明。
+
+全部实际请求观察到生产UA、无敏感头、批准host和正确尺寸变体。索引1536作品/51828点、分页250作品；此次未作结束索引复核，不能证明全目录版本一致。索引/分页字节来自网络拦截层、处于透明解压之前，与桌面读取的解压后字节不是同一指标。图像本身未持久到报告或截图。
+
+证据均在 `build/frontend-fix-v2/diagnostic-normal-0924/`，两次执行各有状态JSON、`live-image-android-attempt1.json` / `attempt2.json` 和源文件身份。这里闭合了少量真实来源→生产Parser→旧引用兼容→实际请求→Android解码→UI像素，**没有复测原问题手机**，也不宣称公网不会偶发超时、所有目录图片均成功或F6性能已验收。
+
+## 2026-09-24 高级夹具与图片追踪
+
+普通应用 `c4ec30078e755905634660e4ac3787d68bf02c7e5ba8998a56680cdc08283605`、测试 `8313d20ebc02ba59a2170280e28092fce52a78ad022a02da4d53d03264601c88` 的API26执行共14项：原HTTPS/Compose三项、三个图片追踪用例和修正的旧关闭/返回用例通过，七项新恢复/重定向用例失败且均未取得HTTP响应。Android追踪测试确认网络/内存/磁盘命中、实际解码错误及取消分别计数；它使用合成HTTP字节，不冒充公网或原生标记显示。
+
+失败根因在测试传输：匿名Socket内的`port`绑定到了Socket自身未连接时的端口，而非外层夹具端口。已对实际编译类作`javap`核对，字节码调用Socket.getPort；改为明确引用外层属性。原运行状态、七份报告及字节码保留于 `image-trace-completion-0924/`。生产连接和重定向检查未因此放宽，修正后的复测如下。
+
+修正Socket后应用 `7d59e2082717592eabc1f679946891c7f221b7c987e2321d01d06416a1a5ac01`、测试 `579a1546380d2bcc26ddc977dd7f41349cb6de6649b88075ebb0d9694a3e482a` 的14项中13项通过。唯一失败是测试把未命中Coil磁盘缓存后的OkHttp调用次数误当作实际联网次数：固定Coil3.5源码对缺失项仍构造`only-if-cached`请求，测试拦截器在网络之前拒绝它。已保留“命中缓存时0次客户端调用”，并对两个不匹配变体/版本断言2次仅缓存调用、错误结果、实际响应次数不增加，不修改生产缓存策略。
+
+最终沿用相同7d59应用，测试更新为 `4afc4a76280d9765358fc6566d719770240be6e45b29507f98b45021d83f6a59`，**14项图片/追踪/关闭测试与2项草稿容器集成，共16项全部通过**。其中7项高级图片测试覆盖：离线磁盘真实解码及变体/版本不串图；取消没有错误回调且同引用重新解码成功；批准重定向成功；第二跳未知host、降级HTTP、凭据地址在连接前被拒绝；原Bangumi图源保持；A请求已取消后服务器迟到失败不覆盖B真实像素。最后一项证明的是取消旧请求的实际行为，不冒充已投递旧UI错误回调；地图失败退避状态未在这些用例中检查。
+
+完整标量与源身份在 `build/frontend-fix-v2/final-image-test-0924/`。受控服务正常退出，自有reverse移除。草稿集成第一次结束后的文件清理遇到API26 `readlink -f`返回1，未删除任何测试命名空间；只读核对`realpath`可用后，先清理两份旧测试目录，再同包独立复跑两项容器用例，验证默认草稿/数据库哈希不变并清理两份新目录（`container-repeat/result.json`）。不将清理失败算成测试失败，也不把后一次哈希核对追溯为第一次已取得。
+
+主机服务还保留两次启动失败：相对目录解析被范围保护拒绝；绝对目录后，先前只排除android.jar的改动使OkHttp Android变体找不到Log类。固定5.4.0官方源码显示Android PlatformRegistry直接引用AndroidLog，JVM变体使用JDK平台。修正独立主机配置为**同版本JVM变体**及必要运行依赖、仅保留编译输出目录，Android应用依赖/TLS保持。服务已实际启动并正常退出，无旧平台探测警告；脚本同时将相对输出目录按仓库根解析。失败日志与成功日志分别保留在 `advanced-image-host-0924*.log` / `advanced-image-host-jvm-0924.log`；自己的ADB reverse已删除。
+
+## 一手资料链接
+
+- [官方图片 API](https://navi.anitabi.cn/docs/api/)：图片域名与 h160/h360 尺寸语义。
+- [固定 Swift 来源](https://github.com/anitabi/anitabi-swift-app/blob/51e597120c32932d5f9af129a2e2f9b08a74d3d6/anitabi/Home/AnitabiModels.swift)：开头 `/images` 的路径转换；未复制其其它图片域名或宽松来源规则。
+- [Coil 网络](https://coil-kt.github.io/coil/network/)与[Compose](https://coil-kt.github.io/coil/compose/)：实现使用项目锁定3.5.0，并按该版本实际 API 编译；不升级到在线文档的新版本。

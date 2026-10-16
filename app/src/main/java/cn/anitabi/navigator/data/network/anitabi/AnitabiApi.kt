@@ -18,7 +18,6 @@ import kotlinx.serialization.json.JsonEncoder
 import kotlinx.serialization.json.JsonNull
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.contentOrNull
-import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.Request
 
 class AnitabiApi(private val httpClient: ApiHttpClient) {
@@ -98,12 +97,8 @@ data class AnitabiPointDto(
 private fun String.isSafeWebUrl(): Boolean =
     startsWith("https://", ignoreCase = true) || startsWith("http://", ignoreCase = true)
 
-private fun String?.toAllowedAnitabiImageUrlOrNull(): String? {
-    val url = this?.toHttpUrlOrNull() ?: return null
-    return takeIf { url.scheme == "https" && url.host == ANITABI_IMAGE_HOST }
-}
-
-private const val ANITABI_IMAGE_HOST = "image.anitabi.cn"
+private fun String?.toAllowedAnitabiImageUrlOrNull(): String? =
+    cn.anitabi.navigator.data.images.AnitabiImageReference.normalize(this)
 
 @OptIn(ExperimentalSerializationApi::class)
 private object LenientNullableStringSerializer : KSerializer<String?> {
